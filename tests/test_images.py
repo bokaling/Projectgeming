@@ -104,10 +104,16 @@ def test_scene_prompt_has_bible_and_refs(sf_root):
 
 
 def test_character_reference_made_once(sf_root, monkeypatch):
+    # offline: no placeholder is saved as a reference (it would mislead the GPU model later)
     monkeypatch.setattr(net, "request", lambda *a, **k: (_ for _ in ()).throw(net.ServiceError("offline")))
     s = project.Series.create("Refs")
     characters.add_character(s, "Leo", "")
     rep = Reporter(echo=False)
+    characters.ensure_references(s, None, rep)
+    assert not characters.has_ref(s, s.character("Leo")) and "No reference picture for Leo" in rep.text()
+    # online: made once, then skipped
+    images._down_until.clear()
+    monkeypatch.setattr(net, "request", lambda *a, **k: Resp(png_bytes(512, 680)))
     characters.ensure_references(s, None, rep)
     assert characters.has_ref(s, s.character("Leo"))
     before = rep.text()
