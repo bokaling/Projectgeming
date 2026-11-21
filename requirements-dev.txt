@@ -5,7 +5,7 @@ pillow
 opencv-python-headless
 requests
 soundfile
-gradio>=5.9,<7
+gradio>=6.0,<7
 edge-tts>=7.2
 arabic-reshaper
 python-bidi
