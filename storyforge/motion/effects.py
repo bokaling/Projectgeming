@@ -245,22 +245,12 @@ class Overlay:
         if "god_rays" in self.effects:
             f = f + self.rays * (0.16 + 0.05 * math.sin(t * 0.8))
         if "light_leak" in self.effects:
-            lw, lh = (32, 18) if W > H else (18, 32)  # tiny grid, scaled up = soft light
-            yy, xx = np.mgrid[0:lh, 0:lw].astype(np.float32)
-            cx = lw * (0.5 + 0.6 * math.sin(t * 0.35 + 1))
-            cy = lh * (0.3 + 0.5 * math.sin(t * 0.27))
-            blob = np.exp(-(((xx - cx) / (lw * 0.45)) ** 2 + ((yy - cy) / (lh * 0.5)) ** 2))
-            leak = blob[..., None] * np.array([255, 110, 170], np.float32) * (0.22 + 0.1 * math.sin(t * 0.9))
-            f = f + cv2.resize(leak, (W, H), interpolation=cv2.INTER_CUBIC)
+            f = f + cv2.resize(light_leak_small(t, W, H), (W, H), interpolation=cv2.INTER_CUBIC)
         if self.particles:
             light = sum(p.layer(t) for p in self.particles)
             f = f + cv2.resize(light, (W, H), interpolation=cv2.INTER_LINEAR)
         if "flicker" in self.effects:
-            k = 1 + 0.04 * math.sin(t * 23) * math.sin(t * 7)
-            for fl in self.flashes:
-                if 0 <= t - fl < 0.5:
-                    k += 0.9 * math.exp(-(t - fl) * 9)
-            f = f * k
+            f = f * flicker_gain(self, t)
         if self.vignette is not None:
             f = cv2.multiply(f, self.vignette)
         if self.grain is not None:
@@ -272,6 +262,37 @@ class Overlay:
 # ---------------------------------------------------------------------------
 # Frame generator
 # ---------------------------------------------------------------------------
+
+
+def camera_state(move: Move, overlay: "Overlay", i: int, n: int, fps: int):
+    """Zoom, dolly, pan and parallax for frame i (shared by the CPU and GPU renderers)."""
+    t = i / fps
+    e = ease(i / max(1, n - 1))
+    z = move.zoom[0] + (move.zoom[1] - move.zoom[0]) * e
+    k = move.dolly[0] + (move.dolly[1] - move.dolly[0]) * e
+    px = move.pan[0][0] + (move.pan[1][0] - move.pan[0][0]) * e
+    py = move.pan[0][1] + (move.pan[1][1] - move.pan[0][1]) * e
+    qx = move.par[0][0] + (move.par[1][0] - move.par[0][0]) * e
+    qy = move.par[0][1] + (move.par[1][1] - move.par[0][1]) * e
+    sx, sy = overlay.shake(t)
+    return t, z, k, px + sx, py + sy, qx, qy
+
+
+def light_leak_small(t: float, W: int, H: int) -> np.ndarray:
+    lw, lh = (32, 18) if W > H else (18, 32)  # tiny grid, scaled up = soft light
+    yy, xx = np.mgrid[0:lh, 0:lw].astype(np.float32)
+    cx = lw * (0.5 + 0.6 * math.sin(t * 0.35 + 1))
+    cy = lh * (0.3 + 0.5 * math.sin(t * 0.27))
+    blob = np.exp(-(((xx - cx) / (lw * 0.45)) ** 2 + ((yy - cy) / (lh * 0.5)) ** 2))
+    return (blob[..., None] * np.array([255, 110, 170], np.float32) * (0.22 + 0.1 * math.sin(t * 0.9))).astype(np.float32)
+
+
+def flicker_gain(overlay: "Overlay", t: float) -> float:
+    k = 1 + 0.04 * math.sin(t * 23) * math.sin(t * 7)
+    for fl in overlay.flashes:
+        if 0 <= t - fl < 0.5:
+            k += 0.9 * math.exp(-(t - fl) * 9)
+    return k
 
 
 def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], duration: float, fps: int = 30,
@@ -295,16 +316,7 @@ def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], dur
     cx, cy = Ww / 2, Hw / 2
     n = max(1, int(round(duration * fps)))
     for i in range(n):
-        t = i / fps
-        e = ease(i / max(1, n - 1))
-        z = move.zoom[0] + (move.zoom[1] - move.zoom[0]) * e
-        k = move.dolly[0] + (move.dolly[1] - move.dolly[0]) * e
-        px = move.pan[0][0] + (move.pan[1][0] - move.pan[0][0]) * e
-        py = move.pan[0][1] + (move.pan[1][1] - move.pan[0][1]) * e
-        qx = move.par[0][0] + (move.par[1][0] - move.par[0][0]) * e
-        qy = move.par[0][1] + (move.par[1][1] - move.par[0][1]) * e
-        sx, sy = overlay.shake(t)
-        px, py = px + sx, py + sy
+        t, z, k, px, py, qx, qy = camera_state(move, overlay, i, n, fps)
         if dcanvas is not None:
             bx = np.broadcast_to(cx + X / z + px * W, (h2, w2)).astype(np.float32)
             by = np.broadcast_to(cy + Y / z + py * H, (h2, w2)).astype(np.float32)

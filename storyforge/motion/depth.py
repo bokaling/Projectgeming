@@ -30,7 +30,9 @@ def _load():
     net = AutoModelForDepthEstimation.from_pretrained(mid, cache_dir=cache)
     net = net.to("cuda" if s.gpu.available else "cpu").eval()
     if s.gpu.available:
-        net = net.to(torch.float16)
+        from ..gpu import best_dtype  # noqa: PLC0415
+
+        net = net.to(best_dtype())
     _model.update(proc=proc, net=net)
     return proc, net
 

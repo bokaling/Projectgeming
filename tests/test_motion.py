@@ -74,3 +74,30 @@ def test_hero_clip_skipped_without_gpu(sf_root, scene_png, tmp_path):
     ok, why = i2v.make_hero_clip(scene_png, {"visual": "x"}, tmp_path / "h.mp4", "9x16", 5, 1, None)
     assert ok is False and "GPU" in why
     assert "dolly in" in i2v.hero_prompt({"visual": "A ship", "camera": "push_in"})
+
+
+def test_gpu_renderer_matches_cpu_renderer(scene_png):
+    torch = pytest.importorskip("torch")  # noqa: F841
+    from storyforge.motion import gpu
+
+    rgb = np.asarray(Image.open(scene_png).convert("RGB"))
+    d = depth.smooth(depth.fake_depth(rgb))
+    for cam, fx in (("orbit_left", []), ("push_in", ["fog", "god_rays", "light_leak", "dust", "flicker"])):
+        a = list(effects.frames(rgb, d, (180, 320), 0.5, 12, cam, fx, seed=3, shake_times=[0.1], grain=False))
+        b = list(gpu.frames(rgb, d, (180, 320), 0.5, 12, cam, fx, seed=3, shake_times=[0.1], grain=False, device="cpu"))
+        assert len(a) == len(b)
+        assert max(np.abs(x.astype(int) - y.astype(int)).mean() for x, y in zip(a, b)) < 0.5, cam
+
+
+def test_parallel_scene_rendering(sf_root, scene_png, tmp_path):
+    import concurrent.futures
+    import multiprocessing
+
+    jobs = [{"video": "", "image": str(scene_png), "depth": "", "out": str(tmp_path / f"c{i}.mp4"), "size": [90, 160],
+             "seconds": 0.5, "fps": 12, "camera": cam, "fx": [], "seed": i, "shake": [], "strength": 1.0,
+             "extras": True} for i, cam in enumerate(["push_in", "pan_left", "tilt_up"])]
+    ctx = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(max_workers=2, mp_context=ctx) as pool:
+        results = list(pool.map(clip.render_job, jobs))
+    assert all(r.startswith("Ken Burns") for r in results)
+    assert all(abs(media.duration(j["out"]) - 0.5) < 0.1 for j in jobs)

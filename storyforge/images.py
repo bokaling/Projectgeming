@@ -41,8 +41,10 @@ class ImageJob:
     label: str = ""
 
 
-def gen_size(size: tuple[int, int], max_side: int = 1344) -> tuple[int, int]:
-    """Scale a target size to a GPU friendly size (multiples of 16, long side <= max_side)."""
+def gen_size(size: tuple[int, int], max_side: int | None = None) -> tuple[int, int]:
+    """Scale a target size to a GPU friendly size (multiples of 16, long side <= max_side; bigger on L4/A100)."""
+    if max_side is None:
+        max_side = config.gpu_profile().image_max_side if config.get().gpu.available else 1344
     w, h = size
     scale = min(1.0, max_side / max(w, h))
     return int(w * scale) // 16 * 16, int(h * scale) // 16 * 16
@@ -59,7 +61,8 @@ class KleinEngine:
 
     def __init__(self):
         self.pipe = None
-        self.vae32 = None
+        self.te = None  # prompt reader, kept loaded on L4/A100 (enough GPU memory)
+        self.tok = None
 
     @classmethod
     def get(cls) -> "KleinEngine":
@@ -86,28 +89,34 @@ class KleinEngine:
         todo = [p for p in dict.fromkeys(prompts) if not self._emb_path(p).exists()]
         if not todo:
             return
-        self.unload()
+        keep = config.gpu_profile().keep_text_encoder
+        if not keep:
+            self.unload()  # T4: the image model and the prompt reader don't fit together
         from diffusers import Flux2KleinPipeline  # noqa: PLC0415
         from transformers import AutoTokenizer, Qwen3ForCausalLM  # noqa: PLC0415
 
+        from .gpu import best_dtype  # noqa: PLC0415
+
         s = config.get()
         mid, cache = config.MODELS["image"], s.model_cache("image")
-        if rep:
-            rep.info(f"📥 Loading the prompt reader (first time downloads ~8 GB, then {len(todo)} prompts)…")
-        tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer", cache_dir=cache)
-        te = Qwen3ForCausalLM.from_pretrained(
-            mid, subfolder="text_encoder", cache_dir=cache, torch_dtype=torch.float16, device_map="cuda"
-        )
+        if self.te is None:
+            if rep:
+                rep.info(f"📥 Loading the prompt reader (first time downloads ~8 GB, then {len(todo)} prompts)…")
+            self.tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer", cache_dir=cache)
+            self.te = Qwen3ForCausalLM.from_pretrained(
+                mid, subfolder="text_encoder", cache_dir=cache, torch_dtype=best_dtype(), device_map="cuda"
+            )
         try:
             for p in todo:
                 with torch.no_grad():
-                    emb = Flux2KleinPipeline._get_qwen3_prompt_embeds(te, tok, p, device=te.device)
+                    emb = Flux2KleinPipeline._get_qwen3_prompt_embeds(self.te, self.tok, p, device=self.te.device)
                 if not torch.isfinite(emb).all():
                     raise RuntimeError("prompt reader produced invalid numbers (fp16 overflow)")
                 torch.save(emb.to("cpu"), self._emb_path(p))
         finally:
-            del te, tok
-            free_gpu()
+            if not keep:
+                self.te = self.tok = None
+                free_gpu()
 
     def load(self, rep=None):
         if self.pipe is not None:
@@ -119,13 +128,16 @@ class KleinEngine:
         mid, cache = config.MODELS["image"], s.model_cache("image")
         if rep:
             rep.info("📥 Loading the image model FLUX.2 klein 4B (first time downloads ~8 GB)…")
+        from .gpu import best_dtype  # noqa: PLC0415
+
+        dtype = best_dtype()  # fp16 on T4, bf16 on L4/A100
         transformer = Flux2Transformer2DModel.from_pretrained(
-            mid, subfolder="transformer", cache_dir=cache, torch_dtype=torch.float16, device_map="cuda"
+            mid, subfolder="transformer", cache_dir=cache, torch_dtype=dtype, device_map="cuda"
         )
         vae = AutoencoderKLFlux2.from_pretrained(mid, subfolder="vae", cache_dir=cache, torch_dtype=torch.float32).to("cuda")
         self.pipe = Flux2KleinPipeline.from_pretrained(
             mid, cache_dir=cache, transformer=transformer, vae=vae, text_encoder=None, tokenizer=None,
-            torch_dtype=torch.float16,
+            torch_dtype=dtype,
         )
         self.pipe.set_progress_bar_config(disable=True)
         return self.pipe
@@ -135,7 +147,7 @@ class KleinEngine:
         from PIL import Image  # noqa: PLC0415
 
         pipe = self.load()
-        emb = torch.load(self._emb_path(job.prompt)).to("cuda")
+        emb = torch.load(self._emb_path(job.prompt)).to("cuda", dtype=pipe.transformer.dtype)
         refs = []
         for r in job.refs:
             im = Image.open(r).convert("RGB")
@@ -155,8 +167,9 @@ class KleinEngine:
         return img
 
     def unload(self) -> None:
-        if self.pipe is not None:
+        if self.pipe is not None or self.te is not None:
             self.pipe = None
+            self.te = self.tok = None
             free_gpu()
 
 

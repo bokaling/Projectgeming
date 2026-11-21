@@ -124,7 +124,7 @@ class EpisodeOptions:
     resolution: str = "1080p"  # or "720p" (faster)
     scene_count: int = 12  # only used when the AI writes the script
     hero_count: int = -1  # real image-to-video scenes; -1 = auto (depends on your GPU)
-    hero_minutes: float = 15.0  # time limit per hero clip
+    hero_minutes: float = 0.0  # time limit per hero clip; 0 = auto (T4 15, L4 12, A100 10 minutes)
     captions: bool = True
     caption_style: str = "highlight"  # highlight | karaoke | plain
     music_mood: str = "auto"

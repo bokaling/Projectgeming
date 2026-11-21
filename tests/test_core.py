@@ -141,3 +141,29 @@ def test_try_in_order_falls_back(sf_root):
         net.try_in_order("test", [("A", broken)])
     usage = json.loads((sf_root / "usage.json").read_text())
     assert list(usage.values())[0]["B"] == 1
+
+
+def test_gpu_profiles_and_auto_heroes(sf_root, monkeypatch):
+    from storyforge import script
+
+    t4 = config.gpu_profile(config.GPUInfo(True, "Tesla T4", 15.0))
+    l4 = config.gpu_profile(config.GPUInfo(True, "NVIDIA L4", 22.5))
+    a100 = config.gpu_profile(config.GPUInfo(True, "NVIDIA A100-SXM4-40GB", 40.0))
+    assert (t4.dtype, l4.dtype, a100.dtype) == ("fp16", "bf16", "bf16")
+    assert t4.heroes_short < l4.heroes_short < a100.heroes_short and t4.cu_per_hour < l4.cu_per_hour < a100.cu_per_hour
+    monkeypatch.setattr(config, "gpu_profile", lambda gpu=None: l4)
+    auto = project.EpisodeOptions()  # hero_count -1 = auto
+    assert script.hero_target(auto) == 3 and script.hero_target(project.EpisodeOptions(length="long")) == 6
+    assert script.hero_target(project.EpisodeOptions(hero_count=0)) == 0  # you can always turn them off
+    scenes = script.normalize_scenes([{"narration": f"x{i}"} for i in range(10)])
+    script.apply_hero_count(scenes, script.hero_target(auto))
+    assert sum(s["hero"] for s in scenes) == 3
+
+
+def test_session_meter_and_big_model_cache(sf_root, monkeypatch, tmp_path):
+    assert "units" in config.session_label() and config.session_seconds() > 0
+    monkeypatch.setattr(config, "free_disk_gb", lambda p: 120.0)
+    s = config.init(root=tmp_path / "x", cache_big_models_on_drive="auto")
+    assert s.cache_big_models_on_drive is False  # not on Drive: keep big models local
+    s = config.init(root=tmp_path / "y", cache_big_models_on_drive="yes")
+    assert s.cache_big_models_on_drive is True and s.big_model_cache == s.root / "models"

@@ -218,12 +218,14 @@ def _local_chat(messages, json_mode, temperature, max_tokens):
     import torch  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
+    from .gpu import best_dtype  # noqa: PLC0415
+
     if _local["model"] is None:
         mid = config.MODELS["local_llm"]
         cache = s.model_cache("local_llm")
         _local["tok"] = AutoTokenizer.from_pretrained(mid, cache_dir=cache)
         _local["model"] = AutoModelForCausalLM.from_pretrained(
-            mid, cache_dir=cache, torch_dtype=torch.float16, device_map="cuda"
+            mid, cache_dir=cache, torch_dtype=best_dtype(), device_map="cuda"
         )
     tok, model = _local["tok"], _local["model"]
     prompt = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)

@@ -20,10 +20,30 @@ def from_image(image: Path, depth_path: Path | None, out: Path, size: tuple[int,
         raise FileNotFoundError(f"picture missing: {image}")
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     d = depth_mod.load_depth(depth_path, rgb.shape[:2]) if depth_path else None
-    frames = effects.frames(rgb, d, size, seconds, fps, camera, fx if extras else [], seed, shake_times, strength,
-                            grain=extras, vignette=True)
-    effects.write_video(frames, out, size, fps)
-    return "2.5D parallax" if d is not None else "Ken Burns"
+    args = (rgb, d, size, seconds, fps, camera, fx if extras else [], seed, shake_times, strength)
+    how = "2.5D parallax" if d is not None else "Ken Burns"
+    from . import gpu  # noqa: PLC0415
+
+    if gpu.available():  # same picture, much faster on the GPU
+        try:
+            effects.write_video(gpu.frames(*args, grain=extras, vignette=True), out, size, fps)
+            return how + " (GPU)"
+        except Exception:  # noqa: BLE001 - e.g. GPU busy/out of memory: use the CPU instead
+            pass
+    effects.write_video(effects.frames(*args, grain=extras, vignette=True), out, size, fps)
+    return how
+
+
+def render_job(job: dict) -> str:
+    """One scene clip, in a separate process (used for parallel rendering on many-core machines)."""
+    import cv2  # noqa: PLC0415
+
+    cv2.setNumThreads(1)
+    if job["video"]:
+        return from_video(Path(job["video"]), Path(job["out"]), tuple(job["size"]), job["seconds"], job["fps"])
+    return from_image(Path(job["image"]), Path(job["depth"]) if job["depth"] else None, Path(job["out"]),
+                      tuple(job["size"]), job["seconds"], job["fps"], job["camera"], job["fx"], job["seed"],
+                      job["shake"], job["strength"], job["extras"])
 
 
 def from_video(video: Path, out: Path, size: tuple[int, int], seconds: float, fps: int, max_slow: float = 1.5) -> str:

@@ -31,8 +31,7 @@ CAMERA_WORDS = {
     "orbit_right": "camera orbits to the right around the subject", "dolly_zoom": "dramatic dolly zoom",
     "handheld": "handheld camera, tense", "static": "steady camera, subtle movement",
 }
-SIZES = {"9x16": (480, 832), "16x9": (832, 480)}  # (width, height), multiples of 32
-FRAMES, STEPS, FPS = 81, 20, 16  # ~5 s clip
+FPS = 16  # 81 frames at 16 fps = ~5 s clip; size/frames/steps come from the GPU profile (config.gpu_profile)
 
 
 class TimeBudgetExceeded(Exception):
@@ -80,8 +79,10 @@ class WanEngine:
         if rep:
             rep.info("📥 Loading the video prompt reader (first time downloads ~11 GB)…")
         tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer", cache_dir=cache)
+        from ..gpu import best_dtype  # noqa: PLC0415
+
         te = UMT5EncoderModel.from_pretrained(mid, subfolder="text_encoder", cache_dir=cache,
-                                              torch_dtype=torch.float16, device_map="cuda")
+                                              torch_dtype=best_dtype(), device_map="cuda")
         try:
             for p in todo:
                 clean = re.sub(r"\s+", " ", p).strip()
@@ -89,7 +90,7 @@ class WanEngine:
                              add_special_tokens=True, return_attention_mask=True, return_tensors="pt")
                 ids, mask = inputs.input_ids.to(te.device), inputs.attention_mask.to(te.device)
                 with torch.no_grad():
-                    emb = te(ids, mask).last_hidden_state.to(torch.float16)
+                    emb = te(ids, mask).last_hidden_state.to(best_dtype())
                 n = int(mask.gt(0).sum())
                 emb = torch.cat([emb[0, :n], emb.new_zeros(512 - n, emb.shape[-1])])[None]
                 if not torch.isfinite(emb).all():
@@ -109,11 +110,13 @@ class WanEngine:
         mid, cache = config.MODELS["i2v"], s.model_cache("i2v")
         if rep:
             rep.info("📥 Loading Wan 2.2 video model (first time downloads ~10 GB)…")
+        from ..gpu import best_dtype  # noqa: PLC0415
+
         transformer = WanTransformer3DModel.from_pretrained(mid, subfolder="transformer", cache_dir=cache,
-                                                            torch_dtype=torch.float16, device_map="cuda")
+                                                            torch_dtype=best_dtype(), device_map="cuda")
         vae = AutoencoderKLWan.from_pretrained(mid, subfolder="vae", cache_dir=cache, torch_dtype=torch.float32).to("cuda")
         pipe = WanImageToVideoPipeline.from_pretrained(mid, cache_dir=cache, transformer=transformer, vae=vae,
-                                                       text_encoder=None, tokenizer=None, torch_dtype=torch.float16)
+                                                       text_encoder=None, tokenizer=None, torch_dtype=best_dtype())
         try:
             pipe.vae.enable_tiling()
         except Exception:
@@ -127,10 +130,12 @@ class WanEngine:
         from PIL import Image, ImageOps  # noqa: PLC0415
 
         pipe = self.load(rep)
-        w, h = SIZES.get(fmt, SIZES["9x16"])
+        prof = config.gpu_profile()
+        w, h = prof.wan_sizes.get(fmt, prof.wan_sizes["9x16"])
+        STEPS, FRAMES = prof.wan_steps, prof.wan_frames  # noqa: N806
         img = ImageOps.fit(Image.open(image).convert("RGB"), (w, h), method=3)
-        emb = torch.load(self._emb_path(prompt)).to("cuda")
-        neg = torch.load(self._emb_path(NEGATIVE)).to("cuda")
+        emb = torch.load(self._emb_path(prompt)).to("cuda", dtype=pipe.transformer.dtype)
+        neg = torch.load(self._emb_path(NEGATIVE)).to("cuda", dtype=pipe.transformer.dtype)
         budget = minutes * 60
         start = time.time()
         status = {"over": False, "stop": False}

@@ -67,9 +67,13 @@ class Pipeline:
         return up if up and up.suffix.lower() in UPLOAD_VIDEO_EXT else None
 
     def hero_scenes(self) -> list[dict]:
-        if self.opts.hero_count <= 0:
+        n = script.hero_target(self.opts)  # your number, or auto (T4: 1-2, L4: 3-6, A100: 5-10)
+        if n <= 0:
             return []
-        return [sc for sc in self.script["scenes"] if sc.get("hero") and not self.ep.upload_path(sc["id"])][: self.opts.hero_count]
+        return [sc for sc in self.script["scenes"] if sc.get("hero") and not self.ep.upload_path(sc["id"])][:n]
+
+    def hero_minutes(self) -> float:
+        return self.opts.hero_minutes or config.gpu_profile().hero_minutes
 
     def hero_clip(self, sid: str, fmt: str) -> Path | None:
         if fmt != self.opts.primary_format:
@@ -147,7 +151,7 @@ class Pipeline:
             self.rep.info(f"🎬 Real-motion hero clips skipped ({why}). Those scenes get 2.5D motion instead.")
             self.rep.record("warn" if config.get().gpu.available else "ok", "Hero clips", "motion effects instead")
             return
-        self.rep.step(f"🎬 Real-motion hero clips with Wan 2.2 ({len(heroes)}, up to {self.opts.hero_minutes:.0f} min each)")
+        self.rep.step(f"🎬 Real-motion hero clips with Wan 2.2 ({len(heroes)}, up to {self.hero_minutes():.0f} min each)")
         made = 0
         for k, sc in enumerate(heroes, 1):
             self.rep.check_stop()
@@ -155,12 +159,12 @@ class Pipeline:
             if src is None:
                 continue
             key = f"hero:{sc['id']}:{fmt}"
-            fp = fingerprint(file_sig(src), i2v.hero_prompt(sc), self.opts.hero_minutes, self.scene_seed(sc))
+            fp = fingerprint(file_sig(src), i2v.hero_prompt(sc), self.hero_minutes(), self.scene_seed(sc))
             if self.ep.state.fresh(key, fp):
                 made += int(bool(self.ep.state.info(key).get("ok")))
                 continue
             with Timer() as t:
-                ok, msg = i2v.make_hero_clip(src, sc, self.ep.hero_path(sc["id"], fmt), fmt, self.opts.hero_minutes,
+                ok, msg = i2v.make_hero_clip(src, sc, self.ep.hero_path(sc["id"], fmt), fmt, self.hero_minutes(),
                                              self.scene_seed(sc), self.rep)
             self.ep.state.done(key, fp, ok=ok, msg=msg)
             self.ep.state.forget(f"clip:{sc['id']}")
@@ -310,11 +314,9 @@ class Pipeline:
 
     def scene_clips(self, lang: str, fmt: str, tl: dict, progress=(0.0, 1.0)) -> list[Path]:
         size = self.out_size(fmt)
-        out_paths = []
+        out_paths, jobs = [], []
         sc_all = self.script["scenes"]
-        todo_count = 0
         for i, (sc, info) in enumerate(zip(sc_all, tl["scenes"])):
-            self.rep.check_stop()
             sid = sc["id"]
             seconds = info["dur"] + render.TRANSITION
             out = self.ep.clip_path(sid, fmt, lang)
@@ -327,25 +329,52 @@ class Pipeline:
             dpath = self.depth_for(src) if src is not None else None
             fp = fingerprint(file_sig(video or src), file_sig(dpath), sc["camera"], sc.get("effects"), round(seconds, 3),
                              size, self.opts.effects, shake, strength, render.FPS)
-            key = f"clip:{sid}:{fmt}:{lang}"
-            if self.ep.state.fresh(key, fp, [out]):
-                out_paths.append(out)
-                continue
-            if todo_count == 0:
-                self.rep.step(f"🎞️ Scene motion ({fmt.replace('x', ':')}, {'Farsi' if lang == 'fa' else 'English'})")
-            todo_count += 1
-            with Timer() as t:
-                if video is not None:
-                    how = clip_mod.from_video(video, out, size, seconds, render.FPS)
-                else:
-                    how = clip_mod.from_image(src, dpath if dpath and dpath.exists() else None, out, size, seconds,
-                                              render.FPS, sc["camera"], sc.get("effects"), self.scene_seed(sc),
-                                              shake, strength, extras=self.opts.effects)
-            self.ep.state.done(key, fp, method=how)
-            self.rep.ok(f"Scene {i + 1}/{len(sc_all)}: {script.CAMERA_LABELS.get(sc['camera'], sc['camera'])}, {how} ({t.label})")
-            a, b = progress
-            self.rep.progress(a + (b - a) * (i + 1) / len(sc_all))
             out_paths.append(out)
+            if self.ep.state.fresh(f"clip:{sid}:{fmt}:{lang}", fp, [out]):
+                continue
+            jobs.append({"i": i, "key": f"clip:{sid}:{fmt}:{lang}", "fp": fp, "out": str(out), "size": list(size),
+                         "seconds": seconds, "fps": render.FPS, "video": str(video) if video else "",
+                         "image": str(src) if src else "", "depth": str(dpath) if dpath and dpath.exists() else "",
+                         "camera": sc["camera"], "fx": sc.get("effects") or [], "seed": self.scene_seed(sc),
+                         "shake": shake, "strength": strength, "extras": self.opts.effects})
+        if not jobs:
+            return out_paths
+        from .motion import gpu  # noqa: PLC0415
+
+        prof = config.gpu_profile()
+        workers = 1 if gpu.available() else prof.workers
+        how_label = "GPU" if gpu.available() else (f"{workers} CPU cores" if workers > 1 else "CPU")
+        self.rep.step(f"🎞️ Scene motion ({fmt.replace('x', ':')}, {'Farsi' if lang == 'fa' else 'English'}, "
+                      f"{len(jobs)} scenes, {how_label})")
+        a, b = progress
+
+        def finished(k, job, how, secs):
+            self.ep.state.done(job["key"], job["fp"], method=how)
+            sc = sc_all[job["i"]]
+            if k == 1 or k % 10 == 0 or k == len(jobs):
+                self.rep.ok(f"Scene {job['i'] + 1}/{len(sc_all)}: "
+                            f"{script.CAMERA_LABELS.get(sc['camera'], sc['camera'])}, {how} ({secs})")
+            self.rep.progress(a + (b - a) * k / len(jobs), f"Scene motion {k}/{len(jobs)}")
+
+        if workers > 1 and len(jobs) > 1:
+            import concurrent.futures  # noqa: PLC0415
+            import multiprocessing  # noqa: PLC0415
+
+            ctx = multiprocessing.get_context("spawn")
+            with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+                futures = {pool.submit(clip_mod.render_job, job): job for job in jobs}
+                for k, fut in enumerate(concurrent.futures.as_completed(futures), 1):
+                    if self.rep.stop_requested:
+                        for f in futures:
+                            f.cancel()
+                        self.rep.check_stop()
+                    finished(k, futures[fut], fut.result(), "parallel")
+        else:
+            for k, job in enumerate(jobs, 1):
+                self.rep.check_stop()
+                with Timer() as t:
+                    how = clip_mod.render_job(job)
+                finished(k, job, how, t.label)
         return out_paths
 
     def audio_mix(self, lang: str, tl: dict) -> tuple[Path, list[str], str]:
