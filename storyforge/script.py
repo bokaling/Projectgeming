@@ -5,8 +5,9 @@ from __future__ import annotations
 import random
 import re
 
-from . import llm
+from . import config, llm, planner
 from .messages import FriendlyError, Timer
+from .paste import NARRATOR
 from .project import Episode, EpisodeOptions, Series
 
 CAMERAS = [
@@ -37,7 +38,7 @@ SCHEMA_HINT = """Return this JSON:
 {
   "title": "short episode title",
   "logline": "one sentence",
-  "style": "one visual style for the whole series (art style, palette, lighting)",
+  "style": "one art style for the whole series (medium and rendering only, no color palette, no lighting)",
   "characters": [{"name": "Name", "description": "40-60 words: age, face, hair, eyes, body, clothing, colors. Fixed look.", "gender": "female|male|other"}],
   "scenes": [
     {
@@ -152,15 +153,32 @@ def _scene_ids(n: int, existing: list[str | None], reserved=()) -> list[str]:
     return ids[:n]
 
 
-def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True) -> list[dict]:
+def _norm_lines(sc: dict, language: str) -> list[dict]:
+    lines = []
+    for ln in sc.get("lines") or []:
+        if isinstance(ln, dict) and str(ln.get("text", "")).strip():
+            lines.append({"speaker": str(ln.get("speaker") or NARRATOR).strip() or NARRATOR,
+                          "text": re.sub(r"\s+", " ", str(ln["text"])).strip()})
+    if not lines:
+        text = sc.get("narration_fa") if language == "fa" else sc.get("narration")
+        text = re.sub(r"\s+", " ", str(text or "")).strip()
+        if text:
+            lines = [{"speaker": NARRATOR, "text": text}]
+    return lines
+
+
+def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True, language: str = "en") -> list[dict]:
     ids = _scene_ids(
         len(scenes), [sc.get("id") if re.fullmatch(r"s\d+", str(sc.get("id", ""))) else None for sc in scenes], reserved
     )
     out = []
     prev_cam = None
     for i, sc in enumerate(scenes):
-        narration = re.sub(r"\s+", " ", str(sc.get("narration", ""))).strip()
-        visual = str(sc.get("visual") or sc.get("image_prompt") or sc.get("picture") or narration).strip()
+        lines = _norm_lines(sc, language)
+        spoken = " ".join(ln["text"] for ln in lines)
+        narration = spoken if language == "en" else re.sub(r"\s+", " ", str(sc.get("narration", ""))).strip()
+        narration_fa = spoken if language == "fa" else str(sc.get("narration_fa") or "").strip()
+        visual = str(sc.get("visual") or sc.get("image_prompt") or sc.get("picture") or "").strip()
         chars = sc.get("characters") or []
         if isinstance(chars, str):
             chars = re.split(r"[,;]+", chars)
@@ -168,32 +186,50 @@ def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True) -> l
         if variety and cam == prev_cam:  # never the same move twice in a row (AI scripts only)
             cam = next(c for c in _CAMERA_ROTATION[(i + 1) % len(_CAMERA_ROTATION):] + _CAMERA_ROTATION if c != prev_cam)
         prev_cam = cam
+        shot = str(sc.get("shot") or "").strip().lower().replace(" ", "_").replace("-", "_")
+        hero = sc.get("hero")
         out.append(
             {
                 "id": ids[i],
                 "kind": "hook" if i == 0 else ("cliffhanger" if i == len(scenes) - 1 else "scene"),
+                "lines": lines,
                 "narration": narration,
-                "narration_fa": str(sc.get("narration_fa") or "").strip(),
+                "narration_fa": narration_fa,
                 "narration_fa_src": str(sc.get("narration_fa_src") or "").strip(),
-                "visual": visual,
+                "visual": visual or spoken[:200],
                 "characters": [str(c).strip() for c in chars if str(c).strip()][:3],
                 "location": str(sc.get("location") or "").strip(),
                 "camera": cam,
                 "effects": _pick_list(sc.get("effects"), EFFECTS),
                 "sfx": _pick_list(sc.get("sfx"), SFX),
-                "mood": _pick(sc.get("mood"), MOODS, "tense"),
-                "hero": bool(sc.get("hero")) if not isinstance(sc.get("hero"), str)
-                else sc["hero"].strip().lower() in ("yes", "true", "1", "y"),
+                "mood": _pick(sc.get("mood"), MOODS, "mysterious"),
+                "hero": hero.strip().lower() in ("yes", "true", "1", "y") if isinstance(hero, str) else bool(hero),
+                "shot": shot if shot in planner.SHOTS else "",
+                "show_character": bool(sc.get("show_character", True)),
+                "composition": str(sc.get("composition") or "").strip(),
+                "lighting": str(sc.get("lighting") or "").strip(),
+                "chapter": str(sc.get("chapter") or "").strip(),
+                "regen": int(sc.get("regen") or 0),
             }
         )
     return out
 
 
+def hero_target(opts: EpisodeOptions) -> int:
+    """How many hero scenes: your number, or 'auto' = what your GPU can do in reasonable time."""
+    if opts.hero_count >= 0:
+        return opts.hero_count
+    prof = config.gpu_profile()
+    return prof.heroes_long if opts.length == "long" else prof.heroes_short
+
+
 def apply_hero_count(scenes: list[dict], n: int) -> None:
     """Mark exactly n scenes as hero (real image-to-video). Keeps your choices first."""
-    n = max(0, min(3, int(n)))
+    n = max(0, min(12, int(n), len(scenes)))
     order = [s for s in scenes if s.get("hero")]
-    priority = [scenes[0], scenes[-1]] + [s for s in scenes if s.get("mood") in ("action", "epic")] + scenes
+    people = [s for s in scenes if s.get("show_character") and s.get("shot") in ("medium", "low_angle", "over_shoulder")]
+    priority = ([scenes[0], scenes[-1]] + [s for s in scenes if s.get("mood") in ("action", "epic")] + people
+                + scenes[:: max(1, len(scenes) // max(1, n))] + scenes)
     for s in priority:
         if len(order) >= n:
             break
@@ -206,12 +242,16 @@ def apply_hero_count(scenes: list[dict], n: int) -> None:
 
 def normalize_script(raw: dict, opts: EpisodeOptions, user_edit: bool = False, reserved=()) -> dict:
     """Make any script safe for the pipeline. user_edit=True keeps the user's camera and hero choices."""
-    scenes = normalize_scenes(list(raw.get("scenes") or [])[:16], reserved, variety=not user_edit)
+    language = raw.get("language") if raw.get("language") in ("en", "fa") else "en"
+    scenes = normalize_scenes(list(raw.get("scenes") or [])[:200], reserved, variety=not user_edit, language=language)
     if not user_edit:
-        apply_hero_count(scenes, opts.hero_count)
+        apply_hero_count(scenes, hero_target(opts))
     return {
         "title": str(raw.get("title") or "Untitled episode").strip(),
         "title_fa": str(raw.get("title_fa") or "").strip(),
+        "language": language,
+        "length": opts.length,
+        "source": raw.get("source") or ("ai" if opts.source == "ai" else "paste"),
         "logline": str(raw.get("logline") or "").strip(),
         "style": str(raw.get("style") or "").strip(),
         "characters": raw.get("characters") or [],
@@ -222,7 +262,7 @@ def normalize_script(raw: dict, opts: EpisodeOptions, user_edit: bool = False, r
         "next_tease": str(raw.get("next_tease") or "").strip(),
         "thumbnail_text": str(raw.get("thumbnail_text") or raw.get("title") or "").strip(),
         "thumbnail_text_fa": str(raw.get("thumbnail_text_fa") or "").strip(),
-        "music_mood": _pick(raw.get("music_mood"), MOODS, scenes[0]["mood"] if scenes else "tense"),
+        "music_mood": _pick(raw.get("music_mood"), MOODS, scenes[0]["mood"] if scenes else "mysterious"),
         "provider": raw.get("provider", ""),
         "retired_ids": list(raw.get("retired_ids") or []),
     }
@@ -340,7 +380,23 @@ def write_script(series: Series, episode: Episode, opts: EpisodeOptions, rep) ->
             rep.info("👉 Please rewrite the lines in the Script step (or try again in a minute).")
             provider, raw = "Template (no AI)", template_script(opts.idea, opts, series)
     raw["provider"] = provider
+    raw["source"] = "ai"
     rep.progress(0.7)
+    scenes = [sc for sc in (raw.get("scenes") or []) if isinstance(sc, dict)]
+    for sc in scenes:
+        sc.setdefault("lines", [{"speaker": NARRATOR, "text": str(sc.get("narration", ""))}])
+    names = [c.get("name", "") for c in raw.get("characters") or [] if isinstance(c, dict)]
+    from .characters import add_character  # noqa: PLC0415
+
+    for sc in scenes:  # characters the AI put in scenes join the series bible
+        declared = sc.get("characters") or []
+        for name in ([declared] if isinstance(declared, str) else declared):
+            if str(name).strip() and str(name).strip() not in names:
+                names.append(str(name).strip())
+                if series.character(str(name).strip()) is None:
+                    add_character(series, str(name).strip(), "", "")
+    names += [c["name"] for c in series.characters if c["name"] not in names]
+    planner.assign_variety(scenes, names, names[0] if names else "", planner.episode_seed(series.slug, episode.number))
     script = normalize_script(raw, opts)
     if script["style"] and not series.data.get("style_custom") and episode.number == 1:
         series.data["style"] = script["style"]
@@ -352,7 +408,7 @@ def write_script(series: Series, episode: Episode, opts: EpisodeOptions, rep) ->
     rep.ok(f"{len(script['scenes'])} scenes, “{script['title']}” ({t.label})")
     rep.record("ok" if provider != "Template (no AI)" else "warn", "Script", provider)
     if "fa" in opts.languages:
-        translate_script(series, episode, script, rep)
+        translate_script(series, episode, script, rep, "fa")
     return script
 
 
@@ -366,69 +422,151 @@ def save_script(episode: Episode, script: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def translate_script(series: Series, episode: Episode, script: dict, rep) -> bool:
-    """Fill in Farsi narration for scenes whose English text changed. Returns True if all done."""
-    todo = [s for s in script["scenes"] if s["narration"] and (not s["narration_fa"] or s["narration_fa_src"] != s["narration"])]
-    if not todo and script.get("title_fa"):
+def translate_script(series: Series, episode: Episode, script: dict, rep, target: str = "fa") -> bool:
+    """Translate the narration into the other language (only scenes whose text changed). True if all done."""
+    import json  # noqa: PLC0415
+
+    source = script.get("language", "en")
+    if target == source:
         return True
-    rep.step("🌍 Translating to Farsi")
+    src_f, dst_f = ("narration", "narration_fa") if target == "fa" else ("narration_fa", "narration")
+    mark = f"{dst_f}_src"
+    todo = [s for s in script["scenes"] if s.get(src_f) and (not s.get(dst_f) or s.get(mark) != s[src_f])]
+    title_key = "title_fa" if target == "fa" else "title_en"
+    if not todo and script.get(title_key):
+        return True
+    lang_name = "Persian (Farsi)" if target == "fa" else "English"
+    rep.step(f"🌍 Translating to {'Farsi' if target == 'fa' else 'English'}")
     names = {c["name"]: c.get("name_fa", "") for c in series.characters}
     system = (
-        "You translate story voiceovers from English to natural spoken Persian (Farsi) for Iranian viewers. "
-        "Keep each line about the same length so it fits the same timing. Keep the suspense. "
-        "Write numbers as words. Use the given Persian spellings for names. Reply with JSON only."
+        f"You translate story voiceovers into natural spoken {lang_name}. Keep each line about the same length so it "
+        "fits the same timing. Keep the suspense. Write numbers as words. Use the given spellings for names. "
+        "Reply with JSON only."
     )
-    user = {
-        "names": names,
-        "title": script["title"],
-        "thumbnail_text": script.get("thumbnail_text", ""),
-        "cliffhanger": script.get("cliffhanger", ""),
-        "lines": [{"id": s["id"], "text": s["narration"]} for s in (todo or script["scenes"][:1])],
-        "reply_format": {
-            "title": "Persian title", "thumbnail_text": "2-4 Persian words", "cliffhanger": "Persian",
-            "lines": [{"id": "same id", "text": "Persian line"}],
-            "names": {"EnglishName": "Persian spelling"},
-        },
-    }
 
     def validate(obj):
         if not isinstance(obj, dict) or not isinstance(obj.get("lines"), list):
             raise ValueError("expected 'lines' list")
 
-    import json  # noqa: PLC0415
+    provider, ok = "", True
+    batches = [todo[k:k + 25] for k in range(0, len(todo), 25)] or [script["scenes"][:1]]
+    for n, batch in enumerate(batches):
+        user = {"names": names, "lines": [{"id": s["id"], "text": s[src_f]} for s in batch],
+                "reply_format": {"lines": [{"id": "same id", "text": f"{lang_name} line"}]}}
+        if n == 0:
+            user.update({"title": script["title"], "thumbnail_text": script.get("thumbnail_text", ""),
+                         "cliffhanger": script.get("cliffhanger", "")})
+            user["reply_format"].update({"title": lang_name, "thumbnail_text": f"2-4 {lang_name} words",
+                                         "cliffhanger": lang_name, "names": {"EnglishName": "Persian spelling"}})
+        try:
+            provider, obj = llm.generate_json(system, json.dumps(user, ensure_ascii=False), validate=validate, rep=rep,
+                                              task="translate", temperature=0.4)
+        except Exception as exc:
+            from .messages import StopRequested  # noqa: PLC0415
 
-    try:
-        provider, obj = llm.generate_json(system, json.dumps(user, ensure_ascii=False), validate=validate, rep=rep,
-                                          task="translate", temperature=0.4)
-    except Exception as exc:
-        from .messages import StopRequested  # noqa: PLC0415
-
-        if isinstance(exc, StopRequested):
-            raise
-        rep.warn("Couldn't translate right now. Type the Farsi lines in the Script step (field 'Farsi:').")
-        rep.record("warn", "Farsi translation", "type it yourself")
-        return False
-    by_id = {str(item.get("id")): str(item.get("text", "")).strip() for item in obj["lines"] if isinstance(item, dict)}
-    for s in todo:
-        if by_id.get(s["id"]):
-            s["narration_fa"] = by_id[s["id"]]
-            s["narration_fa_src"] = s["narration"]
-    script["title_fa"] = str(obj.get("title") or script.get("title_fa") or "").strip()
-    script["thumbnail_text_fa"] = str(obj.get("thumbnail_text") or script.get("thumbnail_text_fa") or "").strip()
-    script["cliffhanger_fa"] = str(obj.get("cliffhanger") or script.get("cliffhanger_fa") or "").strip()
-    for en, fa in (obj.get("names") or {}).items():
-        c = series.character(str(en))
-        if c is not None and fa and not c.get("name_fa"):
-            c["name_fa"] = str(fa).strip()
+            if isinstance(exc, StopRequested):
+                raise
+            ok = False
+            break
+        by_id = {str(item.get("id")): str(item.get("text", "")).strip() for item in obj["lines"] if isinstance(item, dict)}
+        for sc in batch:
+            if by_id.get(sc["id"]):
+                sc[dst_f] = by_id[sc["id"]]
+                sc[mark] = sc[src_f]
+        if n == 0:
+            if target == "fa":
+                script["title_fa"] = str(obj.get("title") or script.get("title_fa") or "").strip()
+                script["thumbnail_text_fa"] = str(obj.get("thumbnail_text") or script.get("thumbnail_text_fa") or "").strip()
+                script["cliffhanger_fa"] = str(obj.get("cliffhanger") or script.get("cliffhanger_fa") or "").strip()
+            else:
+                script["title_en"] = str(obj.get("title") or "").strip()
+            for en, fa in (obj.get("names") or {}).items():
+                c = series.character(str(en))
+                if c is not None and fa and not c.get("name_fa"):
+                    c["name_fa"] = str(fa).strip()
     series.save()
     save_script(episode, script)
-    missing = [s["id"] for s in script["scenes"] if not s["narration_fa"]]
+    label = "Farsi" if target == "fa" else "English"
+    missing = [sc["id"] for sc in script["scenes"] if not sc.get(dst_f)]
+    if not ok and missing:
+        rep.warn(f"Couldn't translate right now. Type the {label} lines in the Script step (field '{label}:').")
+        rep.record("warn", f"{label} translation", "type it yourself")
+        return False
     if missing:
-        rep.warn(f"Farsi missing for {', '.join(missing)}. Add it in the Script step.")
+        rep.warn(f"{label} missing for {', '.join(missing)}. Add it in the Script step.")
     else:
-        rep.ok(f"Farsi ready ({provider})")
-    rep.record("ok" if not missing else "warn", "Farsi translation", provider)
+        rep.ok(f"{label} ready ({provider})")
+    rep.record("ok" if not missing else "warn", f"{label} translation", provider)
     return not missing
+
+
+# ---------------------------------------------------------------------------
+# Your pasted script (main mode)
+# ---------------------------------------------------------------------------
+
+
+def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, text: str, rep) -> dict:
+    """Read a pasted script, plan the scenes (shots, prompts, characters) and save it."""
+    from . import paste  # noqa: PLC0415
+    from .characters import add_character  # noqa: PLC0415
+
+    rep.step("📝 Reading your script")
+    rep.progress(0.03, "📝 Reading your script")
+    known = {c["name"].upper() for c in series.characters} | {c["name"] for c in series.characters}
+    parsed = paste.parse_lines(text, known)
+    if not parsed["blocks"]:
+        raise FriendlyError("I couldn't find any story lines in your script.",
+                            "Paste the text (NARRATOR: lines or plain sentences), then press Generate again.")
+    lang = parsed["language"]
+    scenes = paste.to_scenes(parsed, opts.length)
+    for i, sc in enumerate(scenes):
+        sc["id"] = f"s{i + 1:02d}"
+    for sp in parsed["speakers"]:  # characters who speak get a place in the series bible
+        if series.character(sp) is None:
+            add_character(series, sp.title() if paste.LATIN.search(sp) else sp, "", "")
+    names = [c["name"] for c in series.characters]
+    protagonist = series.data.get("protagonist", "") or (names[0] if names else "")
+    seed = planner.episode_seed(series.slug, episode.number)
+    planner.assign_variety(scenes, names, protagonist, seed)
+    rep.info(f"{len(scenes)} scenes, {sum(1 for s in scenes if s['show_character'])} with the main character")
+    provider, new_chars, prot = planner.write_visuals(scenes, lang, series.characters, rep)
+    for c in new_chars:
+        existing = series.character(c["name"])
+        if existing is None:
+            add_character(series, c["name"], c.get("description", ""), c.get("gender", ""))
+        elif c.get("description") and existing["description"].startswith(("a person in their", "a woman in their",
+                                                                            "a man in their")):
+            existing["description"] = c["description"]  # replace the default look with a real one
+    protagonist = series.data.get("protagonist") or prot or protagonist
+    if protagonist and series.character(protagonist):
+        series.data["protagonist"] = series.character(protagonist)["name"]
+    names = [c["name"] for c in series.characters]
+    planner.fill_characters(scenes, names, series.data.get("protagonist", ""))
+    words = " ".join(ln["text"] for sc in scenes for ln in sc["lines"]).split()
+    title = parsed["title"] or " ".join(words[:6]).rstrip(".,!?؟") + "…"
+    moods = [sc["mood"] for sc in scenes]
+    raw = {
+        "title": title, "language": lang, "scenes": scenes, "source": "paste", "provider": provider,
+        "music_mood": max(set(moods), key=moods.count) if moods else "mysterious",
+        "thumbnail_text": " ".join(title.split()[:4]),
+        "summary": " ".join(words[:60]), "cliffhanger": scenes[-1]["lines"][-1]["text"] if scenes else "",
+    }
+    if lang not in opts.languages:
+        opts.languages = [lang] + [x for x in opts.languages if x != lang]
+    script = normalize_script(raw, opts)
+    if lang == "fa":
+        script["title_fa"] = title
+        script["thumbnail_text_fa"] = raw["thumbnail_text"]
+    series.save()
+    episode.save_options(opts)
+    save_script(episode, script)
+    llm.unload_local()
+    rep.ok(f"Script ready: “{title}”, {len(script['scenes'])} scenes, picture prompts by {provider}")
+    rep.record("ok" if not provider.startswith("Built-in") else "warn", "Script", f"your script · prompts: {provider}")
+    for target in opts.languages:
+        if target != lang:
+            translate_script(series, episode, script, rep, target)
+    return script
 
 
 # ---------------------------------------------------------------------------
@@ -436,29 +574,37 @@ def translate_script(series: Series, episode: Episode, script: dict, rep) -> boo
 # ---------------------------------------------------------------------------
 
 _FIELD_ORDER = [
-    ("Narration", "narration"), ("Farsi", "narration_fa"), ("Picture", "visual"), ("Characters", "characters"),
-    ("Place", "location"), ("Camera", "camera"), ("Effects", "effects"), ("Sound", "sfx"), ("Mood", "mood"),
-    ("Hero", "hero"),
+    ("Picture", "visual"), ("Shot", "shot"), ("Characters", "characters"), ("Place", "location"),
+    ("Camera", "camera"), ("Effects", "effects"), ("Sound", "sfx"), ("Mood", "mood"), ("Hero", "hero"),
+    ("Chapter", "chapter"),
 ]
 _KEYS = {label.lower(): key for label, key in _FIELD_ORDER}
 _KEYS.update({"visual": "visual", "location": "location", "sfx": "sfx", "farsi narration": "narration_fa",
-              "persian": "narration_fa", "image": "visual", "real video": "hero"})
+              "persian": "narration_fa", "farsi": "narration_fa", "english": "narration", "image": "visual",
+              "real video": "hero", "scene": "visual"})
 _TOP = {"logline": "logline", "music": "music_mood", "thumbnail": "thumbnail_text", "farsi title": "title_fa",
-        "farsi thumbnail": "thumbnail_text_fa", "style": "style"}
+        "farsi thumbnail": "thumbnail_text_fa", "style": "style", "language": "language"}
 
 
 def to_markdown(script: dict) -> str:
-    lines = [f"# {script.get('title', 'Untitled')}", ""]
+    lang = script.get("language", "en")
+    lines = [f"# {script.get('title', 'Untitled')}", "", f"Language: {lang}"]
     for label, key in (("Logline", "logline"), ("Farsi title", "title_fa"), ("Music", "music_mood"),
                        ("Thumbnail", "thumbnail_text"), ("Farsi thumbnail", "thumbnail_text_fa")):
-        if script.get(key) or key in ("logline", "music_mood", "thumbnail_text"):
+        if script.get(key) or key in ("music_mood", "thumbnail_text"):
             lines.append(f"{label}: {script.get(key, '')}")
     for i, sc in enumerate(script["scenes"], 1):
         tag = " · HOOK" if sc["kind"] == "hook" else (" · CLIFFHANGER" if sc["kind"] == "cliffhanger" else "")
         lines += ["", f"## Scene {i} [{sc['id']}]{tag}"]
+        for ln in sc.get("lines") or [{"speaker": NARRATOR, "text": sc.get("narration", "")}]:
+            lines.append(f"{ln['speaker']}: {ln['text']}")
+        if lang == "en" and sc.get("narration_fa"):
+            lines.append(f"Farsi: {sc['narration_fa']}")
+        if lang == "fa" and sc.get("narration"):
+            lines.append(f"English: {sc['narration']}")
         for label, key in _FIELD_ORDER:
             val = sc.get(key)
-            if key == "narration_fa" and not val and not script.get("title_fa"):
+            if key == "chapter" and not val:
                 continue
             if isinstance(val, list):
                 val = ", ".join(val)
@@ -472,10 +618,13 @@ def to_markdown(script: dict) -> str:
 
 def from_markdown(text: str, old: dict | None, opts: EpisodeOptions) -> dict:
     """Parse the edited text back into a script. Unknown lines are kept with the field above them."""
+    from . import paste  # noqa: PLC0415
+
     old = old or {}
     title, top, sections = "", {}, []
     current: dict | None = None
     last_key = None
+    known = {ln["speaker"] for sc in old.get("scenes", []) for ln in sc.get("lines", [])} | {NARRATOR}
     for raw_line in text.replace("\r\n", "\n").split("\n"):
         line = raw_line.rstrip()
         if line.startswith("# ") and not line.startswith("## "):
@@ -485,26 +634,38 @@ def from_markdown(text: str, old: dict | None, opts: EpisodeOptions) -> dict:
             head = line.lstrip("#").strip()
             if re.match(r"(?i)scene\b", head):
                 m = re.search(r"\[(s\d+)\]", head)
-                current = {"_type": "scene", "id": m.group(1) if m else None}
+                current = {"_type": "scene", "id": m.group(1) if m else None, "lines": []}
             else:
                 current = {"_type": head.lower(), "_text": []}
             sections.append(current)
             last_key = None
             continue
-        m = re.match(r"^\s*([A-Za-z][A-Za-z ]{1,20}):\s*(.*)$", line)
+        m = re.match(r"^\s*([^:：]{1,32}?)\s*[:：]\s*(.*)$", line)
+        label = m.group(1).strip().lower() if m else ""
         if current is None:
-            if m and m.group(1).strip().lower() in _TOP:
-                top[_TOP[m.group(1).strip().lower()]] = m.group(2).strip()
+            if m and label in _TOP:
+                top[_TOP[label]] = m.group(2).strip()
             continue
-        if current["_type"] == "scene":
-            if m and m.group(1).strip().lower() in _KEYS:
-                last_key = _KEYS[m.group(1).strip().lower()]
-                current[last_key] = m.group(2).strip()
-            elif line.strip() and last_key:
-                current[last_key] = (current[last_key] + " " + line.strip()).strip()
-        else:
+        if current["_type"] != "scene":
             current["_text"].append(line)
+            continue
+        if m and label == "narration":
+            current["lines"].append({"speaker": NARRATOR, "text": m.group(2).strip()})
+            last_key = "_line"
+        elif m and label in _KEYS:
+            last_key = _KEYS[label]
+            current[last_key] = m.group(2).strip()
+        elif m and paste._speaker(m.group(1), known):
+            who = paste._speaker(m.group(1), known)
+            known.add(who)
+            current["lines"].append({"speaker": who, "text": m.group(2).strip()})
+            last_key = "_line"
+        elif line.strip() and last_key == "_line" and current["lines"]:
+            current["lines"][-1]["text"] = (current["lines"][-1]["text"] + " " + line.strip()).strip()
+        elif line.strip() and last_key:
+            current[last_key] = (str(current.get(last_key, "")) + " " + line.strip()).strip()
     old_scenes = {s["id"]: s for s in old.get("scenes", [])}
+    language = top.get("language") or old.get("language", "en")
     scenes = []
     for sec in sections:
         if sec["_type"] != "scene":
@@ -514,12 +675,13 @@ def from_markdown(text: str, old: dict | None, opts: EpisodeOptions) -> dict:
         for key in ("characters", "effects", "sfx"):
             if isinstance(base.get(key), str):
                 base[key] = [x.strip() for x in re.split(r"[,;]+", base[key]) if x.strip()]
-        if str(base.get("narration", "")).strip():
+        if base.get("lines"):
             scenes.append(base)
     if len(scenes) < 1:
-        raise FriendlyError("I couldn't find any scenes in your text.", "Each scene needs a '## Scene' line and a 'Narration:' line.")
+        raise FriendlyError("I couldn't find any scenes in your text.",
+                            "Each scene needs a '## Scene' line and at least one 'NARRATOR:' line.")
     extra = {sec["_type"]: "\n".join(sec["_text"]).strip() for sec in sections if sec["_type"] != "scene"}
-    raw = {**old, **top, "scenes": scenes, "title": title or old.get("title", "")}
+    raw = {**old, **top, "scenes": scenes, "title": title or old.get("title", ""), "language": language}
     raw["cliffhanger"] = extra.get("cliffhanger", old.get("cliffhanger", ""))
     raw["summary"] = extra.get("summary", old.get("summary", ""))
     raw["next_tease"] = extra.get("next time", old.get("next_tease", ""))

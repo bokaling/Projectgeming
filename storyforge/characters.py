@@ -137,20 +137,43 @@ def ensure_references(series: Series, names: list[str] | None, rep, force: list[
     series.save()
 
 
+POSES = ["mid-movement, natural body language", "turning to look over the shoulder", "leaning forward, focused",
+         "standing still, tense posture", "walking toward the camera", "hands busy with an object",
+         "seen in profile", "sitting, lost in thought"]
+
+
 def scene_prompt(series: Series, scene: dict, with_refs: bool) -> tuple[str, list[Path]]:
-    """Build the image prompt for a scene and the list of reference pictures to send."""
-    chars = [series.character(n) for n in scene.get("characters", [])]
+    """Build the image prompt for a scene and the list of reference pictures to send.
+
+    Variety rules: the scene's shot type, composition and lighting change every scene; characters appear only
+    in character shots; with references we keep the FACE but change pose, angle and setting.
+    """
+    from .planner import SHOTS  # noqa: PLC0415
+
+    shot = scene.get("shot") or ""
+    show = scene.get("show_character", True)
+    chars = [series.character(n) for n in scene.get("characters", [])] if show else []
     chars = [c for c in chars if c][:MAX_REFS_PER_SCENE]
     refs = [ref_path(series, c) for c in chars if with_refs and has_ref(series, c)]
     parts = []
+    if shot in SHOTS:
+        parts.append(SHOTS[shot][0].capitalize() + ".")
     if refs:
         mapping = ", ".join(f"image {i + 1} shows {c['name']}" for i, c in enumerate(chars) if has_ref(series, c))
-        parts.append(f"Keep the same people as in the reference images ({mapping}).")
+        parts.append(f"Keep the same face and hair as the reference images ({mapping}), "
+                     "but a new pose, a new camera angle and the new setting described here.")
     parts.append(scene.get("visual", ""))
     if scene.get("location"):
         parts.append(f"Location: {scene['location']}.")
-    for c in chars:
-        parts.append(f"{c['name']}: {c['description']}.")
-    parts.append(f"Style: {series.data.get('style', '')}. Cinematic composition, no text, no watermark.")
+    for k, c in enumerate(chars):
+        pose = POSES[(int(scene.get("id", "s0")[1:] or 0) + k) % len(POSES)]
+        parts.append(f"{c['name']}: {c['description']}, {pose}.")
+    if not show:
+        parts.append("No people in the frame.")
+    if scene.get("composition"):
+        parts.append(scene["composition"].capitalize() + ".")
+    if scene.get("lighting"):
+        parts.append(f"Lighting and color: {scene['lighting']}.")
+    parts.append(f"Style: {series.data.get('style', '')}. Full natural color (not sepia, not monochrome), "
+                 "cinematic, highly detailed, no text, no watermark.")
     return " ".join(p.strip() for p in parts if p and p.strip()), refs
-

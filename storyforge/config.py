@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -39,6 +40,9 @@ MODELS = {
     "local_llm": "Qwen/Qwen3-4B-Instruct-2507",  # Apache 2.0
     "piper_voices": "rhasspy/piper-voices",
 }
+_START = time.time()
+BIG_MODELS_GB = 45  # klein (~16 GB) + Wan 2.2 5B (~25 GB) + margin
+
 # Models small enough to keep on free Google Drive (15 GB).
 SMALL_MODELS = {"depth", "kokoro", "align_en", "align_fa", "piper_voices"}
 
@@ -54,6 +58,69 @@ class GPUInfo:
         if not self.available:
             return "No GPU (online + CPU mode)"
         return f"{self.name} ({self.vram_gb:.0f} GB)"
+
+
+@dataclass
+class GPUProfile:
+    """Settings that depend on the GPU Colab gave you."""
+
+    name: str = "CPU"
+    dtype: str = "fp32"  # fp16 on T4 (no bf16), bf16 on L4/A100
+    image_max_side: int = 1280  # long side of generated pictures
+    keep_text_encoder: bool = False  # enough VRAM to keep the prompt reader loaded
+    heroes_short: int = 0  # real image-to-video scenes (auto)
+    heroes_long: int = 0
+    wan_sizes: dict = field(default_factory=lambda: {"9x16": (480, 832), "16x9": (832, 480)})
+    wan_frames: int = 81
+    wan_steps: int = 20
+    hero_minutes: float = 15.0
+    cu_per_hour: float = 0.1  # Colab compute units per hour (unofficial user measurements, Nov 2026)
+    workers: int = 1  # parallel scene-motion renders (CPU cores)
+
+    @property
+    def label(self) -> str:
+        return f"{self.name} · ~{self.cu_per_hour:g} units/h"
+
+
+def _workers() -> int:
+    cpu = os.cpu_count() or 2
+    return 1 if cpu <= 2 else min(6, cpu - 1)
+
+
+def gpu_profile(gpu: "GPUInfo | None" = None) -> GPUProfile:
+    gpu = gpu or get().gpu
+    w = _workers()
+    if not gpu.available:
+        return GPUProfile(workers=w)
+    name, vram = gpu.name.upper(), gpu.vram_gb
+    if "A100" in name or "H100" in name or vram >= 38:
+        big = vram >= 70
+        return GPUProfile(name="A100 80GB" if big else ("H100" if "H100" in name else "A100"), dtype="bf16",
+                          image_max_side=1920, keep_text_encoder=True, heroes_short=5, heroes_long=10,
+                          wan_sizes={"9x16": (704, 1280), "16x9": (1280, 704)}, wan_frames=81, wan_steps=30,
+                          hero_minutes=10.0, cu_per_hour=7.5 if big else 5.4, workers=w)
+    if "L4" in name or vram >= 21:
+        return GPUProfile(name="L4", dtype="bf16", image_max_side=1536, keep_text_encoder=True, heroes_short=3,
+                          heroes_long=6, wan_frames=81, wan_steps=25, hero_minutes=12.0, cu_per_hour=1.7, workers=w)
+    return GPUProfile(name="T4" if "T4" in name else gpu.name, dtype="fp16", image_max_side=1344,
+                      keep_text_encoder=False, heroes_short=1, heroes_long=2, wan_frames=81, wan_steps=20,
+                      hero_minutes=15.0, cu_per_hour=1.2, workers=w)
+
+
+def session_seconds() -> float:
+    """How long this Colab/Kaggle machine has been running (its uptime)."""
+    try:
+        return float(Path("/proc/uptime").read_text().split()[0])
+    except Exception:
+        return time.time() - _START
+
+
+def session_label() -> str:
+    sec = int(session_seconds())
+    h, m = divmod(sec // 60, 60)
+    prof = gpu_profile()
+    units = sec / 3600 * prof.cu_per_hour
+    return f"⏱ {h}:{m:02d} · ≈{units:.1f} units ({prof.name}, ~{prof.cu_per_hour:g}/h)"
 
 
 @dataclass
@@ -266,19 +333,26 @@ def encoder_args(quality: str = "final") -> list[str]:
 _SETTINGS: Settings | None = None
 
 
-def init(root: str | os.PathLike | None = None, cache_big_models_on_drive: bool = False) -> Settings:
-    """Create (or replace) the global settings. Safe to call more than once."""
+def init(root: str | os.PathLike | None = None, cache_big_models_on_drive: bool | str = "auto") -> Settings:
+    """Create (or replace) the global settings. Safe to call more than once.
+
+    cache_big_models_on_drive: True / False / "auto" (= yes if your Drive has enough free space).
+    """
     global _SETTINGS
     platform = detect_platform()
     if root:
         root_path, on_drive = Path(root), str(root).startswith("/content/drive")
     else:
         root_path, on_drive = default_root(platform)
+    if cache_big_models_on_drive in ("auto", None):
+        cache_big = on_drive and free_disk_gb(root_path) >= BIG_MODELS_GB
+    else:
+        cache_big = str(cache_big_models_on_drive).lower() in ("true", "yes", "1", "on")
     s = Settings(
         root=root_path,
         platform=platform,
         gpu=detect_gpu(),
-        cache_big_models_on_drive=cache_big_models_on_drive,
+        cache_big_models_on_drive=bool(cache_big),
         drive_mounted=on_drive,
     )
     s.ensure_dirs()

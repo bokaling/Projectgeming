@@ -101,17 +101,18 @@ def test_markdown_round_trip_and_edits(sf_root):
     opts = project.EpisodeOptions(scene_count=4)
     s = script.normalize_script(fake_reply(), opts)
     md = script.to_markdown(s)
-    assert "## Scene 1 [s01] · HOOK" in md and "Narration: Line 1." in md
+    assert "## Scene 1 [s01] · HOOK" in md and "NARRATOR: Line 1." in md
     back = script.from_markdown(md, s, opts)
     assert [x["narration"] for x in back["scenes"]] == [x["narration"] for x in s["scenes"]]
     assert [x["hero"] for x in back["scenes"]] == [x["hero"] for x in s["scenes"]]
     # user edits: change a line (multi-line), delete scene 2, add a new scene at the end
-    edited = md.replace("Narration: Line 1.", "Narration: A brand new hook\nthat continues here.")
+    edited = md.replace("NARRATOR: Line 1.", "NARRATOR: A brand new hook\nthat continues here.\nMIRA: Who is there?")
     start = edited.index("## Scene 2")
     edited = edited[:start] + edited[edited.index("## Scene 3"):]
     edited = edited.replace("## Cliffhanger", "## Scene\nNarration: Extra ending.\nCamera: tilt up\n\n## Cliffhanger")
     new = script.from_markdown(edited, s, opts)
-    assert new["scenes"][0]["narration"] == "A brand new hook that continues here."
+    assert new["scenes"][0]["narration"] == "A brand new hook that continues here. Who is there?"
+    assert [ln["speaker"] for ln in new["scenes"][0]["lines"]] == ["NARRATOR", "MIRA"]
     assert [x["id"] for x in new["scenes"]] == ["s01", "s03", "s04", "s05"]  # ids stay with their scenes
     assert new["scenes"][-1]["kind"] == "cliffhanger" and new["scenes"][-1]["camera"] == "tilt_up"
     assert new["scenes"][1]["visual"] == "Picture 3"  # unchanged fields kept
@@ -150,6 +151,7 @@ def test_farsi_translation(sf_root, monkeypatch):
     assert script.translate_script(series, ep, s, Reporter(echo=False))
     assert s["scenes"][2]["narration_fa"] == "تغییر کرد." and s["scenes"][0]["narration_fa"] == "خط یک."
     assert "Farsi: خط یک." in ep.script_md_path.read_text(encoding="utf-8")
+    assert script.from_markdown(ep.script_md_path.read_text(encoding="utf-8"), s, opts)["scenes"][0]["narration_fa"] == "خط یک."
 
 
 def test_prompt_includes_series_memory(sf_root):

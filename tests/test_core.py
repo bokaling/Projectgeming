@@ -50,9 +50,11 @@ def test_state_resume(tmp_path):
 
 
 def test_options_clamped():
-    o = project.EpisodeOptions.from_dict({"hero_count": 9, "languages": ["xx"], "formats": [], "junk": 1})
-    assert o.hero_count == 3 and o.languages == ["en"] and o.formats == ["9x16"]
-    assert project.EpisodeOptions().hero_count == 2  # default asked for by the user
+    o = project.EpisodeOptions.from_dict({"hero_count": 99, "languages": ["xx"], "formats": [], "junk": 1})
+    assert o.hero_count == 12 and o.languages == ["en"] and o.formats == ["9x16"]
+    d = project.EpisodeOptions()
+    assert d.hero_count == -1 and d.source == "paste" and d.sfx is False  # auto heroes, your script, SFX off
+    assert project.EpisodeOptions.from_dict({"length": "long"}).formats == ["16x9"]
 
 
 def test_series_and_episodes(sf_root, tmp_path):

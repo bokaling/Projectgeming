@@ -116,17 +116,20 @@ class State:
 @dataclass
 class EpisodeOptions:
     idea: str = ""
+    script_text: str = ""  # your pasted script (main mode)
+    source: str = "paste"  # paste = your script, ai = the AI writes it from `idea`
+    length: str = "short"  # short = ~60 s 9:16 1080x1920, long = ~10 min 16:9 1920x1080
     languages: list = field(default_factory=lambda: ["en"])
-    formats: list = field(default_factory=lambda: ["9x16", "16x9"])
+    formats: list = field(default_factory=lambda: ["9x16"])  # set from `length`
     resolution: str = "1080p"  # or "720p" (faster)
-    scene_count: int = 10
-    hero_count: int = 2  # scenes that get real image-to-video (0 to 3)
+    scene_count: int = 12  # only used when the AI writes the script
+    hero_count: int = -1  # real image-to-video scenes; -1 = auto (depends on your GPU)
     hero_minutes: float = 15.0  # time limit per hero clip
     captions: bool = True
     caption_style: str = "highlight"  # highlight | karaoke | plain
     music_mood: str = "auto"
-    music_volume: float = 0.22
-    sfx: bool = True
+    music_volume: float = 0.10  # quiet: music sits well under the voice
+    sfx: bool = False  # sound effects are OFF unless you turn them on
     effects: bool = True  # particles, light leaks, grain
     second_format_images: str = "auto"  # auto | generate | reuse
     creator_note: str = ""
@@ -138,9 +141,11 @@ class EpisodeOptions:
         known = {f.name for f in fields(cls)}
         opts = cls(**{k: v for k, v in d.items() if k in known})
         opts.languages = [lang for lang in (opts.languages or ["en"]) if lang in LANGUAGES] or ["en"]
-        opts.formats = [f for f in (opts.formats or ["9x16"]) if f in FORMATS] or ["9x16"]
-        opts.hero_count = max(0, min(3, int(opts.hero_count)))
-        opts.scene_count = max(3, min(16, int(opts.scene_count)))
+        opts.length = "long" if opts.length == "long" else "short"
+        opts.formats = ["16x9"] if opts.length == "long" else ["9x16"]
+        opts.source = "ai" if opts.source == "ai" else "paste"
+        opts.hero_count = max(-1, min(12, int(opts.hero_count)))
+        opts.scene_count = max(3, min(120, int(opts.scene_count)))
         return opts
 
     def to_dict(self) -> dict:
@@ -156,10 +161,7 @@ class EpisodeOptions:
 # ---------------------------------------------------------------------------
 
 
-DEFAULT_STYLE = (
-    "cinematic digital painting, dramatic lighting, rich colors, detailed background, "
-    "film still, shallow depth of field"
-)
+DEFAULT_STYLE = "cinematic digital painting, detailed background, film still, shallow depth of field"
 
 
 class Series:
