@@ -241,6 +241,8 @@ def build_app():
                         with gr.Row(elem_classes="sf-row-stack"):
                             gen_btn = gr.Button("🚀 Generate video", variant="primary", size="lg", scale=2)
                             quick_btn = gr.Button("⚡ Quick test", variant="secondary", size="lg", scale=1)
+                        gem_btn = gr.Button("📝 Make Gemini prompts (I'll make the pictures myself)", variant="secondary",
+                                            size="lg")
                         gr.HTML('<div class="sf-note">🚀 <b>Generate</b> does everything by itself: scenes, pictures, '
                                 'motion, voice, captions, music, export, thumbnail, title, description and hashtags. '
                                 '⚡ <b>Quick test</b> makes only the first 3 scenes (720p, no hero clips) to check '
@@ -273,6 +275,94 @@ def build_app():
                                            value=default_opts.resolution, label="Quality")
 
             # ------------------------------------------------------------ 2 Script
+            # ------------------------------------------------------------ 🍌 Gemini images mode
+            with gr.Tab("🍌 My images", id="gemini"):
+                r_gem = gr.State(0)
+                with gr.Group(elem_classes=["sf-card", "sf-hero-card"]):
+                    gr.HTML('<div class="sf-card-title">1 · Prompts for the Gemini app</div>'
+                            '<div class="sf-card-sub">Make each picture in the Gemini app (Nano Banana): copy a prompt, '
+                            'paste it in Gemini, download the picture. <b>C1, C2…</b> are character sheets (make them '
+                            'first and give them to Gemini with the scene prompts for the same faces). Name your '
+                            'files with their number (<b>1.png</b>, <b>scene_02.jpg</b>, <b>C1.png</b>) or just '
+                            'upload them in order.</div>')
+                    all_prompts = gr.Textbox(label="All prompts (Copy all with the button in the corner)", lines=10,
+                                             max_lines=18, buttons=["copy"], interactive=False)
+                    prompts_dl = gr.DownloadButton("⬇️ Download prompts.txt", variant="secondary", visible=False)
+                with gr.Group(elem_classes="sf-card"):
+                    gr.HTML('<div class="sf-card-title">2 · Your images</div>'
+                            '<div class="sf-card-sub">Drop all your pictures at once. They are cropped to fill the '
+                            'frame (no black bars). From your phone: put them in the Google Drive folder shown below '
+                            'and press "Check my Drive folder".</div>')
+                    gem_upload = gr.File(label="Drop your images here", file_count="multiple", file_types=["image"],
+                                         type="filepath", height=140)
+                    with gr.Row(elem_classes="sf-row-stack"):
+                        gem_scan = gr.Button("🔄 Check my Drive folder", variant="secondary")
+                    gem_status = gr.HTML()
+
+                @gr.render(inputs=[r_scenes, r_gem])
+                def gemini_cards(_a, _b):
+                    from .. import gemini  # noqa: PLC0415
+
+                    series, ep = current()
+                    sc = ep.load_script() if ep else None
+                    if not sc:
+                        gr.HTML('<div class="sf-empty">Paste your script on step 1 and press '
+                                '<b>📝 Make Gemini prompts</b>.</div>')
+                        return
+                    o = ep.load_options()
+                    sl = gemini.slots(series, sc, o.length)
+                    total = len(sl)
+                    chars = gemini.characters_in(series, sc)
+                    if chars:
+                        with gr.Row(elem_classes="sf-grid"):
+                            for k, c in enumerate(chars, 1):
+                                with gr.Column(elem_classes="sf-scene", min_width=240):
+                                    gr.HTML(f'<div class="sf-badges"><span class="sf-badge hero">C{k}</span>'
+                                            f'<span class="sf-badge">Character sheet · {html.escape(c["name"])}</span></div>')
+                                    gr.Textbox(value=gemini.character_prompt(series, c, o.length), show_label=False,
+                                               lines=4, buttons=["copy"], interactive=False)
+                    with gr.Row(elem_classes="sf-grid"):
+                        for s_ in sl:
+                            img = gemini.image_for(ep, s_.number)
+                            with gr.Column(elem_classes="sf-scene", min_width=240):
+                                shot = f" · shot {s_.shot + 1}" if s_.shot else ""
+                                state = ('<span class="sf-badge mine">✅ image</span>' if img
+                                         else '<span class="sf-badge hook">missing</span>')
+                                gr.HTML(f'<div class="sf-badges"><span class="sf-badge hero">#{s_.number}</span>'
+                                        f'<span class="sf-badge">Scene {s_.scene_no}{shot}</span>{state}</div>'
+                                        f'<div class="sf-narr">{html.escape(s_.line[:160])}</div>')
+                                gr.Image(value=str(img) if img else None, show_label=False, height=240,
+                                         interactive=False, buttons=["fullscreen"], placeholder="No image yet")
+                                gr.Textbox(value=s_.prompt, show_label=False, lines=3, max_lines=6, buttons=["copy"],
+                                           interactive=False)
+                                with gr.Row():
+                                    up = gr.UploadButton("📤 Replace", file_types=["image"], size="sm")
+                                    left = gr.Button("⬆️", size="sm", min_width=50)
+                                    right = gr.Button("⬇️", size="sm", min_width=50)
+
+                                def _set(f, n=s_.number, r=_b):
+                                    _, e = need_project()
+                                    gemini.set_image(e, n, f)
+                                    return r + 1
+
+                                def _mv(d, n=s_.number, r=_b, t=total):
+                                    _, e = need_project()
+                                    gemini.move(e, n, n + d, t)
+                                    return r + 1
+
+                                up.upload(_set, up, r_gem)
+                                left.click(lambda n=s_.number, r=_b, t=total: _mv(-1, n, r, t), None, r_gem)
+                                right.click(lambda n=s_.number, r=_b, t=total: _mv(1, n, r, t), None, r_gem)
+
+                with gr.Group(elem_classes=["sf-card", "sf-hero-card"]):
+                    gr.HTML('<div class="sf-card-title">3 · Make the video</div>'
+                            '<div class="sf-card-sub">Uses your images and skips the image model completely (much '
+                            'faster: no big download). Then motion, voice, captions, music and export as usual.</div>')
+                    gem_make = gr.Button("🚀 Make video with my images", variant="primary", size="lg")
+                    with gr.Row(visible=False, elem_classes="sf-row-stack") as gem_choice:
+                        gem_flux = gr.Button("🎨 Make the missing ones with FLUX", variant="secondary")
+                        gem_near = gr.Button("🔁 Reuse the nearest image", variant="secondary")
+
             with gr.Tab("2 · ✍️ Edit", id="script"):
                 with gr.Group(elem_classes="sf-card"):
                     gr.HTML('<div class="sf-card-title">Edit your script</div>'
@@ -669,6 +759,7 @@ def build_app():
 
             try:
                 o = opts_from(*vals, source="paste")
+                o.image_source = "flux"
                 texts = paste.split_scripts(o.script_text)
                 if not texts:
                     raise FriendlyError("The script box is empty.", "Paste your script, then press Generate.")
@@ -694,6 +785,104 @@ def build_app():
             except Exception as exc:  # noqa: BLE001
                 _toast(exc)
                 return gr.skip(), gr.skip(), gr.skip(), gr.skip()
+
+        # ---- 🍌 Gemini images mode
+        def gem_info():
+            """Prompts text, download file and the 'what is missing' line for the current episode."""
+            from .. import gemini  # noqa: PLC0415
+
+            series, ep = current()
+            sc = ep.load_script() if ep else None
+            if not sc:
+                return "", gr.update(visible=False), ""
+            o = ep.load_options()
+            total = len(gemini.slots(series, sc, o.length))
+            path = ep.dir / "prompts.txt"
+            text = path.read_text(encoding="utf-8") if path.exists() else gemini.prompts_text(series, sc, o.length)
+            miss = gemini.missing(ep, total)
+            status = (f"✅ All {total} pictures are in place." if not miss else
+                      f"🖼️ {total - len(miss)}/{total} pictures in place. Missing: #{', #'.join(map(str, miss[:40]))}"
+                      + (" …" if len(miss) > 40 else ""))
+            folder = html.escape(str(gemini.folder(ep)))
+            return (text, gr.update(value=str(path) if path.exists() else None, visible=path.exists()),
+                    f'<div class="sf-note">{status}<br>📁 Drive folder for your images: {folder}</div>')
+
+        def on_gem_prompts(choice, name, number, *vals):
+            try:
+                o = opts_from(*vals, source="paste")
+                s = resolve_series(choice, name)
+                n = int(number or s.next_episode_number())
+                set_current(s.slug, n)
+                return start_job("Making Gemini prompts",
+                                 lambda rep: pipeline.gemini_prompts(s, o, o.script_text, rep, n),
+                                 goto="gemini", refresh=("script", "chars", "scenes"))
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return gr.skip()
+
+        gem_btn.click(on_gem_prompts, [series_dd, new_name, ep_no] + settings, [progress_box])
+        r_scenes.change(lambda _: gem_info(), r_scenes, [all_prompts, prompts_dl, gem_status])
+        r_gem.change(lambda _: gem_info(), r_gem, [all_prompts, prompts_dl, gem_status])
+
+        def on_gem_upload(files, r):
+            from .. import gemini  # noqa: PLC0415
+
+            try:
+                series, ep = need_project()
+                sc = ep.load_script()
+                total = len(gemini.slots(series, sc, ep.load_options().length))
+                for m in gemini.add_images(ep, files or [], total):
+                    gr.Info(m)
+                return None, r + 1
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return None, r
+
+        gem_upload.upload(on_gem_upload, [gem_upload, r_gem], [gem_upload, r_gem])
+
+        def on_gem_scan(r):
+            from .. import gemini  # noqa: PLC0415
+
+            try:
+                series, ep = need_project()
+                total = len(gemini.slots(series, ep.load_script(), ep.load_options().length))
+                msgs = gemini.scan_folder(ep, total)
+                gr.Info(" ".join(msgs) or "No new pictures in your Drive folder.")
+                return r + 1
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return r
+
+        gem_scan.click(on_gem_scan, r_gem, r_gem)
+
+        def on_gem_make(policy):
+            from .. import gemini  # noqa: PLC0415
+
+            try:
+                series, ep = need_project()
+                sc = ep.load_script()
+                if not sc:
+                    raise FriendlyError("No prompts yet.", "Press 📝 Make Gemini prompts on step 1 first.")
+                o = ep.load_options()
+                total = len(gemini.slots(series, sc, o.length))
+                gemini.scan_folder(ep, total)
+                miss = gemini.missing(ep, total)
+                if miss and policy == "ask":  # ask first: FLUX for the missing ones, or reuse the nearest image
+                    gr.Warning(f"{len(miss)} picture(s) are missing (#{', #'.join(map(str, miss[:15]))}). "
+                               "Upload them, or choose one of the two buttons below.")
+                    return gr.skip(), gr.update(visible=True)
+                o.image_source, o.missing_policy = "mine", (policy if policy != "ask" else "ask")
+                ep.save_options(o)
+                return (start_job("Making the video with your images",
+                                  lambda rep: pipeline.Pipeline(series, ep, rep, o).make_video(), goto="export",
+                                  refresh=("chars", "scenes", "export")), gr.update(visible=False))
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return gr.skip(), gr.skip()
+
+        gem_make.click(lambda: on_gem_make("ask"), None, [progress_box, gem_choice])
+        gem_flux.click(lambda: on_gem_make("flux"), None, [progress_box, gem_choice])
+        gem_near.click(lambda: on_gem_make("nearest"), None, [progress_box, gem_choice])
 
         gen_btn.click(on_generate, [series_dd, new_name, ep_no] + settings,
                       [progress_box, project_box, series_dd, new_name])

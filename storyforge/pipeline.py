@@ -97,7 +97,8 @@ class Pipeline:
         names = sorted({n for sc in self.script["scenes"] for n in sc.get("characters", [])})
         characters.ensure_references(self.series, names, self.rep, force=list(force))
 
-    def scene_pictures(self, only: list[str] | None = None, force: bool = False, keep_loaded: bool = False) -> dict:
+    def scene_pictures(self, only: list[str] | None = None, force: bool = False, keep_loaded: bool = False,
+                       only_shots: set | None = None) -> dict:
         sc_all = self.script["scenes"]
         jobs = []
         use_refs = images.KleinEngine.usable()
@@ -108,6 +109,8 @@ class Pipeline:
                 continue
             n_shots = 1 + len(sc.get("shots") or [])
             for k in range(n_shots):  # a new picture every 2-3 seconds: one per shot
+                if only_shots is not None and (sc["id"], k) not in only_shots:
+                    continue
                 prompt, refs = characters.scene_prompt(self.series, sc, with_refs=use_refs, shot_index=k)
                 seed = self.scene_seed(sc) + 7 * k
                 for fmt in self.image_formats():
@@ -141,6 +144,30 @@ class Pipeline:
             self.rep.warn("Some pictures are placeholders (no picture service worked). Regenerate or replace them on the Scenes step.")
         self.rep.ok(f"Pictures done in {t.label}: {summary}")
         return counts
+
+    def my_images(self) -> None:
+        """Gemini mode: use your images, skip the image model. Missing ones: FLUX or the nearest image."""
+        from . import gemini  # noqa: PLC0415
+
+        sc = self.script
+        fmt = self.opts.primary_format
+        self.rep.step("🍌 Your images (the image model is skipped)")
+        total = len(gemini.slots(self.series, sc, self.opts.length))
+        gemini.scan_folder(self.ep, total)
+        policy = self.opts.missing_policy
+        missing = gemini.apply_images(self.series, self.ep, sc, self.opts.length, fmt,
+                                      "nearest" if policy == "nearest" else "flux", self.rep)
+        if not missing:
+            self.rep.record("ok", "Pictures", f"{total} of your images")
+            return
+        if policy == "ask":
+            raise FriendlyError(f"{len(missing)} picture(s) are still missing: number(s) {', '.join(map(str, missing))}.",
+                                "Upload them on the 🍌 My images step, or choose 'Make the missing ones with FLUX' "
+                                "or 'Reuse the nearest image' there.")
+        self.rep.info(f"🎨 Making the {len(missing)} missing picture(s) with FLUX…")
+        wanted = {(s.sid, s.shot) for s in gemini.slots(self.series, sc, self.opts.length) if s.number in missing}
+        self.scene_pictures(only_shots=wanted)
+        self.rep.record("ok", "Pictures", f"{total - len(missing)} yours + {len(missing)} FLUX")
 
     def regenerate(self, sid: str, keep_loaded: bool = True) -> None:
         sc = self.script
@@ -551,9 +578,12 @@ class Pipeline:
         rep = self.rep
         with Timer() as total:
             rep.progress(0.02, "Characters")
-            self.character_pictures()
-            rep.progress(0.08, "Pictures")
-            self.scene_pictures()
+            if self.opts.image_source == "mine":
+                self.my_images()
+            else:
+                self.character_pictures()
+                rep.progress(0.08, "Pictures")
+                self.scene_pictures()
             rep.progress(0.35, "Hero clips")
             self.hero_clips()
             rep.progress(0.45, "Depth")
@@ -651,6 +681,29 @@ def run_batch(series: Series, opts: EpisodeOptions, texts: list[str], rep: Repor
     rep.done(summary, f"Batch finished: {len(done)} of {len(texts)} videos made (≈{summary['units']} compute units)."
              + (f" Failed: episodes {failed}. Press Generate again to retry them." if failed else ""))
     return summary
+
+
+def gemini_prompts(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, number: int | None = None) -> dict:
+    """🍌 Plan the scenes (same as normal) and write one standalone Gemini prompt per picture."""
+    from . import gemini, paste  # noqa: PLC0415
+
+    texts = paste.split_scripts(text)
+    if not texts:
+        raise FriendlyError("The script box is empty.", "Paste your script, then press Make Gemini prompts.")
+    if len(texts) > 1:
+        rep.warn("Gemini mode makes one episode at a time: using the first script (before the first =====).")
+    ep = series.episode(number or series.next_episode_number())
+    set_current_episode(series, ep)
+    opts.image_source = "mine"
+    ep.save_options(opts)
+    sc = script.script_from_text(series, ep, opts, texts[0], rep)
+    path = gemini.write_prompts(series, ep, sc, opts.length)
+    n_pics = len(gemini.slots(series, sc, opts.length))
+    n_chars = len(gemini.characters_in(series, sc))
+    rep.done({"prompts": str(path), "pictures": n_pics, "episode": ep.number},
+             f"{n_chars} character sheet(s) + {n_pics} scene prompts are ready ({gemini.aspect_words(opts.length)}). "
+             f"Saved to {path}. Your images go in {gemini.folder(ep)}")
+    return {"prompts": str(path), "pictures": n_pics, "episode": ep.number}
 
 
 def set_current_episode(series: Series, ep: Episode) -> None:

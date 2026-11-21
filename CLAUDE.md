@@ -111,6 +111,7 @@ storyforge/
   script.py        prompts, idea -> episode JSON, editable markdown, Farsi translation
   characters.py    character bible + reference sheets
   images.py        FLUX.2 klein 4B (GPU) + online fallbacks + placeholder
+  gemini.py        Gemini images mode: prompts.txt, your uploaded pictures, matching, cropping
   motion/depth.py  Depth Anything V2 Small (+ fake depth fallback)
   motion/effects.py  Ken Burns, parallax, particles, light leaks, grain, vignette, shake
   motion/i2v.py    Wan 2.2 TI2V 5B hero shots with time budget
@@ -177,6 +178,9 @@ tests/             CPU-only tests, network calls mocked
 - [x] Notebooks + README + backup forms mode
 - [x] Update 2: paste-script mode, shot variety, gentle audio, one narrator + character voices,
       short/long + chunked render + chapters + batch, GPU profiles + GPU motion + cost meter
+- [x] Gemini images mode (`gemini.py`, tab "🍌 My images"): numbered standalone prompts (character sheets C1.. first),
+      upload/Drive folder `episodes/epNN/my_images/`, match by number or order, crop to fill, replace/swap,
+      missing → ask (FLUX or nearest). `EpisodeOptions.image_source = "mine"` skips FLUX; Generate sets it back to "flux".
 
 ### Verified only on CPU (needs a real Colab GPU run)
 FLUX.2 klein loading/generation, Depth Anything download, Wan 2.2 hero clips, Kokoro, Edge TTS,

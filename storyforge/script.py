@@ -229,6 +229,8 @@ def hero_target(opts: EpisodeOptions) -> int:
     """How many hero scenes: your number, or 'auto' = what your GPU can do in reasonable time."""
     if opts.hero_count >= 0:
         return opts.hero_count
+    if opts.image_source == "mine":
+        return 0  # your own images: no big video-model download unless you ask for hero scenes
     prof = config.gpu_profile()
     return prof.heroes_long if opts.length == "long" else prof.heroes_short
 

@@ -134,6 +134,8 @@ class EpisodeOptions:
     second_format_images: str = "auto"  # auto | generate | reuse
     creator_note: str = ""
     quick_test: bool = False
+    image_source: str = "flux"  # flux = AI pictures on the GPU, mine = your own images (Gemini mode)
+    missing_policy: str = "ask"  # mine mode, missing pictures: ask | flux | nearest
 
     def __post_init__(self):
         self.length = "long" if self.length == "long" else "short"

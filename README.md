@@ -57,6 +57,32 @@ NARRATOR: A voice answered with her own name.
 
 ---
 
+## 🍌 Make the pictures yourself in Gemini (no FLUX)
+
+Like the pictures from the Gemini app (Nano Banana) better? Use this mode. FLUX is skipped completely,
+so there is no big download and the video is made much faster.
+
+1. **Step 1 · Script:** paste your script, choose **Short** or **Long**, and press
+   **📝 Make Gemini prompts**. The app opens the **🍌 My images** tab.
+2. **Copy the prompts:** you get one numbered prompt per picture. Each prompt has the full character
+   look, the shot type, lighting, mood and the size (vertical 9:16 or horizontal 16:9).
+   - Make **C1, C2…** (character sheets) first. Give that picture to Gemini together with the scene
+     prompts, so the face stays the same.
+   - Use the 📋 button on each prompt, the copy button on the big box ("copy all"), or **⬇️ Download prompts.txt**.
+     `prompts.txt` is also saved on Drive in the episode folder.
+3. **Upload your pictures:** drop them all at once into **Drop your images here**.
+   - Name them with their number (`1.png`, `scene_02.jpg`, `C1.png`). Without numbers, they are used in upload order.
+   - From your phone: put them in Google Drive in `StoryForge/series/<series>/episodes/ep01/my_images/`,
+     then press **🔄 Check my Drive folder**.
+   - Every picture is cropped to fill the frame (no black bars). Each card shows ✅ or **missing**.
+   - Wrong picture? **📤 Replace** on its card. Wrong order? ⬆️ / ⬇️ swap it with its neighbour.
+4. **Press 🚀 Make video with my images.** If pictures are missing, the app asks you:
+   **🎨 Make the missing ones with FLUX**, or **🔁 Reuse the nearest image**.
+
+The normal **🚀 Generate video** button still uses FLUX, as before.
+
+---
+
 ## 🎬 The 6 steps in the app
 
 | Step | What it's for |
