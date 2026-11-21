@@ -81,6 +81,9 @@ def setup() -> bool:
         ok = False
     else:
         print("   ✅ Core packages")
+    if good and subprocess.run([sys.executable, "-c", "from PIL import features; assert features.check('avif')"],
+                               capture_output=True, check=False).returncode != 0:
+        _pip("pillow-avif-plugin")  # older Pillow can't open .avif pictures by itself
     print("📦 3/3 Voice engines…")
     if not install_kokoro():
         print("      👉 Videos still work with the Edge TTS male voice. Copy the lines above and send them for a fix.")

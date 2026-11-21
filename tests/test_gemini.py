@@ -103,3 +103,51 @@ def test_missing_images_ask_then_nearest_or_flux(offline, tmp_path, monkeypatch)
     pipeline.Pipeline(series2, ep2, Reporter(echo=False), o2).my_images()
     assert asked and all(not k.startswith("image:s01:9x16") or k.count(":") == 3 for k in asked)
     assert "image:s01:9x16" not in asked  # your picture #1 is kept, only missing ones go to FLUX
+
+
+def test_other_picture_types_become_png(offline, tmp_path):
+    """Gemini saves .jfif; phones save .heic; .webp/.avif too. All are stored as PNG."""
+    from PIL import features
+
+    _, ep, _, res = make()
+    total = res["pictures"]
+    assert total >= 4
+    src = tmp_path / "in"
+    src.mkdir()
+    Image.new("RGB", (64, 64), "red").save(src / "1.jfif", format="JPEG")
+    Image.new("RGB", (64, 64), "blue").save(src / "2.webp", format="WEBP")
+    Image.new("RGB", (64, 64), "green").save(src / "Gemini_Generated_Image_ab12cd34ef.jpeg", format="JPEG")
+    files = [src / "1.jfif", src / "2.webp", src / "Gemini_Generated_Image_ab12cd34ef.jpeg"]
+    if features.check("avif"):
+        Image.new("RGB", (64, 64), "white").save(src / "4.avif", format="AVIF")
+        files.append(src / "4.avif")
+    msgs = gemini.add_images(ep, files, total)
+    assert any("Converted" in m and "1.jfif" in m for m in msgs)
+    for n in range(1, 4):
+        p = gemini.image_for(ep, n)
+        assert p.suffix == ".png" and p.read_bytes()[:4] == b"\x89PNG"
+    assert Image.open(gemini.image_for(ep, 1)).getpixel((5, 5))[0] > 200  # red stays red
+    # a .jfif put straight into the Drive folder is converted, and the original moved out of the way
+    Image.new("RGB", (64, 64), "yellow").save(gemini.folder(ep) / "4.jfif", format="JPEG")
+    gemini.scan_folder(ep, total)
+    assert gemini.image_for(ep, 4).name == "4.png"
+    assert (gemini.folder(ep) / "originals" / "4.jfif").exists()
+    assert gemini.scan_folder(ep, total) == []  # nothing new the second time
+    # a broken file gives a friendly message, not a crash
+    (src / "bad.heic").write_bytes(b"not a picture")
+    assert any("Couldn't open bad.heic" in m for m in gemini.add_images(ep, [src / "bad.heic"], total))
+    # replace with a .jfif
+    gemini.set_image(ep, 2, src / "1.jfif")
+    assert gemini.image_for(ep, 2).name == "002_1.png"
+
+
+def test_heic_opens_when_pillow_heif_is_installed(tmp_path):
+    pillow_heif = pytest.importorskip("pillow_heif")
+
+    pillow_heif.register_heif_opener()
+    try:
+        Image.new("RGB", (64, 64), "red").save(tmp_path / "x.heic", format="HEIF")
+    except Exception:  # noqa: BLE001 (no HEIF encoder in this build)
+        pytest.skip("no HEIF encoder")
+    out = gemini.to_png(tmp_path / "x.heic", tmp_path / "x.png")
+    assert Image.open(out).size == (64, 64)

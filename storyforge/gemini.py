@@ -19,7 +19,8 @@ from pathlib import Path
 from .characters import SHOT_HINTS, frame_of
 from .project import Episode, Series, dims, fingerprint, read_json, write_json
 
-IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".jfif", ".webp", ".heic", ".heif", ".avif"}
+UPLOAD_TYPES = ["image", *sorted(IMAGE_EXT)]  # for Gradio: the extensions too (.jfif/.heic aren't always "image")
 ENDING = "cinematic, highly detailed, no text, no letters, no watermark"
 
 
@@ -159,6 +160,83 @@ def _number(name: str) -> tuple[str, int] | None:
     return None
 
 
+def _open_any(src: Path):
+    """Open a picture of any common type (Gemini saves .jfif; phones save .heic)."""
+    from PIL import Image  # noqa: PLC0415
+
+    ext = src.suffix.lower()
+    if ext in (".heic", ".heif"):
+        try:
+            import pillow_heif  # noqa: PLC0415
+
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+    if ext == ".avif":
+        try:
+            import pillow_avif  # noqa: F401, PLC0415  (older Pillow without built-in AVIF)
+        except ImportError:
+            pass
+    try:
+        img = Image.open(src)
+        img.load()
+        return img
+    except Exception:  # noqa: BLE001
+        pass
+    # last try: FFmpeg can read some files Pillow can't
+    import subprocess  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "x.png"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-frames:v", "1", str(out)],
+                       capture_output=True, timeout=60, check=False)
+        if out.exists():
+            img = Image.open(out)
+            img.load()
+            return img
+    raise ValueError(f"can't read {ext} pictures here")
+
+
+def to_png(src: str | Path, dst: Path) -> Path:
+    """Convert any picture to PNG (turned the right way up). Returns dst."""
+    from PIL import ImageOps  # noqa: PLC0415
+
+    img = ImageOps.exif_transpose(_open_any(Path(src)))
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(dst.name + ".part")
+    img.save(tmp, format="PNG")
+    tmp.replace(dst)
+    return dst
+
+
+def _store(src: Path, dst: Path) -> bool:
+    """Save a picture as PNG in my_images/ (True if it was converted).
+
+    A non-PNG original that was already in the Drive folder is moved to my_images/originals/."""
+    d = dst.parent
+    if src.suffix.lower() == ".png":
+        if src.resolve() == dst.resolve():
+            return False
+        if _is_png(src):
+            shutil.copyfile(src, dst)
+            return False
+        to_png(src, dst)  # a JPG that was renamed to .png
+        return True
+    to_png(src, dst)
+    if src.parent.resolve() == d.resolve():  # it was in the folder: keep it, but out of the way
+        (d / "originals").mkdir(exist_ok=True)
+        shutil.move(str(src), str(d / "originals" / src.name))
+    return True
+
+
+def _is_png(p: Path) -> bool:
+    with open(p, "rb") as fh:
+        return fh.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
 def add_images(ep: Episode, files: list[str | Path], total: int) -> list[str]:
     """Copy your files into my_images/ and match them to picture numbers. Returns messages."""
     d = folder(ep)
@@ -166,14 +244,19 @@ def add_images(ep: Episode, files: list[str | Path], total: int) -> list[str]:
     used = set(data["slots"].values())
     msgs = []
     unnumbered = []
+    converted = []
     for f in files:
         f = Path(f)
         if f.suffix.lower() not in IMAGE_EXT:
             msgs.append(f"Skipped {f.name} (not a picture).")
             continue
-        dst = d / f.name
-        if f.resolve() != dst.resolve():
-            shutil.copyfile(f, dst)
+        dst = d / (f.stem + ".png")
+        try:
+            if _store(f, dst):
+                converted.append(f.name)
+        except Exception as exc:  # noqa: BLE001
+            msgs.append(f"⚠️ Couldn't open {f.name} ({exc}). Save it as PNG or JPG and upload it again.")
+            continue
         num = _number(f.name)
         if num and num[0] == "C":
             data["characters"][f"C{num[1]}"] = dst.name
@@ -188,6 +271,9 @@ def add_images(ep: Episode, files: list[str | Path], total: int) -> list[str]:
     if len(unnumbered) > len(free):
         msgs.append(f"{len(unnumbered) - len(free)} picture(s) had no free number left.")
     write_json(ep.dir / "my_images.json", data)
+    if converted:
+        names = ", ".join(converted[:3]) + (f" and {len(converted) - 3} more" if len(converted) > 3 else "")
+        msgs.insert(0, f"🔄 Converted {len(converted)} picture(s) to PNG ({names}).")
     return msgs
 
 
@@ -203,8 +289,10 @@ def scan_folder(ep: Episode, total: int) -> list[str]:
 def set_image(ep: Episode, number: int, file: str | Path) -> None:
     """Replace one picture."""
     f = Path(file)
-    dst = folder(ep) / f"{number:03d}_{f.name}"
-    shutil.copyfile(f, dst)
+    if f.suffix.lower() not in IMAGE_EXT:
+        raise ValueError(f"{f.name} is not a picture (use PNG, JPG, JFIF, WEBP, HEIC or AVIF).")
+    dst = folder(ep) / f"{number:03d}_{f.stem}.png"
+    _store(f, dst)
     data = _mapping(ep)
     data["slots"][str(number)] = dst.name
     write_json(ep.dir / "my_images.json", data)

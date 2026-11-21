@@ -10,3 +10,4 @@ soundfile
 edge-tts>=7.2
 arabic-reshaper
 python-bidi
+pillow-heif          # opens .heic pictures (iPhone) in the 🍌 My images upload

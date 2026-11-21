@@ -277,6 +277,8 @@ def build_app():
             # ------------------------------------------------------------ 2 Script
             # ------------------------------------------------------------ 🍌 Gemini images mode
             with gr.Tab("🍌 My images", id="gemini"):
+                from ..gemini import UPLOAD_TYPES as gemini_types  # noqa: PLC0415
+
                 r_gem = gr.State(0)
                 with gr.Group(elem_classes=["sf-card", "sf-hero-card"]):
                     gr.HTML('<div class="sf-card-title">1 · Prompts for the Gemini app</div>'
@@ -293,7 +295,7 @@ def build_app():
                             '<div class="sf-card-sub">Drop all your pictures at once. They are cropped to fill the '
                             'frame (no black bars). From your phone: put them in the Google Drive folder shown below '
                             'and press "Check my Drive folder".</div>')
-                    gem_upload = gr.File(label="Drop your images here", file_count="multiple", file_types=["image"],
+                    gem_upload = gr.File(label="Drop your images here", file_count="multiple", file_types=gemini_types,
                                          type="filepath", height=140)
                     with gr.Row(elem_classes="sf-row-stack"):
                         gem_scan = gr.Button("🔄 Check my Drive folder", variant="secondary")
@@ -336,7 +338,7 @@ def build_app():
                                 gr.Textbox(value=s_.prompt, show_label=False, lines=3, max_lines=6, buttons=["copy"],
                                            interactive=False)
                                 with gr.Row():
-                                    up = gr.UploadButton("📤 Replace", file_types=["image"], size="sm")
+                                    up = gr.UploadButton("📤 Replace", file_types=gemini_types, size="sm")
                                     left = gr.Button("⬆️", size="sm", min_width=50)
                                     right = gr.Button("⬇️", size="sm", min_width=50)
 

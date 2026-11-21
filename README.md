@@ -72,6 +72,8 @@ so there is no big download and the video is made much faster.
      `prompts.txt` is also saved on Drive in the episode folder.
 3. **Upload your pictures:** drop them all at once into **Drop your images here**.
    - Name them with their number (`1.png`, `scene_02.jpg`, `C1.png`). Without numbers, they are used in upload order.
+   - Any picture type works: PNG, JPG, **JFIF** (what Gemini downloads), WEBP, HEIC (iPhone) and AVIF.
+     They are turned into PNG automatically.
    - From your phone: put them in Google Drive in `StoryForge/series/<series>/episodes/ep01/my_images/`,
      then press **🔄 Check my Drive folder**.
    - Every picture is cropped to fill the frame (no black bars). Each card shows ✅ or **missing**.
