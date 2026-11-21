@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from pathlib import Path
 
 from . import captions, characters, config, images, publish, render, script
@@ -23,7 +24,6 @@ from .project import (UPLOAD_VIDEO_EXT, Episode, EpisodeOptions, Series, dims, f
                       write_json)
 
 LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.15, 0.35, 1.4, 2.2
-QUICK_IDEA = "A lighthouse keeper gets a radio message from her future self, warning her about tonight's storm."
 
 
 def file_sig(path: Path | None) -> str:
@@ -299,7 +299,7 @@ class Pipeline:
             wav = adir / f"{sc['id']}.wav"
             x, sr = tts.read_wav(wav)
             vlen = len(x) / sr
-            dur = max(MIN_SCENE, LEAD + vlen + (LAST_TAIL if i == len(sc_all) - 1 else TAIL))
+            dur = render.snap(max(MIN_SCENE, LEAD + vlen + (LAST_TAIL if i == len(sc_all) - 1 else TAIL)))
             scenes.append({"id": sc["id"], "start": round(t, 3), "dur": round(dur, 3), "voice": round(vlen, 3)})
             for w in (read_json(adir / f"{sc['id']}.json", {}) or {}).get("words", []):
                 words.append({"w": w["w"], "s": round(t + LEAD + w["s"], 3), "e": round(t + LEAD + w["e"], 3)})
@@ -414,7 +414,7 @@ class Pipeline:
             span = 0.4 / len(jobs)
             self.rep.check_stop()
             tl = self.timeline(lang)
-            clips = self.scene_clips(lang, fmt, tl, progress=(base, base + span * 0.75))
+            clips = self.scene_clips(lang, fmt, tl, progress=(base, base + span * 0.7))
             mix_path, credits, music_name = self.audio_mix(lang, tl)
             size = self.out_size(fmt)
             ass = None
@@ -422,18 +422,39 @@ class Pipeline:
                 ass = captions.write_ass(self.ep.captions_dir() / f"{lang}_{fmt}.ass", tl["words"], size, fmt, lang,
                                          self.opts.caption_style, self.series.data.get("caption_accent", "yellow"),
                                          total=tl["total"])
+            ass_text = ass.read_text(encoding="utf-8") if ass else ""
             out = self.ep.video_path(lang, fmt)
-            trans = [render.transition_for(s, i, len(sc["scenes"])) for i, s in enumerate(sc["scenes"])]
-            fp = fingerprint([file_sig(c) for c in clips], file_sig(mix_path), ass.read_text(encoding="utf-8") if ass else "",
-                             trans, size)
+            n = len(sc["scenes"])
+            trans = [render.transition_for(s, i, n) for i, s in enumerate(sc["scenes"])]
+            durs = [s["dur"] for s in tl["scenes"]]
+            ranges = render.chunk_ranges(n)
+            chunk_paths, start, made = [], 0.0, 0
+            label = f"{fmt.replace('x', ':')}, {'Farsi' if lang == 'fa' else 'English'}"
+            for k, (a, b) in enumerate(ranges):
+                self.rep.check_stop()
+                path = self.ep.dir / "render" / f"{lang}_{fmt}_{k:03d}.mp4"
+                last = k == len(ranges) - 1
+                fp = fingerprint([file_sig(c) for c in clips[a:b]], durs[a:b], trans[a:b], ass_text, round(start, 4),
+                                 size, last)
+                key = f"chunk:{lang}:{fmt}:{k:03d}"
+                if not self.ep.state.fresh(key, fp, [path]):
+                    if made == 0:
+                        self.rep.step(f"🎬 Final video {label}: {len(ranges)} part{'s' if len(ranges) > 1 else ''}")
+                    with Timer() as t:
+                        render.render_chunk(clips[a:b], durs[a:b], trans[a:b], ass, start, path, size, last)
+                    self.ep.state.done(key, fp)
+                    made += 1
+                    self.rep.ok(f"Part {k + 1}/{len(ranges)} saved to Drive ({t.label})")
+                chunk_paths.append(path)
+                start += sum(durs[a:b])
+                self.rep.progress(base + span * (0.7 + 0.25 * (k + 1) / len(ranges)))
+            fp = fingerprint([file_sig(c) for c in chunk_paths], file_sig(mix_path))
             key = f"video:{lang}:{fmt}"
             if not self.ep.state.fresh(key, fp, [out]):
-                self.rep.step(f"🎬 Final video {fmt.replace('x', ':')} ({'Farsi' if lang == 'fa' else 'English'})")
-                with Timer() as t:
-                    title = sc.get("title_fa") if lang == "fa" and sc.get("title_fa") else sc.get("title", "")
-                    render.assemble(clips, [s["dur"] for s in tl["scenes"]], trans, mix_path, ass, out, size, title)
+                title = sc.get("title_fa") if lang == "fa" and sc.get("title_fa") else sc.get("title", "")
+                render.mux(chunk_paths, mix_path, out, tl["total"], title)
                 self.ep.state.done(key, fp, credits=credits, music=music_name)
-                self.rep.ok(f"{out.name} ({tl['total']:.0f} s video, made in {t.label})")
+                self.rep.ok(f"{out.name} ({_mmss(tl['total'])} video)")
             outs.append(out)
             self.rep.progress(base + span)
         self.rep.record("ok", "Final video", f"{len(outs)} file(s)")
@@ -459,8 +480,14 @@ class Pipeline:
             credits += [c for c in info.get("credits", []) if c not in credits]
             music_name = info.get("music", music_name)
         warnings = publish.variation_warnings(self.series, self.ep, sc, music_name)
+        chapters = {}
+        if self.opts.length == "long":
+            for lang in self.opts.languages:
+                tl = read_json(self.ep.audio_dir(lang) / "timeline.json", None)
+                if tl:
+                    chapters[lang] = publish.make_chapters(sc, tl, lang)
         meta = publish.write_metadata(self.series, self.ep, sc, self.opts.languages, credits, self.opts.creator_note,
-                                      self.rep, warnings=warnings)
+                                      self.rep, warnings=warnings, chapters=chapters)
         for w in warnings:
             self.rep.warn(w)
         self.series.remember_episode(
@@ -472,7 +499,7 @@ class Pipeline:
         return {"thumbnails": thumbs, "metadata": meta}
 
     # ------------------------------------------------------------------ all together
-    def make_video(self) -> dict:
+    def make_video(self, final: bool = True) -> dict:
         rep = self.rep
         with Timer() as total:
             rep.progress(0.02, "Characters")
@@ -489,22 +516,131 @@ class Pipeline:
             videos = self.final_videos()
             rep.progress(0.96, "Thumbnail")
             extra = self.thumbnails_and_text()
+        prof = config.gpu_profile()
+        units = round(total.seconds / 3600 * prof.cu_per_hour, 2)
         result = {"videos": [str(v) for v in videos], "thumbnails": [str(t) for t in extra["thumbnails"]],
-                  "metadata": str(self.ep.export_dir / "metadata.md"), "minutes": round(total.seconds / 60, 1)}
+                  "metadata": str(self.ep.export_dir / "metadata.md"), "minutes": round(total.seconds / 60, 1),
+                  "gpu": prof.name, "units": units, "length": self.opts.length}
         write_json(self.ep.export_dir / "result.json", result)
-        rep.done(result, f"Done in {total.label}! Your videos are in Google Drive: {self.ep.export_dir}")
+        log_video_usage(self.series.name, self.ep.number, self.opts.length, prof.name, total.seconds, units)
+        msg = (f"Done in {total.label} on {prof.name} (≈{units} compute units). "
+               f"Your videos are in Google Drive: {self.ep.export_dir}")
+        if final:
+            rep.done(result, msg)
+        else:
+            rep.ok(msg)
         return result
+
+
+# ---------------------------------------------------------------------------
+# One click: your script (or several, separated by =====) → finished videos
+# ---------------------------------------------------------------------------
+
+
+def _mmss(sec: float) -> str:
+    sec = int(round(sec))
+    return f"{sec // 60}:{sec % 60:02d}"
+
+
+def log_video_usage(series: str, number: int, length: str, gpu: str, seconds: float, units: float) -> None:
+    """Remember time and compute units per video (StoryForge/usage_videos.json) to plan your month."""
+    path = config.get().root / "usage_videos.json"
+    data = read_json(path, []) or []
+    data.append({"series": series, "episode": number, "length": length, "gpu": gpu,
+                 "minutes": round(seconds / 60, 1), "units": units, "date": time.strftime("%Y-%m-%d")})
+    write_json(path, data[-500:])
+
+
+def generate(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, number: int | None = None) -> dict:
+    """Everything after you press Generate: read script, plan, pictures, motion, voice, captions, music, export."""
+    from . import paste  # noqa: PLC0415
+
+    texts = paste.split_scripts(text) if opts.source == "paste" else [""]
+    if opts.source == "paste" and not texts:
+        raise FriendlyError("The script box is empty.", "Paste your script, then press Generate.")
+    if len(texts) > 1:
+        return run_batch(series, opts, texts, rep, number)
+    ep = series.episode(number or series.next_episode_number())
+    set_current_episode(series, ep)
+    ep.save_options(opts)
+    pipe = Pipeline(series, ep, rep, opts)
+    if opts.source == "paste":
+        script.script_from_text(series, ep, opts, texts[0], rep)
+    else:
+        pipe.write_script()
+    return pipe.make_video()
+
+
+def run_batch(series: Series, opts: EpisodeOptions, texts: list[str], rep: Reporter, number: int | None = None) -> dict:
+    """Batch mode: make every script one after another. One failure doesn't stop the others."""
+    import copy  # noqa: PLC0415
+
+    rep.step(f"📚 Batch: {len(texts)} scripts, one after another")
+    done, failed = [], []
+    for k, text in enumerate(texts, 1):
+        rep.check_stop()
+        ep = series.episode((number + k - 1) if number else series.next_episode_number())
+        rep.step(f"📚 Script {k}/{len(texts)} → episode {ep.number}")
+        set_current_episode(series, ep)
+        o = copy.deepcopy(opts)
+        ep.save_options(o)
+        try:
+            script.script_from_text(series, ep, o, text, rep)
+            res = Pipeline(series, ep, rep, o).make_video(final=False)
+            done.append({"episode": ep.number, **res})
+        except Exception as exc:  # noqa: BLE001
+            from .messages import StopRequested, explain  # noqa: PLC0415
+
+            if isinstance(exc, StopRequested):
+                raise
+            what, todo = explain(exc)
+            rep.error(f"Script {k} (episode {ep.number}) failed: {what}", todo)
+            failed.append(ep.number)
+    summary = {"videos": [v for d in done for v in d["videos"]], "thumbnails": [t for d in done for t in d["thumbnails"]],
+               "episodes": [d["episode"] for d in done], "failed": failed,
+               "units": round(sum(d.get("units", 0) for d in done), 2)}
+    rep.record("ok" if not failed else "warn", "Batch", f"{len(done)} done, {len(failed)} failed")
+    rep.done(summary, f"Batch finished: {len(done)} of {len(texts)} videos made (≈{summary['units']} compute units)."
+             + (f" Failed: episodes {failed}. Press Generate again to retry them." if failed else ""))
+    return summary
+
+
+def set_current_episode(series: Series, ep: Episode) -> None:
+    write_json(config.get().root / "app.json", {"series": series.slug, "episode": ep.number})
 
 
 # ---------------------------------------------------------------------------
 # Quick test: 3 scenes, motion effects only, 720p, main format
 # ---------------------------------------------------------------------------
 
+QUICK_SCRIPT = """[TITLE] The Night Radio
+[SCENE] a lonely lighthouse on a cliff at night, storm clouds over the sea
+NARRATOR: At exactly three in the morning, the old radio in the lighthouse turned itself on.
+[SCENE] an old brass radio glowing on a wooden desk, rain on the window
+NARRATOR: A voice came through the static. It was her own voice.
+MIRA: Who is this?
+[SCENE] a dark wooden door with warm light under it
+NARRATOR: The voice whispered one last warning. Do not open the door.
+"""
 
-def quick_test(rep: Reporter, idea: str = "", languages=("en",), fmt: str = "9x16") -> dict:
+
+def quick_test(rep: Reporter, text: str = "", languages=("en",), length: str = "short") -> dict:
+    """3 scenes from your script (or a sample), motion effects only, 720p."""
+    from . import paste  # noqa: PLC0415
+
     s = config.get()
+    prof = config.gpu_profile()
     rep.step("⚡ Quick test: 3 scenes, motion effects only (no hero clips), 720p")
-    rep.info(f"Computer: {s.gpu.label}. Saving to: {s.root}")
+    rep.info(f"Computer: {s.gpu.label} → {prof.label}. Saving to: {s.root}")
+    first = (paste.split_scripts(text) or [""])[0]
+    if first.strip():
+        scenes = paste.to_scenes(paste.parse_lines(first), length)[:3]
+        title = paste.parse_lines(first)["title"]
+        body = "\n".join(([f"[TITLE] {title}"] if title else []) + [
+            line for sc in scenes for line in ([f"[SCENE] {sc['visual']}"] if sc["visual"].strip() else ["[SCENE] "])
+            + [f"{ln['speaker']}: {ln['text']}" for ln in sc["lines"]]])
+    else:
+        body = QUICK_SCRIPT
     series = Series.create("Quick test")
     ep_dir = series.dir / "episodes" / "ep01"
     if ep_dir.exists():
@@ -512,18 +648,16 @@ def quick_test(rep: Reporter, idea: str = "", languages=("en",), fmt: str = "9x1
     series.data["episodes"] = {}
     series.save()
     ep = series.episode(1)
-    opts = EpisodeOptions(idea=idea.strip() or QUICK_IDEA, languages=list(languages) or ["en"], formats=[fmt],
-                          resolution="720p", scene_count=3, hero_count=0, quick_test=True)
+    opts = EpisodeOptions.from_dict({"script_text": body, "languages": list(languages) or ["en"], "length": length,
+                                     "resolution": "720p", "hero_count": 0, "quick_test": True, "source": "paste"})
     ep.save_options(opts)
+    set_current_episode(series, ep)
     pipe = Pipeline(series, ep, rep, opts)
-    sc = pipe.write_script()
-    if "fa" in opts.languages and not all(s.get("narration_fa") for s in sc["scenes"]):
-        opts.languages = [lang for lang in opts.languages if lang != "fa"] or ["en"]
-        if opts.languages == ["en"] and "en" not in languages:
-            rep.warn("No Farsi text (the AI translator is busy), so the test uses English.")
-        else:
-            rep.warn("Farsi skipped in this test: no translation available right now.")
-        rep.record("warn", "Farsi", "skipped (no translation)")
+    sc = script.script_from_text(series, ep, opts, body, rep)
+    other = [x for x in opts.languages if x != sc["language"]]
+    if other and not all(x.get("narration_fa" if other[0] == "fa" else "narration") for x in sc["scenes"]):
+        opts.languages = [sc["language"]]
+        rep.warn("The other language is skipped in this test: no translation available right now.")
         ep.save_options(opts)
     rep.progress(0.05)
     result = pipe.make_video()

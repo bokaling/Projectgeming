@@ -162,7 +162,7 @@ def template_metadata(series: Series, ep: Episode, script: dict, lang: str) -> d
     }
 
 
-def ai_metadata(series: Series, ep: Episode, script: dict, lang: str, rep=None) -> tuple[str, dict]:
+def ai_metadata(series: Series, ep: Episode, script: dict, lang: str, rep=None, chapters=None) -> tuple[str, dict]:
     system = ("You write viral but honest titles, descriptions and hashtags for a serialized story channel. "
               "No clickbait lies, no misleading claims. Reply with JSON only.")
     lang_name = "Persian (Farsi)" if lang == "fa" else "English"
@@ -170,8 +170,10 @@ def ai_metadata(series: Series, ep: Episode, script: dict, lang: str, rep=None) 
         "language": lang_name, "series": series.name, "episode": ep.number, "title": script.get("title"),
         "logline": script.get("logline"), "hook": script["scenes"][0]["narration"] if script["scenes"] else "",
         "cliffhanger": script.get("cliffhanger"), "next": script.get("next_tease"),
+        "chapters_to_name": [c["title"] for c in (chapters or [])],
         "reply_format": {"titles": ["3 title options, max 70 characters"], "description": "3-5 short lines",
-                         "hashtags": {"youtube": ["5 tags"], "tiktok": ["5 tags"], "instagram": ["8 tags"]}},
+                         "hashtags": {"youtube": ["5 tags"], "tiktok": ["5 tags"], "instagram": ["8 tags"]},
+                         "chapter_titles": ["one short chapter title (2-5 words) per item in chapters_to_name"]},
     }, ensure_ascii=False)
 
     def validate(obj):
@@ -180,6 +182,47 @@ def ai_metadata(series: Series, ep: Episode, script: dict, lang: str, rep=None) 
 
     return llm.generate_json(system, user, validate=validate, rep=rep, task="metadata", temperature=0.7,
                              max_tokens=1200, allow_local=False)
+
+
+def _ts(sec: float) -> str:
+    sec = int(sec)
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _short_title(text: str, lang: str) -> str:
+    words = re.sub(r"[\"“”«»]", "", text).split()[:6]
+    t = " ".join(words).rstrip(".,!?؟،:;…")
+    return t[:1].upper() + t[1:] if lang != "fa" else t
+
+
+def make_chapters(script: dict, timeline: dict, lang: str) -> list[dict]:
+    """YouTube chapters for long videos: your [CHAPTER] marks, or one every ~90 seconds.
+
+    YouTube needs: first chapter at 0:00, at least 3 chapters, each at least 10 seconds.
+    """
+    scenes, times = script["scenes"], timeline["scenes"]
+    total = timeline["total"]
+    text_of = (lambda sc: sc.get("narration_fa") or sc.get("narration", "")) if lang == "fa" else \
+        (lambda sc: sc.get("narration") or sc.get("narration_fa", ""))
+    marks = [(t["start"], sc["chapter"]) for sc, t in zip(scenes, times) if sc.get("chapter")]
+    if len(marks) < 3:
+        n = max(3, min(10, round(total / 90)))
+        marks, last = [], -1
+        for k in range(n):
+            target = total * k / n
+            i = min(range(len(times)), key=lambda j: abs(times[j]["start"] - target))
+            if i != last:
+                marks.append((times[i]["start"], _short_title(text_of(scenes[i]), lang)))
+                last = i
+    marks[0] = (0.0, marks[0][1])
+    chapters = []
+    for k, (start, title) in enumerate(marks):
+        end = marks[k + 1][0] if k + 1 < len(marks) else total
+        if end - start >= 10 or not chapters:
+            chapters.append({"start": start, "time": _ts(start), "title": title or f"Part {k + 1}"})
+    return chapters if len(chapters) >= 3 else []
 
 
 def variation_warnings(series: Series, ep: Episode, script: dict, music_name: str) -> list[str]:
@@ -204,17 +247,25 @@ def variation_warnings(series: Series, ep: Episode, script: dict, music_name: st
 
 
 def write_metadata(series: Series, ep: Episode, script: dict, langs: list[str], credits: list[str],
-                   creator_note: str, rep=None, warnings=()) -> dict:
+                   creator_note: str, rep=None, warnings=(), chapters: dict | None = None) -> dict:
     result = {"languages": {}, "credits": credits, "checklist": PLATFORM_CHECKLIST, "warnings": list(warnings)}
     disclosure = {"en": "Made with AI-generated images and voices. Story and editing by the creator.",
                   "fa": "تصاویر و صدا با هوش مصنوعی ساخته شده‌اند. داستان و تدوین توسط سازنده."}
     for lang in langs:
         provider = "Template"
         try:
-            provider, meta = ai_metadata(series, ep, script, lang, rep)
+            provider, meta = ai_metadata(series, ep, script, lang, rep, (chapters or {}).get(lang))
         except Exception:
             meta = template_metadata(series, ep, script, lang)
         desc = str(meta.get("description", "")).strip()
+        chs = (chapters or {}).get(lang) or []
+        titles = meta.get("chapter_titles") if isinstance(meta.get("chapter_titles"), list) else []
+        for k, ch in enumerate(chs):  # nicer AI titles when available
+            if k < len(titles) and str(titles[k]).strip():
+                ch["title"] = str(titles[k]).strip()[:60]
+        if chs:
+            desc += "\n\n" + ("فصل‌ها:" if lang == "fa" else "Chapters:") + "\n" + "\n".join(
+                f"{c['time']} {c['title']}" for c in chs)
         if creator_note.strip():
             desc += "\n\n" + creator_note.strip()
         if credits:
@@ -228,6 +279,7 @@ def write_metadata(series: Series, ep: Episode, script: dict, langs: list[str], 
             "description": desc,
             "hashtags": {k: [t if str(t).startswith("#") else "#" + str(t) for t in v][:10] for k, v in tags.items()},
             "provider": provider,
+            "chapters": chs,
         }
     write_json(ep.export_dir / "metadata.json", result)
     (ep.export_dir / "metadata.md").write_text(to_markdown(series, ep, result), encoding="utf-8")

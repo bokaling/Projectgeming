@@ -135,6 +135,10 @@ class EpisodeOptions:
     creator_note: str = ""
     quick_test: bool = False
 
+    def __post_init__(self):
+        self.length = "long" if self.length == "long" else "short"
+        self.formats = ["16x9"] if self.length == "long" else ["9x16"]  # short = 9:16, long = 16:9
+
     @classmethod
     def from_dict(cls, d: dict | None) -> "EpisodeOptions":
         d = d or {}

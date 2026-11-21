@@ -80,9 +80,11 @@ def parse_lines(text: str, known: set[str] = frozenset()) -> dict:
                 title = value
             elif kind == "CHAPTER":
                 chapter = value
-                if cur is not None and not cur["lines"] and not cur["from_tag"]:
+                if cur is not None and not cur["lines"]:
                     cur["chapter"] = value
                     chapter = ""
+                else:
+                    cur = None  # a chapter always starts a new block
             else:
                 new_block(value or " ")
             continue

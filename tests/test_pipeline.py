@@ -21,13 +21,13 @@ def test_full_episode_and_resume(offline):
     pipe = pipeline.Pipeline(series, ep, rep, opts)
     pipe.write_script()
     result = pipe.make_video()
-    assert len(result["videos"]) == 4  # 2 languages x 2 formats
+    assert len(result["videos"]) == 2  # 2 languages x 1 format (short = 9:16)
     for v in result["videos"]:
         assert media.has_audio(v) and media.duration(v) > 3
-    assert media.video_size(ep.video_path("en", "16x9")) == (854, 480)
+    assert media.video_size(ep.video_path("en", "9x16")) == (480, 854)
     meta = (ep.export_dir / "metadata.md").read_text(encoding="utf-8")
     assert "AI-generated" in meta and "Snapchat" in meta and "Farsi" in meta
-    assert len(result["thumbnails"]) == 4
+    assert len(result["thumbnails"]) == 2
     assert series.data["episodes"]["1"]["title"] == "The Signal"  # remembered for the next episode
     # Resume: running again redoes nothing
     rep2 = Reporter(echo=False)
@@ -76,10 +76,12 @@ def test_regenerate_and_upload_one_scene(offline, tmp_path):
 
 def test_quick_test_end_to_end(offline):
     rep = Reporter(echo=False)
-    result = pipeline.quick_test(rep, idea="A cat finds a portal.")
+    result = pipeline.quick_test(rep)
     assert len(result["videos"]) == 1 and media.video_size(result["videos"][0]) == (720, 1280)
     parts = [p for _, p, _ in rep.summary]
     assert {"Script", "Pictures", "Final video"} <= set(parts)
+    sc = project.Series("quick-test").episode(1).load_script()
+    assert len(sc["scenes"]) == 3 and sc["scenes"][1]["lines"][-1]["speaker"] == "MIRA"  # narrator + character
     assert "Quick test results" in rep.text(200)
 
 
