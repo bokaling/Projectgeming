@@ -1,3 +1,8 @@
-# Optional voice engines. If one fails to install, StoryForge uses the next voice.
+# Optional voice engines (installed by storyforge/install.py). If one fails, StoryForge uses the next voice.
+# Kokoro needs --ignore-requires-python on Python 3.13 and these pins (see install.py for why).
 kokoro>=0.9.4
+misaki[en]>=0.9.4
+spacy>=3.8,<3.9
+thinc>=8.3,<8.4
+spacy-curated-transformers>=0.2,<0.4
 piper-tts>=1.3
