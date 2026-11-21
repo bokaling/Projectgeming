@@ -1,0 +1,12 @@
+# For running the tests on a normal computer (no GPU needed).
+numpy
+scipy
+pillow
+opencv-python-headless
+requests
+soundfile
+gradio>=6.0,<7
+edge-tts>=7.2
+arabic-reshaper
+python-bidi
+pytest
