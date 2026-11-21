@@ -356,13 +356,11 @@ class Pipeline:
                             f"{script.CAMERA_LABELS.get(sc['camera'], sc['camera'])}, {how} ({secs})")
             self.rep.progress(a + (b - a) * k / len(jobs), f"Scene motion {k}/{len(jobs)}")
 
-        if workers > 1 and len(jobs) > 1:
+        if workers > 1 and len(jobs) > 1:  # several scenes at once, each in its own small Python process
             import concurrent.futures  # noqa: PLC0415
-            import multiprocessing  # noqa: PLC0415
 
-            ctx = multiprocessing.get_context("spawn")
-            with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
-                futures = {pool.submit(clip_mod.render_job, job): job for job in jobs}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(clip_mod.run_in_subprocess, job): job for job in jobs}
                 for k, fut in enumerate(concurrent.futures.as_completed(futures), 1):
                     if self.rep.stop_requested:
                         for f in futures:

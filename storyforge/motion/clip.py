@@ -74,3 +74,39 @@ def from_video(video: Path, out: Path, size: tuple[int, int], seconds: float, fp
     tmp.replace(out)
     return "video clip" if slow <= 1.01 else f"video clip (slowed {slow:.2f}x)"
 
+
+
+def run_in_subprocess(job: dict) -> str:
+    """Render one scene in its own Python process (safe parallelism: never re-runs the app itself)."""
+    import json  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from .. import config  # noqa: PLC0415
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
+        json.dump(job, f)
+        path = f.name
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(config.REPO_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    env["STORYFORGE_FORCE_CPU"] = "1"  # helpers use the CPU; the GPU path runs in the main process
+    try:
+        res = subprocess.run([sys.executable, "-m", "storyforge.motion.clip", path], capture_output=True, text=True,
+                             env=env, timeout=3600)
+    finally:
+        os.unlink(path)
+    if res.returncode != 0:
+        tail = (res.stderr or "").strip().splitlines()
+        raise RuntimeError("scene render failed: " + (tail[-1][:300] if tail else "unknown error"))
+    lines = [ln for ln in res.stdout.strip().splitlines() if ln.strip()]
+    return lines[-1] if lines else "rendered"
+
+
+if __name__ == "__main__":  # python -m storyforge.motion.clip job.json
+    import json
+    import sys
+
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        print(render_job(json.load(fh)))

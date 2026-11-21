@@ -91,13 +91,11 @@ def test_gpu_renderer_matches_cpu_renderer(scene_png):
 
 def test_parallel_scene_rendering(sf_root, scene_png, tmp_path):
     import concurrent.futures
-    import multiprocessing
 
     jobs = [{"video": "", "image": str(scene_png), "depth": "", "out": str(tmp_path / f"c{i}.mp4"), "size": [90, 160],
              "seconds": 0.5, "fps": 12, "camera": cam, "fx": [], "seed": i, "shake": [], "strength": 1.0,
              "extras": True} for i, cam in enumerate(["push_in", "pan_left", "tilt_up"])]
-    ctx = multiprocessing.get_context("spawn")
-    with concurrent.futures.ProcessPoolExecutor(max_workers=2, mp_context=ctx) as pool:
-        results = list(pool.map(clip.render_job, jobs))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(clip.run_in_subprocess, jobs))
     assert all(r.startswith("Ken Burns") for r in results)
     assert all(abs(media.duration(j["out"]) - 0.5) < 0.1 for j in jobs)

@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .. import captions, characters, config, pipeline, publish
+from .. import captions, characters, config, pipeline, planner, publish
 from .. import script as script_mod
 from ..audio import music, tts
 from ..messages import FriendlyError, explain
@@ -20,9 +20,9 @@ from .theme import CSS, HEAD, build_theme
 NEW = "__new__"
 TAB_IDS = ["idea", "script", "chars", "scenes", "voice", "export"]
 LANG_CHOICES = [("English", "en"), ("Farsi · فارسی", "fa")]
-FORMAT_CHOICES = [("9:16 · Shorts, TikTok, Reels, Snapchat", "9x16"), ("16:9 · YouTube", "16x9")]
 MOOD_CHOICES = [("Auto (from the script)", "auto")] + [(m.title(), m) for m in script_mod.MOODS]
 CAMERA_CHOICES = [(v, k) for k, v in script_mod.CAMERA_LABELS.items()]
+SHOT_CHOICES = [(v, k) for k, v in planner.SHOT_LABELS.items()]
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +85,15 @@ def header_html() -> str:
     )
 
 
+def session_html() -> str:
+    """⏱ Session time + estimated compute units (Colab doesn't show this live)."""
+    prof = config.gpu_profile()
+    s = config.get()
+    cache = "📦 big models on Drive" if s.cache_big_models_on_drive else "📥 big models download each session"
+    return (f'<div class="sf-project" style="text-align:right">{html.escape(config.session_label())} · {cache}'
+            f'<br><span style="opacity:.7">Estimate from unofficial rates. Check Colab → Runtime → View resources.</span></div>')
+
+
 def project_html() -> str:
     series, ep = current()
     if series is None:
@@ -120,6 +129,22 @@ def progress_html() -> str:
             f'<div class="sf-progress-sub">{last} · {rep.elapsed()}</div></div>')
 
 
+def usage_html(result: dict | None) -> str:
+    """This video's time and units, and this month's totals (to plan your 50 units)."""
+    data = read_json(config.get().root / "usage_videos.json", []) or []
+    month = time.strftime("%Y-%m")
+    this = [d for d in data if str(d.get("date", "")).startswith(month)]
+    shorts = [d for d in this if d.get("length") == "short"]
+    longs = [d for d in this if d.get("length") == "long"]
+    units = sum(float(d.get("units", 0)) for d in this)
+    head = ""
+    if result and result.get("minutes") is not None:
+        head = (f"⏱ This video: <b>{result['minutes']} min</b> on {html.escape(str(result.get('gpu', '?')))} "
+                f"≈ <b>{result.get('units', 0)} units</b><br>")
+    return (f'<div class="sf-note">{head}📅 This month: {len(shorts)} short, {len(longs)} long · '
+            f'≈ <b>{units:.1f}</b> of your 50 units (estimate)</div>')
+
+
 def checklist_html(summary) -> str:
     if not summary:
         return ""
@@ -138,18 +163,35 @@ def series_choices():
     return items + [("➕ New series", NEW)]
 
 
-def opts_from(idea, note, langs, fmts, scenes, heroes, res, cap_on, cap_style, mood, vol, sfx, fx, second) -> EpisodeOptions:
+def opts_from(text, idea, note, langs, length, scenes, heroes, res, cap_on, cap_style, mood, vol, sfx, fx,
+              second, source="paste") -> EpisodeOptions:
     return EpisodeOptions.from_dict({
-        "idea": idea or "", "creator_note": note or "", "languages": langs or ["en"], "formats": fmts or ["9x16"],
-        "scene_count": int(scenes), "hero_count": int(heroes), "resolution": res, "captions": bool(cap_on),
-        "caption_style": cap_style, "music_mood": mood, "music_volume": float(vol), "sfx": bool(sfx),
-        "effects": bool(fx), "second_format_images": second,
+        "script_text": text or "", "idea": idea or "", "creator_note": note or "", "languages": langs or ["en"],
+        "length": length, "scene_count": int(scenes), "hero_count": int(heroes), "resolution": res,
+        "captions": bool(cap_on), "caption_style": cap_style, "music_mood": mood, "music_volume": float(vol),
+        "sfx": bool(sfx), "effects": bool(fx), "second_format_images": second, "source": source,
     })
 
 
 def opts_to_values(o: EpisodeOptions):
-    return [o.idea, o.creator_note, o.languages, o.formats, o.scene_count, o.hero_count, o.resolution, o.captions,
-            o.caption_style, o.music_mood, o.music_volume, o.sfx, o.effects, o.second_format_images]
+    return [o.script_text, o.idea, o.creator_note, o.languages, o.length, o.scene_count, o.hero_count, o.resolution,
+            o.captions, o.caption_style, o.music_mood, o.music_volume, o.sfx, o.effects, o.second_format_images]
+
+
+def hero_choices():
+    prof = config.gpu_profile()
+    auto = f"Auto ({prof.heroes_short} short / {prof.heroes_long} long on {prof.name})"
+    return [(auto, -1), ("0 · motion effects only", 0)] + [(str(n), n) for n in (1, 2, 3, 5, 8, 10)]
+
+
+SCRIPT_PLACEHOLDER = """[TITLE] The Night Radio
+[SCENE] a yellow taxi in the rain at 3 a.m., neon signs
+NARRATOR: The radio crackled at exactly three in the morning.
+MIRA: Who's there?
+NARRATOR: A voice answered with her own name.
+
+(No [SCENE] lines? Just paste the story: it is split into scenes for you.
+Several videos at once: separate the scripts with a line of =====)"""
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +208,9 @@ def build_app():
 
     with gr.Blocks(title="StoryForge · Free AI Story Videos") as demo:
         gr.HTML(header_html())
-        project_box = gr.HTML(project_html())
+        with gr.Row(elem_classes="sf-row-stack"):
+            project_box = gr.HTML(project_html())
+            session_box = gr.HTML(session_html())
         with gr.Group(elem_classes="sf-card"):
             progress_box = gr.HTML(progress_html())
             with gr.Row(elem_classes="sf-row-stack"):
@@ -180,43 +224,56 @@ def build_app():
         seen = gr.State({"count": -1, "ver": ""})
 
         with gr.Tabs(elem_classes="sf-steps", selected="idea") as tabs:
-            # ------------------------------------------------------------ 1 Idea
-            with gr.Tab("1 · 💡 Idea", id="idea"):
+            # ------------------------------------------------------------ 1 Script (paste)
+            with gr.Tab("1 · 📝 Script", id="idea"):
                 with gr.Row(elem_classes="sf-row-stack", equal_height=False):
                     with gr.Column(scale=3):
                         with gr.Group(elem_classes=["sf-card", "sf-hero-card"]):
-                            gr.HTML('<div class="sf-card-title">Your story idea</div>'
-                                    '<div class="sf-card-sub">One or two sentences are enough. For episode 2+, '
-                                    'say what should happen next (or leave empty to continue).</div>')
-                            idea = gr.Textbox(show_label=False, lines=4, placeholder="e.g. A lighthouse keeper hears her "
-                                              "future self on an old radio, warning her about tonight's storm…")
-                            note = gr.Textbox(label="Creator note (optional): your recap, question or comment for viewers",
-                                              lines=2)
+                            gr.HTML('<div class="sf-card-title">Paste your script</div>'
+                                    '<div class="sf-card-sub"><b>[TITLE]</b> title · <b>[SCENE]</b> what we see '
+                                    '(optional) · <b>NARRATOR:</b> line · <b>NAME:</b> a character speaking. '
+                                    'Several scripts? Put a line of <b>=====</b> between them (batch).</div>')
+                            paste_box = gr.Textbox(show_label=False, lines=16, max_lines=40,
+                                                   placeholder=SCRIPT_PLACEHOLDER, elem_classes="sf-script")
+                            length = gr.Radio([("⚡ Short · ~60 s · 9:16 · 1080×1920", "short"),
+                                               ("🎬 Long · ~10 min · 16:9 · 1920×1080 · chapters", "long")],
+                                              value=default_opts.length, show_label=False)
                         with gr.Row(elem_classes="sf-row-stack"):
-                            write_btn = gr.Button("✨ Write my script", variant="primary", size="lg", scale=2)
+                            gen_btn = gr.Button("🚀 Generate video", variant="primary", size="lg", scale=2)
                             quick_btn = gr.Button("⚡ Quick test", variant="secondary", size="lg", scale=1)
-                        gr.HTML('<div class="sf-note">⚡ <b>Quick test</b> makes a short 3-scene video with motion '
-                                'effects only (no hero clips, 720p), so you can check that everything works. '
-                                'It takes about 3-8 minutes on a Colab GPU.</div>')
+                        gr.HTML('<div class="sf-note">🚀 <b>Generate</b> does everything by itself: scenes, pictures, '
+                                'motion, voice, captions, music, export, thumbnail, title, description and hashtags. '
+                                '⚡ <b>Quick test</b> makes only the first 3 scenes (720p, no hero clips) to check '
+                                'that everything works.</div>')
+                        with gr.Accordion("✨ No script? Let the AI write one (optional)", open=False):
+                            idea = gr.Textbox(label="Story idea", lines=3, placeholder="e.g. A lighthouse keeper hears "
+                                              "her future self on an old radio…")
+                            scenes_n = gr.Slider(3, 80, value=default_opts.scene_count, step=1,
+                                                 label="Number of scenes (short ~12, long ~60)")
+                            write_btn = gr.Button("✨ Write it with AI", variant="secondary")
+                        note = gr.Textbox(label="Creator note (optional): your recap, question or comment for viewers",
+                                          lines=2)
                     with gr.Column(scale=2):
                         with gr.Group(elem_classes="sf-card"):
                             gr.HTML('<div class="sf-card-title">Series &amp; episode</div>'
-                                    '<div class="sf-card-sub">Same series = same characters, style and voice.</div>')
+                                    '<div class="sf-card-sub">Same series = same characters, style and voices.</div>')
                             series_dd = gr.Dropdown(choices=series_choices(), value=NEW, label="Series")
                             new_name = gr.Textbox(label="New series name", placeholder="e.g. The Last Signal")
                             ep_no = gr.Number(value=1, precision=0, minimum=1, label="Episode number")
                             open_btn = gr.Button("📂 Open this episode", variant="secondary")
                         with gr.Group(elem_classes="sf-card"):
-                            langs = gr.CheckboxGroup(LANG_CHOICES, value=default_opts.languages, label="Languages")
-                            fmts = gr.CheckboxGroup(FORMAT_CHOICES, value=default_opts.formats, label="Video formats")
-                            scenes_n = gr.Slider(3, 14, value=default_opts.scene_count, step=1, label="Number of scenes")
-                            heroes_n = gr.Slider(0, 3, value=default_opts.hero_count, step=1, label="🎬 Hero scenes (real motion)",
-                                                 info="Real image-to-video on the GPU, about 5-15 min each. 0 = motion effects only.")
+                            langs = gr.CheckboxGroup(LANG_CHOICES, value=default_opts.languages,
+                                                     label="Languages (your script's language is detected; "
+                                                           "tick the other one for a translated version too)")
+                            heroes_n = gr.Dropdown(hero_choices(), value=default_opts.hero_count,
+                                                   label="🎬 Hero scenes (real image-to-video)",
+                                                   info="Auto = what your GPU can do quickly. Every other scene gets "
+                                                        "2.5D motion effects.")
                             res = gr.Radio([("1080p (best)", "1080p"), ("720p (faster)", "720p")],
                                            value=default_opts.resolution, label="Quality")
 
             # ------------------------------------------------------------ 2 Script
-            with gr.Tab("2 · ✍️ Script", id="script"):
+            with gr.Tab("2 · ✍️ Edit", id="script"):
                 with gr.Group(elem_classes="sf-card"):
                     gr.HTML('<div class="sf-card-title">Edit your script</div>'
                             '<div class="sf-card-sub">Change anything you like: this is where the story becomes yours. '
@@ -241,7 +298,7 @@ def build_app():
 
                 @gr.render(inputs=[r_chars])
                 def char_cards(_):
-                    series, _ep = current()
+                    series, _ep = current()  # noqa: F841
                     if series is None or not series.characters:
                         gr.HTML('<div class="sf-empty">No characters yet. Write a script first, or add one below.</div>')
                         return
@@ -256,6 +313,39 @@ def build_app():
                                 gr.HTML(f'<div class="sf-card-title">{html.escape(name)}</div>')
                                 desc = gr.Textbox(value=c.get("description", ""), label="Fixed look (40-60 words)", lines=4)
                                 name_fa = gr.Textbox(value=c.get("name_fa", ""), label="Name in Farsi", elem_classes="sf-rtl")
+                                vlang = (_ep.load_script() or {}).get("language", "en") if _ep else "en"
+                                narr = series.data.get("voices", {}).get(vlang) or ("kokoro:am_fenrir" if vlang == "en"
+                                                                                     else "edge:fa-IR-FaridNeural")
+                                cur = characters.voice_for(series, name, vlang, narr)
+                                cvoice = gr.Dropdown(tts.voice_choices(vlang, own=False),
+                                                     value=f"{cur['engine']}:{cur['voice']}",
+                                                     label=f"Voice when {name} speaks")
+                                cprev = gr.Button("🔊 Preview voice", size="sm")
+                                caudio = gr.Audio(show_label=False, interactive=False, visible=False)
+
+                                def _voice(v, name=name, lang=vlang):
+                                    s2, _ = need_project()
+                                    ch = s2.character(name)
+                                    if ch is not None:
+                                        ch[f"voice_{lang}"] = v
+                                        s2.save()
+
+                                def _preview(v, name=name, lang=vlang):
+                                    try:
+                                        _, e2 = need_project()
+                                        line = next((ln["text"] for sc_ in (e2.load_script() or {}).get("scenes", [])
+                                                     for ln in sc_.get("lines", []) if ln["speaker"].lower() == name.lower()),
+                                                    f"Hello, my name is {name}." if lang == "en" else f"سلام، من {name} هستم.")
+                                        out = config.get().temp_dir / f"preview_{slugify(name)}.wav"
+                                        engine, _w = tts.speak(line[:200], lang, tts.parse_voice(v, lang), out)
+                                        gr.Info(f"{name}: {engine}")
+                                        return gr.update(value=str(out), visible=True)
+                                    except Exception as exc:  # noqa: BLE001
+                                        _toast(exc)
+                                        return gr.skip()
+
+                                cvoice.input(_voice, cvoice, None)
+                                cprev.click(_preview, cvoice, caudio)
                                 with gr.Row():
                                     save_c = gr.Button("💾 Save", size="sm")
                                     new_pic = gr.Button("🎨 New picture", size="sm", variant="primary")
@@ -337,6 +427,8 @@ def build_app():
                                     badges.append('<span class="sf-badge cliff">❓ Cliffhanger</span>')
                                 if sid in hero_ids:
                                     badges.append('<span class="sf-badge hero">⭐ Hero</span>')
+                                if s.get("shot"):
+                                    badges.append(f'<span class="sf-badge">{planner.SHOT_LABELS.get(s["shot"], "")}</span>')
                                 if up_path:
                                     badges.append('<span class="sf-badge mine">📤 Yours</span>')
                                 gr.HTML(f'<div class="sf-badges">{"".join(badges)}</div>')
@@ -351,6 +443,7 @@ def build_app():
                                 if s.get("narration_fa"):
                                     gr.HTML(f'<div class="sf-narr sf-rtl">{html.escape(s["narration_fa"])}</div>')
                                 vis = gr.Textbox(value=s["visual"], label="Picture prompt", lines=3)
+                                shot = gr.Dropdown(SHOT_CHOICES, value=s.get("shot") or None, label="Shot type")
                                 cam = gr.Dropdown(CAMERA_CHOICES, value=s["camera"], label="Camera move")
                                 hero = gr.Checkbox(value=bool(s.get("hero")), label="⭐ Hero (real motion)")
                                 with gr.Row():
@@ -361,21 +454,25 @@ def build_app():
                                     if up_path:
                                         undo = gr.Button("↩️ Use AI picture", size="sm")
 
-                                def _save_scene(v, c, h, sid=sid, n=_):
+                                def _save_scene(v, c, h, sh=None, sid=sid, n=_):
                                     try:
                                         _, e = need_project()
                                         data = e.load_script()
                                         for x in data["scenes"]:
                                             if x["id"] == sid:
                                                 x["visual"], x["camera"], x["hero"] = v.strip(), c, bool(h)
+                                                if sh in planner.SHOTS:
+                                                    x["shot"], x["show_character"] = sh, planner.SHOTS[sh][1]
+                                                    if not x["show_character"]:
+                                                        x["characters"] = []
                                         script_mod.save_script(e, data)
                                         gr.Info("Saved. Press Regenerate to see the new prompt.")
                                     except Exception as exc:  # noqa: BLE001
                                         _toast(exc)
                                     return n + 1
 
-                                def _regen(v, c, h, sid=sid, n=_):
-                                    _save_scene(v, c, h, sid, n)
+                                def _regen(v, c, h, sh, sid=sid, n=_):
+                                    _save_scene(v, c, h, sh, sid, n)
                                     s2, e = need_project()
                                     o = e.load_options()
                                     return start_job(f"New picture for scene {sid[1:].lstrip('0')}",
@@ -391,8 +488,8 @@ def build_app():
                                         _toast(exc)
                                     return n + 1
 
-                                save_s.click(_save_scene, [vis, cam, hero], [r_scenes])
-                                regen.click(_regen, [vis, cam, hero], [progress_box])
+                                save_s.click(_save_scene, [vis, cam, hero, shot], [r_scenes])
+                                regen.click(_regen, [vis, cam, hero, shot], [progress_box])
                                 rep_btn.upload(_replace, [rep_btn], [r_scenes])
                                 if up_path:
                                     def _undo(sid=sid, n=_):
@@ -413,8 +510,12 @@ def build_app():
                         with gr.Group(elem_classes="sf-card"):
                             gr.HTML('<div class="sf-card-title">Voices</div>'
                                     '<div class="sf-card-sub">Saved for the whole series, so every episode sounds the same.</div>')
-                            voice_en = gr.Dropdown(tts.voice_choices("en"), value="kokoro:am_fenrir", label="English voice")
-                            voice_fa = gr.Dropdown(tts.voice_choices("fa"), value="edge:fa-IR-FaridNeural", label="Farsi voice")
+                            voice_en = gr.Dropdown(tts.voice_choices("en"), value="kokoro:am_fenrir",
+                                                   label="Narrator voice · English (one male narrator by default)")
+                            voice_fa = gr.Dropdown(tts.voice_choices("fa"), value="edge:fa-IR-FaridNeural",
+                                                   label="Narrator voice · Farsi")
+                            gr.HTML('<div class="sf-note">Characters who speak in your script (lines like '
+                                    '<b>MIRA:</b>) get their own voice: pick and preview it on step 3.</div>')
                             gr.HTML(f'<div class="sf-warn">⚠️ {html.escape(tts.EDGE_WARNING)}</div>')
                             preview_lang = gr.Radio(LANG_CHOICES, value="en", label="Preview language")
                             preview_btn = gr.Button("🔊 Preview voice", variant="secondary")
@@ -439,8 +540,9 @@ def build_app():
                                     '<div class="sf-card-sub">Built-in music and sounds are made by the app: no copyright '
                                     'claims. Add your own tracks in Drive: StoryForge/library/music/&lt;mood&gt;/.</div>')
                             mood = gr.Dropdown(MOOD_CHOICES, value="auto", label="Music mood")
-                            vol = gr.Slider(0, 0.6, value=default_opts.music_volume, step=0.02, label="Music volume")
-                            sfx = gr.Checkbox(value=True, label="Sound effects (whoosh, impact, rain…)")
+                            vol = gr.Slider(0, 0.4, value=default_opts.music_volume, step=0.01,
+                                            label="Music volume (it also ducks under the voice automatically)")
+                            sfx = gr.Checkbox(value=False, label="Sound effects (soft whoosh, impact, rain…) · off = calmer")
                             fx = gr.Checkbox(value=True, label="Visual effects (particles, light, grain)")
                             second = gr.Radio([("Auto", "auto"), ("Separate 16:9 pictures (better)", "generate"),
                                                ("Reuse 9:16 pictures (faster)", "reuse")], value="auto",
@@ -479,15 +581,18 @@ def build_app():
                         with gr.Group(elem_classes="sf-card"):
                             gr.Markdown(meta.read_text(encoding="utf-8"))
                     gr.HTML(f'<div class="sf-note">📁 Saved in Google Drive: {html.escape(str(ep.export_dir))}</div>')
+                    gr.HTML(usage_html(res_))
 
                 test_box = gr.HTML()
                 with gr.Row(elem_classes="sf-row-stack"):
                     clean_btn = gr.Button("🧹 Free up Drive space (delete re-makeable scene clips)", variant="secondary")
 
         timer = gr.Timer(1.0)
+        gr.Timer(20.0).tick(lambda: session_html(), None, session_box, show_progress="hidden")
 
         # ------------------------------------------------------------ wiring
-        settings = [idea, note, langs, fmts, scenes_n, heroes_n, res, cap_on, cap_style, mood, vol, sfx, fx, second]
+        settings = [paste_box, idea, note, langs, length, scenes_n, heroes_n, res, cap_on, cap_style, mood, vol, sfx,
+                    fx, second]
         refreshers = [r_script, r_chars, r_scenes, r_export]
 
         def start_job(name, fn, goto=None, refresh=ALL):
@@ -558,9 +663,40 @@ def build_app():
                 s = Series(choice)
             return s
 
+        def on_generate(choice, name, number, *vals):
+            """🚀 One click: your pasted script(s) → finished videos."""
+            from .. import paste  # noqa: PLC0415
+
+            try:
+                o = opts_from(*vals, source="paste")
+                texts = paste.split_scripts(o.script_text)
+                if not texts:
+                    raise FriendlyError("The script box is empty.", "Paste your script, then press Generate.")
+                s = resolve_series(choice, name)
+                if len(texts) > 1:  # batch: new episode numbers after the last one
+                    first = s.next_episode_number()
+                    set_current(s.slug, first)
+                    html_ = start_job(f"Batch: {len(texts)} videos",
+                                      lambda rep: pipeline.generate(s, o, o.script_text, rep), goto="export")
+                else:
+                    number = int(number or s.next_episode_number())
+                    e = s.episode(number)
+                    if e.load_script():
+                        shutil.copyfile(e.script_path, e.dir / f"script_backup_{int(time.time())}.json")
+                    set_current(s.slug, number)
+                    html_ = start_job("Making your video",
+                                      lambda rep: pipeline.generate(s, o, o.script_text, rep, number), goto="export")
+                return html_, project_html(), gr.update(choices=series_choices(), value=s.slug), gr.update(visible=False)
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return gr.skip(), gr.skip(), gr.skip(), gr.skip()
+
+        gen_btn.click(on_generate, [series_dd, new_name, ep_no] + settings,
+                      [progress_box, project_box, series_dd, new_name])
+
         def on_write(choice, name, number, *vals):
             try:
-                o = opts_from(*vals)
+                o = opts_from(*vals, source="ai")
                 s = resolve_series(choice, name)
                 number = int(number or 1)
                 if not o.idea.strip() and number <= 1:
@@ -583,7 +719,7 @@ def build_app():
         def on_quick(*vals):
             o = opts_from(*vals)
             set_current("quick-test", 1)
-            return start_job("Quick test", lambda rep: pipeline.quick_test(rep, o.idea, o.languages, o.primary_format),
+            return start_job("Quick test", lambda rep: pipeline.quick_test(rep, o.script_text, o.languages, o.length),
                              goto="export")
 
         quick_btn.click(on_quick, settings, [progress_box])

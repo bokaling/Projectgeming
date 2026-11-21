@@ -1,10 +1,38 @@
-# StoryForge Free: plan and rules
+# StoryForge: plan and rules
 
-A 100% free AI story video maker for serialized episodes (recurring characters,
-hook at the start, cliffhanger at the end). It runs on **Google Colab free (main)**
-or **Kaggle (backup)** and shows a dark, neon, mobile-friendly web app (Gradio)
-that opens in a new browser tab. Source of truth for model and service choices:
+An AI story video maker for serialized episodes (recurring characters, hook at the
+start, cliffhanger at the end). **All software and APIs are 100% free.** It runs on
+**Google Colab** (main; the owner has Google AI Plus: 50 compute units a month, T4 / L4 /
+A100, High-RAM) or **Kaggle** (free backup) and shows a dark, neon, mobile-friendly web app
+(Gradio) that opens in a new browser tab. Source of truth for model and service choices:
 `research.md` (November 2026).
+
+## Main mode (update 2): paste your script → one click → finished videos
+
+* The owner pastes a full script: `[TITLE]`, `[SCENE] what we see` (optional), `NARRATOR: line`,
+  `NAME: line` (a character speaking). No `[SCENE]` lines → split automatically (~14 words per
+  scene for shorts, ~24 for long). `[CHAPTER] name` is optional. Several scripts separated by a
+  line of `=====` = batch mode (made one after another; one failure doesn't stop the rest).
+* After **Generate** everything is automatic: read script, plan scenes, pictures, motion, voices,
+  captions, music, export, thumbnail, title, description, hashtags. The AI script writer is an
+  option (off by default).
+* **Short** = ~60 s, 9:16, 1080×1920. **Long** = ~10 min, 16:9, 1920×1080, YouTube chapters in
+  the description. The final render is done in parts of 10 scenes, each saved to Drive and resumed.
+* **Pictures:** 8 rotating shot types (wide, medium, detail insert, close-up, empty environment,
+  over-the-shoulder, top-down, low angle); the main character appears in about half; composition,
+  lighting and color change every scene (never all sepia); face from the reference picture, new
+  pose/angle/setting.
+* **Audio:** gentle cinematic music only (no bells, hats, ticks, arpeggios), lowpassed at 8 kHz,
+  quiet and ducked under the voice; SFX OFF by default (soft, lowpassed at 6 kHz when on);
+  −14 LUFS, true peak ≤ −1.5 dB.
+* **Voices:** ONE male narrator by default (Kokoro am_fenrir; Farsi: Edge Farid). Each voice's
+  engine is chosen once per video; backups keep the same gender; a voice never switches mid-video.
+  Characters who speak get their own voice (dropdown + preview on the Characters step).
+* **GPU profiles** (`config.gpu_profile`): T4 fp16 / L4 bf16 / A100 bf16; picture size, prompt
+  reader kept loaded on L4/A100, Wan 2.2 size/steps, auto hero scenes (short/long: T4 1/2,
+  L4 3/6, A100 5/10), compute-unit rate. Motion renders on the GPU (PyTorch) when free.
+* Session timer + compute-unit estimate in the app; every video logs minutes and units in
+  `StoryForge/usage_videos.json`. Big models are kept on Drive automatically when it has 45+ GB free.
 
 The owner is a beginner coder. Explain things simply, in short sentences.
 
@@ -102,8 +130,10 @@ tests/             CPU-only tests, network calls mocked
 
 ## Rules
 
-1. **100% free.** No paid APIs, no trials, no credit card. API keys are optional and free to get;
-   the app must fully work with zero keys.
+1. **Software and APIs 100% free.** No paid APIs, no trials, no credit card. API keys are optional
+   and free to get; the app must fully work with zero keys. **Paid Colab GPU runtimes are allowed**
+   (the owner's Google AI Plus plan: 50 compute units/month, L4 and A100, High-RAM), but the app
+   must still work on a free T4 and on Kaggle.
 2. **Licenses.** Only permissive models (Apache 2.0, MIT, OFL, CC0). Never use: FLUX.2 klein 9B,
    FLUX.2 dev, FLUX.1 dev, Depth Anything V2 Base/Large/Giant, MMS forced aligner, XTTS fine-tunes,
    InstantID/insightface. Edge TTS is allowed but always shown with a warning.
@@ -131,6 +161,8 @@ tests/             CPU-only tests, network calls mocked
 13. **Monetization safety** (research.md section 12): keep the script edit step, a "creator note"
     field, own-voice option, AI disclosure checklist at export, and a simple variation warning.
 14. **Git.** Work on branch `claude/nice-noether-0u7lld`. Small commits with clear messages.
+    Only merge into `main` after the owner has tested the branch on a real Colab T4
+    (notebook Setup cell: `BRANCH = "claude/nice-noether-0u7lld"`).
 
 ## Status
 
@@ -143,6 +175,8 @@ tests/             CPU-only tests, network calls mocked
 - [x] Render + publish
 - [x] Web app UI (desktop + phone screenshots checked)
 - [x] Notebooks + README + backup forms mode
+- [x] Update 2: paste-script mode, shot variety, gentle audio, one narrator + character voices,
+      short/long + chunked render + chapters + batch, GPU profiles + GPU motion + cost meter
 
 ### Verified only on CPU (needs a real Colab GPU run)
 FLUX.2 klein loading/generation, Depth Anything download, Wan 2.2 hero clips, Kokoro, Edge TTS,
@@ -158,3 +192,8 @@ wav2vec2 forced alignment, Pollinations/AI Horde/Gemini/Groq calls, the Colab po
 * Don't wait 46 s for Pollinations after a failed connection: circuit breaker in images.py.
 * Never save a placeholder as a character reference: it would steer klein later.
 * Run `pytest` and check ITS exit code before committing (not a piped `tail`).
+* Never use a `spawn`/`forkserver` process pool from the app: children re-run `__main__` (the app or the
+  notebook). Run helpers as `python -m storyforge.motion.clip job.json` subprocesses instead.
+* Default arguments are bound at definition time (`size=CHUNK_SCENES` ignored later changes).
+* Dataclass fields that depend on others need `__post_init__` (formats follow length).
+* The old offline English backup voice (Piper lessac) was female: backups must keep the gender.

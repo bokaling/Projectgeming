@@ -1,37 +1,32 @@
-"""Backup forms mode (no web app) works step by step."""
+"""Backup forms mode (no web app): paste a script, run, done."""
 from storyforge import forms, project
+
+SCRIPT = """[TITLE] Forms Story
+[SCENE] an empty train station at night
+NARRATOR: The last train had already left.
+LEO: Then why is the platform lit?
+NARRATOR: Somewhere in the dark, a bell started to ring."""
 
 
 def test_form_choices():
     assert forms._langs("English + Farsi") == ["en", "fa"] and forms._langs("Farsi") == ["fa"]
-    assert forms._formats("9:16 + 16:9") == ["9x16", "16x9"] and forms._formats("16:9") == ["16x9"]
+    assert forms._heroes("Auto") == -1 and forms._heroes("3") == 3 and forms._heroes("0 (motion effects only)") == 0
 
 
-def test_forms_flow_write_edit_pictures_video(offline, capsys):
-    forms.run("1. Write script", "Forms Show", 1, idea="A radio", formats="9:16", scenes=3, quality="480p")
+def test_generate_then_regenerate(offline, capsys):
+    forms.run("🚀 Generate from my SCRIPT", SCRIPT, "Forms Show", quality="480p", hero_scenes="0")
     out = capsys.readouterr().out
-    assert "## Scene 1" in out and "script.md" in out
-    series = project.Series("forms-show")
-    ep = series.episode(1)
-    # edit script.md on "Drive" like the user would, then make pictures: the edit is used
-    import time
-
-    time.sleep(1.1)
-    md = ep.script_md_path.read_text(encoding="utf-8").replace("At midnight the radio spoke.", "My own hook line.")
-    ep.script_md_path.write_text(md, encoding="utf-8")
-    forms.run("2. Make pictures", "Forms Show", 1, formats="9:16", scenes=3, quality="480p")
-    out = capsys.readouterr().out
-    assert "Using your edits" in out and ep.load_script()["scenes"][0]["narration"] == "My own hook line."
-    assert ep.image_path("s01", "9x16").exists()
-    forms.run("🔄 Regenerate scenes", "Forms Show", 1, formats="9:16", scenes=3, quality="480p", regenerate="2")
-    assert ep.load_script()["scenes"][1]["regen"] == 1
-    forms.run("3. Make video", "Forms Show", 1, formats="9:16", scenes=3, quality="480p", hero_scenes=0)
-    out = capsys.readouterr().out
-    assert ep.video_path("en", "9x16").exists() and "Before you post" in out
+    ep = project.Series("forms-show").episode(1)
+    assert ep.video_path("en", "9x16").exists() and "Before you post" in out and "units" in out
+    assert ep.load_script()["scenes"][0]["lines"][1]["speaker"] == "LEO"
+    forms.run("🔄 Regenerate scenes", "", "Forms Show", episode=1, regenerate="1", quality="480p")
+    assert ep.load_script()["scenes"][0]["regen"] == 1
 
 
 def test_forms_friendly_messages(offline, capsys):
-    forms.run("3. Make video", "Empty Show", 1)
-    assert "no script yet" in capsys.readouterr().out
-    forms.run("1. Write script", "", 1, idea="x")
+    forms.run("🚀 Generate from my SCRIPT", "", "Empty Show")
+    assert "Paste your script" in capsys.readouterr().out
+    forms.run("🚀 Generate from my SCRIPT", SCRIPT, "", quality="480p")
     assert "SERIES name" in capsys.readouterr().out
+    forms.run("🔄 Regenerate scenes", "", "Empty Show", regenerate="")
+    assert "REGENERATE" in capsys.readouterr().out

@@ -534,9 +534,12 @@ def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, tex
         existing = series.character(c["name"])
         if existing is None:
             add_character(series, c["name"], c.get("description", ""), c.get("gender", ""))
-        elif c.get("description") and existing["description"].startswith(("a person in their", "a woman in their",
-                                                                            "a man in their")):
-            existing["description"] = c["description"]  # replace the default look with a real one
+        else:
+            if c.get("description") and existing["description"].startswith(("a person in their", "a woman in their",
+                                                                              "a man in their")):
+                existing["description"] = c["description"]  # replace the default look with a real one
+            if c.get("gender") and not existing.get("gender"):
+                existing["gender"] = str(c["gender"]).strip().lower()  # so a woman gets a woman's voice
     protagonist = series.data.get("protagonist") or prot or protagonist
     if protagonist and series.character(protagonist):
         series.data["protagonist"] = series.character(protagonist)["name"]

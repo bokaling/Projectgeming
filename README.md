@@ -1,89 +1,136 @@
-# ✦ StoryForge: a 100% free AI story video maker
+# ✦ StoryForge: AI story videos from your script
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/bokaling/Projectgeming/blob/main/notebooks/StoryForge_Colab.ipynb)
 
-Make serialized AI story episodes (recurring characters, a hook at the start, a cliffhanger at the end)
-for YouTube, Shorts, TikTok, Reels and Snapchat, in **English and Farsi**. It runs on **Google Colab's
-free GPU**, so your own computer can be slow. No paid APIs, no trials, no credit card.
+Paste your story script, press **🚀 Generate**, and get a finished video for YouTube, Shorts,
+TikTok, Reels and Snapchat, in **English and Farsi**: pictures, motion, voiceover, word-by-word
+captions, music, thumbnail, title, description and hashtags. All software and APIs are **free**.
+It runs on Google Colab's GPUs (free T4, or L4/A100 with your Google AI Plus compute units).
 
-**What it makes for each episode**
-
-- ✍️ A script you can edit, with a hook and a cliffhanger
-- 🧑‍🎨 Characters that look the same in every scene and every episode
-- 🖼️ One AI picture per scene (preview it, regenerate it, or replace it with your own picture or video)
-- 🎞️ Motion in every scene: 2.5D parallax, Ken Burns, particles, light, camera shake, plus real
-  image-to-video for 0 to 3 "hero" scenes
-- 🗣️ A natural voiceover in English and Farsi (or your own recorded voice)
-- 💬 Word-by-word TikTok-style captions, with correct Farsi
-- 🎵 Music and sound effects that are safe to monetize
-- 🎬 9:16 and 16:9 videos, thumbnails, titles, descriptions and hashtags
+- 📝 **Your script, your story.** The AI writer is optional.
+- 🎞️ **Short** (~60 s, 9:16, 1080×1920) or **Long** (~10 min, 16:9, 1920×1080, with YouTube chapters)
+- 📚 **Batch:** paste several scripts separated by `=====`, and they're made one after another
+- 🧑‍🎨 Characters keep the same face in every scene and episode, with varied shots (close-ups, wide
+  shots, details, empty places…), lighting and colors
+- 🎬 Real image-to-video for "hero" scenes (more on stronger GPUs); 2.5D motion for all other scenes
+- 🗣️ One natural male narrator (Kokoro). Characters who speak get their own voice
+- 🎵 Gentle cinematic music (no sharp sounds), quietly ducked under the voice; sound effects optional
 
 ---
 
 ## 🚀 Start (5 steps)
 
-1. Click the **Open in Colab** badge above.
-   *Your repository is private?* Then in Colab use **File → Open notebook → GitHub**, tick
-   **Include private repos**, sign in to GitHub, and pick `notebooks/StoryForge_Colab.ipynb`.
-2. In Colab: **Runtime → Change runtime type → T4 GPU → Save**.
-3. Press ▶ on **1️⃣ Setup**. Allow Google Drive access when asked. Wait 2 to 4 minutes.
-4. Press ▶ on **2️⃣ Start StoryForge**. Click the **👉 OPEN STORYFORGE** link that appears.
-   The app opens in a new tab. **Keep the Colab tab open.**
-5. In the app, press **⚡ Quick test** first (step 1, "Idea"). In about 3 to 8 minutes you get a short
-   3-scene video plus a checklist that shows which parts worked.
+1. Click **Open in Colab** above. *(Private repository? In Colab use **File → Open notebook → GitHub**,
+   tick **Include private repos**, and pick `notebooks/StoryForge_Colab.ipynb`.)*
+2. **Runtime → Change runtime type** → choose a GPU → **Save**. See "Which GPU?" below.
+3. Press ▶ on **1️⃣ Setup**. Allow Google Drive access. Wait 2-4 minutes.
+4. Press ▶ on **2️⃣ Start StoryForge** and click **👉 OPEN STORYFORGE**. Keep the Colab tab open.
+5. In the app, paste your script, choose **Short** or **Long**, and press **🚀 Generate video**.
+   First time? Press **⚡ Quick test** (3 scenes, ~3-8 min) to check that everything works.
 
-> **On your phone:** tick **PUBLIC_LINK** in cell 2️⃣ before running it. You then also get a
-> `gradio.live` link that works on any device. Don't share that link.
+When you're done: **Runtime → Disconnect and delete runtime**. A connected GPU keeps using units.
 
 ---
 
-## 🎬 Make an episode (the 6 steps in the app)
+## 📝 Script format
 
-| Step | What you do |
+```text
+[TITLE] The Night Radio
+[SCENE] a yellow taxi parked in the rain at 3 a.m., neon signs
+NARRATOR: The radio crackled at exactly three in the morning.
+MIRA: Who's there?
+[SCENE] the dashboard radio glowing red
+NARRATOR: A voice answered with her own name.
+```
+
+- `[SCENE]` is optional. Without it, the text is split into scenes and the picture prompts are written for you.
+- `NARRATOR:` (or plain text without a name) is the narrator. `MIRA:` is a character speaking.
+- `[CHAPTER] The road` (optional) sets YouTube chapters for long videos. Without it, there's one about every 90 seconds.
+- Farsi works the same way (`راوی:` for the narrator). The language is detected automatically.
+- **Batch:** put a line of `=====` between scripts. Each one becomes the next episode of the series.
+
+---
+
+## 🎬 The 6 steps in the app
+
+| Step | What it's for |
 |---|---|
-| **1 · Idea** | Name your series, type a 1-2 sentence idea, choose languages, formats, the number of scenes and hero scenes (0 to 3, default 2). Press **✨ Write my script**. |
-| **2 · Script** | Read and edit the script. This is where the story becomes *yours*. Press **💾 Save my edits**. For Farsi, press **🌍 Translate to Farsi** or type the `Farsi:` lines yourself. |
-| **3 · Characters** | Check each character's fixed look. Press **🎨 New picture** until you like it, or **📤 My picture** to use your own. The same look is reused in every episode of the series. |
-| **4 · Scenes** | Press **🖼️ Make all pictures**. For any scene: **🔄 Regenerate**, **📤 Replace** (your picture or video clip), change the camera move, or tick ⭐ Hero. |
-| **5 · Voice & Captions** | Pick the voices (saved for the whole series), or upload your own recording. Choose a caption style and color, then press **👀 Preview captions**. Set the music mood and volume. |
-| **6 · Export** | Press **🎬 Make my video**. When it's done you can watch, download and copy the titles, description and hashtags. |
+| **1 · Script** | Paste your script, choose Short/Long, then **🚀 Generate**. Optional: let the AI write a script from an idea. |
+| **2 · Edit** | Change any line, picture prompt, shot type or camera move, then press Generate again (finished parts are reused). |
+| **3 · Characters** | Each character's fixed look and reference picture (**📤 My picture** for the best face match), plus **the voice when they speak** with 🔊 preview. |
+| **4 · Scenes** | Preview every picture: **🔄 Regenerate**, **📤 Replace** (your picture or video clip), shot type, ⭐ hero. |
+| **5 · Voice & Captions** | Narrator voice (male by default), your own recording, caption style, music mood/volume, sound effects on/off. |
+| **6 · Export** | Your video, thumbnail, title, description (with chapters), hashtags, downloads, and how many compute units it used. |
 
-**Next episode:** on step 1 choose your series, and the episode number goes up by itself. Type what
-happens next, or leave it empty to continue from the last cliffhanger.
-
-**Colab disconnected?** Run cells 1️⃣ and 2️⃣ again. The app reopens your episode, and pressing the
-button again continues: finished pictures, voices and clips are **not** made again.
+**Colab disconnected?** Run cells 1️⃣ and 2️⃣ again and press Generate. Finished pictures, voices,
+scene clips and video parts are saved on Drive and reused, even halfway through a 10-minute video.
 
 ---
 
-## 🔑 Optional free keys (better scripts)
+## 💳 Which GPU? (compute units)
 
-Everything works **without keys**. With a free key, scripts and translations come from stronger AI models.
+The app shows a live **⏱ session timer and compute-unit estimate** at the top, and after each video
+it shows how long that video took and about how many units it used. Rates are unofficial
+user measurements: T4 ≈ 1.2 units/hour, L4 ≈ 1.7, A100 40 GB ≈ 5.4, A100 80 GB ≈ 7-9.
 
-| Key name | Where to get it (free, no card) |
+Estimated units per video. These are **my estimates** and haven't been measured on a real GPU yet;
+the app logs the real numbers, so check them after your first week:
+
+| Video | T4 (fp16) | L4 (bf16, ~2× faster) |
+|---|---|---|
+| Short, no hero clips | ~8 min · **0.15** | ~5 min · **0.15** |
+| Short, 1 hero clip | ~23 min · **0.45** | ~12 min · **0.35** |
+| Short, auto heroes (T4 1 / L4 3) | ~23 min · **0.45** | ~22 min · **0.6** |
+| Long (10 min), no hero clips | ~40 min · **0.8** | ~21 min · **0.6** |
+| Long, 2 hero clips | ~67 min · **1.35** | ~33 min · **0.95** |
+| Long, auto heroes (T4 2 / L4 6) | ~67 min · **1.35** | ~53 min · **1.5** |
+
+Plus ~5 minutes per session for setup and loading the models (less with big models kept on Drive).
+
+**Your goal: 30 shorts + 4-5 long videos a month, within 50 units**
+
+- **Cheapest:** **L4**, hero scenes set to **1** for shorts and **2** for long videos, and **batches**
+  of 5-10 shorts per session so the models load only once. That's ≈ 30 × 0.35 + 5 × 0.95 + ~2
+  (setup) ≈ **17 units**.
+- **Best looking within budget:** L4 with **Auto** heroes (3 per short, 6 per long) ≈ 30 × 0.6 + 5 × 1.5
+  + ~2 ≈ **28 units**, leaving ~20 for re-dos.
+- **Free extra:** long videos on **Kaggle** (free T4 x2, ~30 GPU hours a week) cost 0 units.
+- **Avoid the A100** for this: it uses 3-4× the units for a small speed gain.
+- **L4 is usually cheaper per video than T4**, because it finishes GPU work about twice as fast for
+  only ~1.4× the rate.
+
+---
+
+## 🔑 Optional free keys (better picture prompts and titles)
+
+Everything works **without keys**. With a free key, the AI picture prompts, translations and titles
+are better. In Colab click **🔑 Secrets** → add the name → paste the key → **Notebook access** ON.
+
+| Name | Where (free, no card) |
 |---|---|
 | `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) → Get API key |
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) → API Keys |
-| `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) (only free models are used) |
-| `HF_TOKEN` | [huggingface.co](https://huggingface.co/settings/tokens): faster, more reliable model downloads |
+| `HF_TOKEN` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens): faster model downloads |
 | `FREESOUND_API_KEY` | [freesound.org](https://freesound.org/apiv2/apply): extra CC0 sound effects |
-
-In Colab click **🔑 (Secrets)** on the left → **Add new secret** → type the name and paste the key →
-turn **Notebook access** ON. Keys are never saved in your project or printed.
 
 ---
 
-## 🎙️ Your own voice, pictures and music
+## 🧪 Test this update on a T4 before it goes live
 
-- **Own voice (best for Farsi and for monetization):** record the whole episode on your phone, reading
-  the narration lines in order, then upload one file on step 5. StoryForge cuts it into scenes and
-  times the captions.
-- **Own picture or clip for a scene:** step 4 → **📤 Replace**.
-- **Own music:** put tracks in Google Drive at `StoryForge/library/music/<mood>/` (moods: tense,
-  mysterious, sad, hopeful, epic, calm, dark, action, romantic, playful). Add a line to
-  `StoryForge/library/music/licenses.csv` and the credit is added to your descriptions automatically.
-  Without your own music, StoryForge **generates** music and sound effects itself, so there are no
-  copyright claims.
+This update is on the branch `claude/nice-noether-0u7lld` and is **not on `main` yet**. To test it:
+
+1. Open the notebook from that branch: in Colab **File → Open notebook → GitHub**, paste
+   `https://github.com/bokaling/Projectgeming`, choose the branch `claude/nice-noether-0u7lld`,
+   and open `notebooks/StoryForge_Colab.ipynb`.
+2. Runtime → **T4 GPU**. In cell 1️⃣ set **BRANCH** to `claude/nice-noether-0u7lld`, then run 1️⃣ and 2️⃣.
+3. Press **⚡ Quick test** (leave the script box empty, which uses a sample with a narrator and a character).
+   In the checklist you want ✅ for: Script, Pictures (`FLUX.2 klein (GPU)`), Depth (`Depth Anything`),
+   Voice (`Kokoro`), Final video. Listen: one male narrator, a different voice for MIRA, soft music.
+4. Paste one real short script → **🚀 Generate**. Check that scenes look different (close-ups, wide shots,
+   empty places), that captions are in sync, and look at the units shown on the Export step.
+5. Optional: one **Long** script, then disconnect halfway, reconnect and press Generate again.
+   Only the missing parts should be made.
+6. All good? Tell Claude, and the update is merged into `main`.
 
 ---
 
@@ -91,32 +138,12 @@ turn **Notebook access** ON. Keys are never saved in your project or printed.
 
 | Problem | What to do |
 |---|---|
-| "Couldn't download StoryForge" in Setup | Your repo is private. Make it public (GitHub → Settings → General → Danger Zone → Change visibility), or add a free GitHub token as the Colab secret `GITHUB_TOKEN`. |
-| The 👉 OPEN STORYFORGE link doesn't open, or Colab stops the session | Use the **🧰 Backup mode** cell at the bottom of the notebook (plain Colab forms, no web app). |
-| "The GPU ran out of memory" | **Runtime → Restart session**, then run cell 2️⃣ again. Your finished work is kept. |
-| "No GPU" in the app | Colab didn't give you a GPU today. The app still works, using free online pictures (slower). Or try the **Kaggle** notebook. |
-| Placeholder pictures (abstract hills) | No picture service worked at that moment. Press **🔄 Regenerate** later, or upload your own picture. |
-| Robotic voice | The internet voices were unreachable. Press **🎬 Make my video** again later: only the voice is redone. |
-| Farsi lines missing | Step 2: press **🌍 Translate to Farsi**, or type the `Farsi:` lines yourself. |
-
-Every message in the app tells you what happened and what to do. The full log is under **Show details (log)**.
-
----
-
-## 🧪 What to test in Colab (first time)
-
-1. **Setup** finishes and prints ✅ for FFmpeg and the core packages.
-2. **Start** prints `GPU: Tesla T4` and `Saving to Google Drive`, and the link opens the dark app.
-3. **⚡ Quick test** (English) finishes. In the checklist you want: Script ✅, Pictures ✅
-   (`FLUX.2 klein (GPU)`), Depth ✅ (`Depth Anything V2 Small`), Voice ✅ (`Kokoro`), Final video ✅.
-   Watch the video: does it move, are the captions in sync?
-4. Quick test again with **Farsi** ticked: check the Farsi captions read right-to-left and the
-   highlighted word moves from right to left.
-5. A real episode with **2 hero scenes**: the log shows how long each Wan 2.2 clip took. If a clip
-   takes too long, it automatically falls back to motion effects, so you lose nothing.
-6. Close the app tab, reopen the link: your episode is still there.
-
-If a ⚠️ shows up in the checklist, the log says why. Share the last 20 lines of the log if you need help.
+| "Couldn't download StoryForge" | Check the BRANCH name. Private repo: make it public, or add a `GITHUB_TOKEN` secret. |
+| The app link doesn't open / Colab stops the session | Use the **🧰 Backup mode** cell (paste your script there, no web app needed). |
+| "The GPU ran out of memory" | **Runtime → Restart session**, run cell 2️⃣, press Generate again. Finished work is kept. |
+| Robot voice | The voice services were unreachable. Press Generate later: only the voice is redone, and the whole video gets the same voice. |
+| A picture is wrong | Step 4 → **🔄 Regenerate** or **📤 Replace**, then press Generate again. |
+| Placeholder pictures (abstract hills) | No picture service worked at that moment. Regenerate later. |
 
 ---
 
@@ -124,44 +151,31 @@ If a ⚠️ shows up in the checklist, the log says why. Share the last 20 lines
 
 ```
 MyDrive/StoryForge/
-  series/<your-series>/series.json          characters, style, voices (shared by all episodes)
-  series/<your-series>/characters/<name>/   reference pictures
-  series/<your-series>/episodes/ep01/
-      script.md                             your script (you can also edit it here)
-      scenes/s01/                           picture, depth map, hero clip, your uploads
-      export/                               ⭐ final videos, thumbnails, metadata.md
-  library/music/<mood>/                     your own music (+ licenses.csv)
-  models/                                   small AI models (so they don't download every time)
+  series/<series>/series.json            characters, style, voices (shared by all episodes)
+  series/<series>/characters/<name>/     reference pictures
+  series/<series>/episodes/ep01/
+      script.json, script.md             the planned script (scenes, shots, prompts)
+      scenes/s01/                        picture, depth, hero clip, your uploads, scene clips
+      render/                            finished video parts (for resume)
+      export/                            ⭐ final video, thumbnails, metadata.md
+  library/music/<mood>/                  your own music (+ licenses.csv for automatic credits)
+  usage_videos.json                      minutes and compute units per video
+  models/                                AI models kept on Drive
 ```
-
-The big AI models (~16 GB image model, ~20 GB video model) are too big for free Drive (15 GB), so
-they download into Colab each session (a few minutes). If you have more Drive space, tick
-**KEEP_BIG_MODELS_ON_DRIVE** in cell 2️⃣.
 
 ---
 
 ## 💰 Staying monetizable (2026 rules)
 
-AI videos *can* earn money, but platforms punish copy-paste "slop". StoryForge helps you stay original:
-
-- Always edit the script (step 2) and add a **creator note**. Your own voice is the strongest signal.
-- Recurring characters and a real story arc make it a *series*, not a template.
-- `metadata.md` adds an **AI disclosure** line and a checklist per platform (YouTube altered content,
-  TikTok AI label, Meta AI info).
-- **Snapchat:** since July 2026, fully AI-generated videos are not recommended on Spotlight. Add real
-  footage (like a filmed intro) or use Snapchat only to promote the series.
-- **Edge TTS** voices (the default Farsi voice) are free, but Microsoft hasn't published a commercial
-  license for them. Recording your own voice is the safe choice.
-
----
-
-## 🧰 Backup options
-
-- **Backup mode (no web app):** the last cell of the Colab notebook. Pick an ACTION
-  (⚡ Quick test → 1. Write script → 2. Make pictures → 3. Make video), run it, then pick the next one.
-- **Kaggle:** `notebooks/StoryForge_Kaggle.ipynb` (GPU T4 x2, about 30 free GPU hours a week, needs a
-  phone-verified account). Download your videos before stopping, because Kaggle deletes files unless
-  you *Save Version*.
+- Your own script and edits are the human authorship platforms look for. Recording your own voice
+  is even stronger.
+- `metadata.md` includes an AI disclosure line and a per-platform checklist (YouTube altered content,
+  TikTok AI label, Meta AI info). **Snapchat** doesn't recommend wholly AI-generated videos on Spotlight
+  (since July 2026), so add real footage or use it to promote the series.
+- **Edge TTS** (the default Farsi voice) has no published commercial license. Your own recording is the
+  safe choice.
+- Music and sound effects are generated by the app (no copyright claims), or come from your own library
+  with credits.
 
 ---
 
@@ -169,16 +183,15 @@ AI videos *can* earn money, but platforms punish copy-paste "slop". StoryForge h
 
 | Part | Tool | License |
 |---|---|---|
-| Pictures | FLUX.2 [klein] 4B (GPU) → Pollinations → AI Horde | Apache 2.0 |
-| Depth (2.5D) | Depth Anything V2 **Small** | Apache 2.0 |
+| Pictures | FLUX.2 [klein] 4B → Pollinations → AI Horde | Apache 2.0 |
+| Depth (2.5D) | Depth Anything V2 Small | Apache 2.0 |
 | Hero clips | Wan 2.2 TI2V 5B | Apache 2.0 |
-| English voice | Kokoro 82M | Apache 2.0 |
-| Farsi voice | Edge TTS (⚠️ see above) / Piper / your voice | LGPL tool, no voice grant |
-| Captions | FFmpeg + libass, Vazirmatn / Montserrat / Anton fonts | LGPL / SIL OFL |
+| Voices | Kokoro 82M (English), Edge TTS / Piper (Farsi), your voice | Apache 2.0 / see above |
+| Captions | FFmpeg + libass, Vazirmatn / Montserrat / Anton | LGPL / SIL OFL |
 | Music & SFX | Generated in code | Yours |
-| Script | Gemini / Groq / OpenRouter free tiers, Pollinations, or a local model | Free tiers |
+| Picture prompts, titles | Gemini / Groq / OpenRouter free tiers, Pollinations, built-in fallback | Free tiers |
 
-Based on the research in [`research.md`](research.md). The plan and rules are in [`CLAUDE.md`](CLAUDE.md).
+Based on [`research.md`](research.md). The plan and rules are in [`CLAUDE.md`](CLAUDE.md).
 
 ## 👩‍💻 For developers
 
@@ -190,4 +203,5 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-The tests run on a normal CPU without internet (AI services are faked) and build real videos with FFmpeg.
+The tests run on a normal CPU without internet (AI services are faked), build real videos with FFmpeg,
+and check the audio stays gentle (no energy above 8 kHz in the music).
