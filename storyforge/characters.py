@@ -7,6 +7,7 @@ reference picture is fed to FLUX.2 klein as a multi-reference input.
 
 from __future__ import annotations
 
+import re
 import zlib
 from pathlib import Path
 
@@ -42,6 +43,30 @@ def add_character(series: Series, name: str, description: str = "", gender: str 
         "ref": "",
     }
     series.characters.append(c)
+    return c
+
+
+MALE = re.compile(r"\b(man|male|boy|guy|he|his|him|father|dad|husband|gentleman|mr|king|son|uncle|"
+                  r"brother)\b|مرد|پسر|آقا", re.I)
+FEMALE = re.compile(r"\b(woman|female|girl|lady|she|her|mother|mom|wife|mrs|ms|miss|queen|daughter|aunt|"
+                    r"sister)\b|زن|دختر|خانم", re.I)
+
+
+def guess_gender(text: str) -> str:
+    f, m = len(FEMALE.findall(text or "")), len(MALE.findall(text or ""))
+    return "female" if f > m else ("male" if m > f else "")
+
+
+def set_description(series: Series, name: str, description: str) -> dict:
+    """Your [CHARACTER] look: saved for the series, used in every picture where this character appears."""
+    c = add_character(series, name, description, guess_gender(description))
+    if description.strip():
+        c["description"] = description.strip()
+        c["look_from_script"] = True
+        g = guess_gender(description)
+        if g:
+            c["gender"] = g
+    series.save()
     return c
 
 
@@ -102,8 +127,8 @@ def reference_prompt(series: Series, c: dict) -> str:
     return (
         f"Character reference portrait of {c['name']}: {c['description']}. "
         "Three-quarter view, head and upper body, looking slightly past the camera, neutral expression, "
-        "plain soft gray studio background, soft even lighting, sharp focus, no text. "
-        f"Style: {series.data.get('style', '')}"
+        "plain soft gray studio background, soft even lighting, sharp focus. "
+        f"Style: {series.data.get('style', '')}. No text, no letters, no watermark."
     )
 
 
@@ -142,41 +167,57 @@ POSES = ["mid-movement, natural body language", "turning to look over the should
          "seen in profile", "sitting, lost in thought"]
 
 
-def scene_prompt(series: Series, scene: dict, with_refs: bool) -> tuple[str, list[Path]]:
-    """Build the image prompt for a scene and the list of reference pictures to send.
+NO_TEXT = "No text, no letters, no watermark."
+# Short framing words used AFTER your own [SCENE] text (they never replace it)
+SHOT_HINTS = {
+    "wide": "wide shot", "medium": "medium shot", "detail": "extreme close-up detail shot", "close_up": "close-up shot",
+    "environment": "atmospheric shot of the place", "over_shoulder": "over-the-shoulder shot",
+    "top_down": "top-down overhead shot", "low_angle": "low angle shot looking up",
+}
 
-    Variety rules: the scene's shot type, composition and lighting change every scene; characters appear only
-    in character shots; with references we keep the FACE but change pose, angle and setting.
+
+def frame_of(scene: dict, shot_index: int = 0) -> dict:
+    """The framing of shot k of a scene (shot 0 = the scene itself)."""
+    if shot_index == 0:
+        return scene
+    extra = scene.get("shots") or []
+    return {**scene, **extra[shot_index - 1]} if shot_index - 1 < len(extra) else scene
+
+
+def scene_prompt(series: Series, scene: dict, with_refs: bool, shot_index: int = 0) -> tuple[str, list[Path]]:
+    """Build the image prompt for one shot of a scene and the reference pictures to send.
+
+    Your [SCENE] text is the main prompt and comes first; the shot type is added after it.
+    Characters in the shot get their fixed look (and reference picture on the GPU).
     """
     from .planner import SHOTS  # noqa: PLC0415
 
-    shot = scene.get("shot") or ""
-    show = scene.get("show_character", True)
-    chars = [series.character(n) for n in scene.get("characters", [])] if show else []
-    chars = [c for c in chars if c][:MAX_REFS_PER_SCENE]
+    fr = frame_of(scene, shot_index)
+    shot = fr.get("shot") or ""
+    user = bool(scene.get("user_visual"))
+    names = fr.get("characters", []) if (user or fr.get("show_character", True)) else []  # no-people shots: nobody
+    chars = [c for c in (series.character(n) for n in names) if c][:MAX_REFS_PER_SCENE]
     refs = [ref_path(series, c) for c in chars if with_refs and has_ref(series, c)]
-    parts = []
+    parts = [scene.get("visual", "").strip().rstrip(".") + "."]
     if shot in SHOTS:
-        parts.append(SHOTS[shot][0].capitalize() + ".")
-    if refs:
-        mapping = ", ".join(f"image {i + 1} shows {c['name']}" for i, c in enumerate(chars) if has_ref(series, c))
-        parts.append(f"Keep the same face and hair as the reference images ({mapping}), "
-                     "but a new pose, a new camera angle and the new setting described here.")
-    parts.append(scene.get("visual", ""))
+        parts.append(f"Shot: {SHOT_HINTS[shot] if user else SHOTS[shot][0]}.")
     if scene.get("location"):
         parts.append(f"Location: {scene['location']}.")
     for k, c in enumerate(chars):
-        pose = POSES[(int(scene.get("id", "s0")[1:] or 0) + k) % len(POSES)]
-        parts.append(f"{c['name']}: {c['description']}, {pose}.")
-    if not show:
+        pose = POSES[(int(scene.get("id", "s0")[1:] or 0) + k + shot_index) % len(POSES)]
+        parts.append(f"{c['name']} is {c['description']}, {pose}.")
+    if refs:
+        mapping = ", ".join(f"image {i + 1} shows {c['name']}" for i, c in enumerate(chars) if has_ref(series, c))
+        parts.append(f"Same face and hair as the reference images ({mapping}), new pose and camera angle.")
+    if not chars and not user and not fr.get("show_character", True):
         parts.append("No people in the frame.")
-    if scene.get("composition"):
-        parts.append(scene["composition"].capitalize() + ".")
-    if scene.get("lighting"):
-        parts.append(f"Lighting and color: {scene['lighting']}.")
+    if fr.get("composition"):
+        parts.append(fr["composition"].capitalize() + ".")
+    if fr.get("lighting"):
+        parts.append(f"Lighting and color: {fr['lighting']}.")
     parts.append(f"Style: {series.data.get('style', '')}. Full natural color (not sepia, not monochrome), "
-                 "cinematic, highly detailed, no text, no watermark.")
-    return " ".join(p.strip() for p in parts if p and p.strip()), refs
+                 f"cinematic, highly detailed, sharp focus. {NO_TEXT}")
+    return " ".join(p.strip() for p in parts if p and p.strip() and p.strip() != "."), refs
 
 
 def voice_for(series: Series, speaker: str, lang: str, narrator_value: str) -> dict:

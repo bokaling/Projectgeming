@@ -16,7 +16,9 @@ from pathlib import Path
 
 import numpy as np
 
-OVERSCAN = 1.22  # extra picture around the frame so the camera can move
+OVERSCAN = 1.3  # extra picture around the frame so the camera can move
+MOTION_BOOST = 1.5  # stronger parallax and camera moves (it felt like a slideshow)
+MOTION_VERSION = 2  # bump when motion changes, so old scene clips are made again
 
 
 def ease(t: float) -> float:
@@ -30,10 +32,11 @@ class Move:
     par: tuple[tuple[float, float], tuple[float, float]] = ((0, 0), (0, 0))  # parallax, fraction of width
     dolly: tuple[float, float] = (0.0, 0.0)  # extra zoom difference between near and far
     handheld: float = 0.0  # continuous shake (fraction of frame)
+    punch: float = 0.0  # fast zoom-in right when the hook line starts (e.g. 0.16 = +16%)
 
 
 def camera_move(name: str, strength: float = 1.0) -> Move:
-    s = strength
+    s = strength * MOTION_BOOST
     a, q = 0.055 * s, 0.05 * s
     moves = {
         "push_in": Move(zoom=(1.0, 1.0 + 0.13 * s), dolly=(0.0, 0.09 * s)),
@@ -274,6 +277,11 @@ def camera_state(move: Move, overlay: "Overlay", i: int, n: int, fps: int):
     py = move.pan[0][1] + (move.pan[1][1] - move.pan[0][1]) * e
     qx = move.par[0][0] + (move.par[1][0] - move.par[0][0]) * e
     qy = move.par[0][1] + (move.par[1][1] - move.par[0][1]) * e
+    if move.punch:  # zoom punch: snaps in over ~0.12 s as the line starts, then settles
+        start = 0.12
+        rise = min(1.0, max(0.0, (t - start) / 0.12))
+        settle = 0.45 + 0.55 * math.exp(-max(0.0, t - start - 0.12) / 0.5)
+        z *= 1 + move.punch * rise * settle
     sx, sy = overlay.shake(t)
     return t, z, k, px + sx, py + sy, qx, qy
 
@@ -297,7 +305,7 @@ def flicker_gain(overlay: "Overlay", t: float) -> float:
 
 def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], duration: float, fps: int = 30,
            camera: str = "push_in", effects=(), seed: int = 0, shake_times=(), strength: float = 1.0,
-           grain: bool = True, vignette: bool = True):
+           grain: bool = True, vignette: bool = True, punch: float = 0.0):
     """Yield RGB uint8 frames for one scene."""
     import cv2  # noqa: PLC0415
 
@@ -305,6 +313,7 @@ def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], dur
     canvas, dcanvas = prepare_canvas(rgb, depth, size)
     Hw, Ww = canvas.shape[:2]
     move = camera_move(camera, strength)
+    move.punch = punch
     if dcanvas is None:  # no depth: plain Ken Burns, keep the same camera path
         move.par = ((0, 0), (0, 0))
         move.dolly = (0.0, 0.0)

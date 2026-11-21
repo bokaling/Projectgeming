@@ -21,7 +21,8 @@ from pathlib import Path
 
 from . import config, net
 from .gpu import free_gpu, is_oom
-from .messages import FriendlyError, Timer
+from .messages import FriendlyError, StopRequested, Timer
+from .models import ensure_model
 from .project import fingerprint
 
 POLLINATIONS_GAP = 46.0  # seconds between keyless requests (research.md)
@@ -97,14 +98,13 @@ class KleinEngine:
 
         from .gpu import best_dtype  # noqa: PLC0415
 
-        s = config.get()
-        mid, cache = config.MODELS["image"], s.model_cache("image")
         if self.te is None:
             if rep:
                 rep.info(f"📥 Loading the prompt reader (first time downloads ~8 GB, then {len(todo)} prompts)…")
-            self.tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer", cache_dir=cache)
+            mid = ensure_model("image", rep)  # checked files (broken ones are downloaded again)
+            self.tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer")
             self.te = Qwen3ForCausalLM.from_pretrained(
-                mid, subfolder="text_encoder", cache_dir=cache, torch_dtype=best_dtype(), device_map="cuda"
+                mid, subfolder="text_encoder", torch_dtype=best_dtype(), device_map="cuda"
             )
         try:
             for p in todo:
@@ -124,19 +124,18 @@ class KleinEngine:
         import torch  # noqa: PLC0415
         from diffusers import AutoencoderKLFlux2, Flux2KleinPipeline, Flux2Transformer2DModel  # noqa: PLC0415
 
-        s = config.get()
-        mid, cache = config.MODELS["image"], s.model_cache("image")
         if rep:
             rep.info("📥 Loading the image model FLUX.2 klein 4B (first time downloads ~8 GB)…")
+        mid = ensure_model("image", rep)
         from .gpu import best_dtype  # noqa: PLC0415
 
         dtype = best_dtype()  # fp16 on T4, bf16 on L4/A100
         transformer = Flux2Transformer2DModel.from_pretrained(
-            mid, subfolder="transformer", cache_dir=cache, torch_dtype=dtype, device_map="cuda"
+            mid, subfolder="transformer", torch_dtype=dtype, device_map="cuda"
         )
-        vae = AutoencoderKLFlux2.from_pretrained(mid, subfolder="vae", cache_dir=cache, torch_dtype=torch.float32).to("cuda")
+        vae = AutoencoderKLFlux2.from_pretrained(mid, subfolder="vae", torch_dtype=torch.float32).to("cuda")
         self.pipe = Flux2KleinPipeline.from_pretrained(
-            mid, cache_dir=cache, transformer=transformer, vae=vae, text_encoder=None, tokenizer=None,
+            mid, transformer=transformer, vae=vae, text_encoder=None, tokenizer=None,
             torch_dtype=dtype,
         )
         self.pipe.set_progress_bar_config(disable=True)
@@ -359,11 +358,14 @@ def generate_batch(jobs: list[ImageJob], rep, on_done=None, allow_placeholder: b
         rep = Reporter(echo=False)
     remaining = list(jobs)
     engine = KleinEngine.get()
-    if KleinEngine.usable():
+    if config.get().gpu.available:
         try:
             engine.encode([j.prompt for j in remaining], rep)
-        except Exception as exc:
-            _disable_klein(exc, rep)
+        except StopRequested:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            engine.unload()
+            raise _gpu_error(exc, "reading the picture prompts") from exc
     total = len(jobs)
     for i, job in enumerate(remaining, 1):
         rep.check_stop()
@@ -379,12 +381,28 @@ def generate_batch(jobs: list[ImageJob], rep, on_done=None, allow_placeholder: b
     return counts
 
 
-def _disable_klein(exc: BaseException, rep) -> None:
-    reason = "GPU memory full" if is_oom(exc) else f"{type(exc).__name__}: {str(exc)[:120]}"
-    KleinEngine.failed_reason = reason
-    KleinEngine.get().unload()
-    if rep:
-        rep.warn(f"The GPU image model couldn't run ({reason}). Using free online pictures instead.")
+def picture_problem(img) -> str:
+    """'' if the picture looks fine, else why it doesn't (blank, grey blob, blurry)."""
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    gray = np.asarray(img.convert("L").resize((384, int(384 * img.height / max(1, img.width)))), dtype=np.float32)
+    if gray.std() < 12:
+        return "blank / flat picture"
+    sharp = cv2.Laplacian(gray, cv2.CV_32F).var()
+    if sharp < 25:
+        return f"blurry picture (sharpness {sharp:.0f})"
+    return ""
+
+
+def _gpu_error(exc: BaseException, what: str) -> FriendlyError:
+    if is_oom(exc):
+        return FriendlyError(f"The GPU ran out of memory while {what}.",
+                             "Runtime → Restart session, run cell 2️⃣ again and press Generate (finished pictures are kept).")
+    if isinstance(exc, FriendlyError):
+        return exc
+    return FriendlyError(f"The GPU image model failed while {what}: {type(exc).__name__}: {str(exc)[:200]}",
+                         "Press Generate again. If it repeats, send this message (it is also in the log).")
 
 
 def _breaker(name: str, fn):
@@ -398,18 +416,34 @@ def _breaker(name: str, fn):
     return run
 
 
-def _generate_one(job: ImageJob, rep, allow_placeholder: bool) -> str:
-    providers = []
-    if KleinEngine.usable():
-        def klein():
-            try:
-                return KleinEngine.get().generate(job)
-            except Exception as exc:
-                if is_oom(exc) or "invalid numbers" in str(exc):
-                    _disable_klein(exc, rep)
-                raise
+def _klein_with_retries(job: ImageJob, rep) -> tuple[str, object]:
+    """GPU picture; blank/blurry results are made again with a new seed (up to 2 more tries)."""
+    import dataclasses  # noqa: PLC0415
 
-        providers.append(("FLUX.2 klein (GPU)", klein))
+    last = ""
+    for attempt in range(3):
+        rep.check_stop()
+        try_job = dataclasses.replace(job, seed=job.seed + attempt * 104729)
+        try:
+            img = KleinEngine.get().generate(try_job)
+        except StopRequested:
+            raise
+        except Exception as exc:  # noqa: BLE001 - shown to you, never a silent switch to the online queue
+            raise _gpu_error(exc, f"making {job.label or 'a picture'}") from exc
+        last = picture_problem(img)
+        if not last:
+            return ("FLUX.2 klein (GPU)" + (f", try {attempt + 1}" if attempt else "")), img
+        rep.warn(f"{job.label or 'Picture'}: {last}. Trying again with a new seed ({attempt + 2}/3)…")
+    rep.warn(f"{job.label or 'Picture'} is still {last} after 3 tries. Press 🔄 Regenerate or 📤 Replace on step 4.")
+    return "FLUX.2 klein (GPU, check it)", img
+
+
+def _generate_one(job: ImageJob, rep, allow_placeholder: bool) -> str:
+    if config.get().gpu.available:  # GPU: klein only. Errors are shown, not hidden behind the online queue.
+        name, img = _klein_with_retries(job, rep)
+        _save(img, job.out, job.size)
+        return name
+    providers = []
     for name, fn in (("Pollinations", lambda: pollinations(job.prompt, job.size, job.seed, rep)),
                      ("AI Horde", lambda: ai_horde(job.prompt, job.size, job.seed, rep))):
         if not _service_down(name):

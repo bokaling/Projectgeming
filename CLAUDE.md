@@ -192,6 +192,16 @@ wav2vec2 forced alignment, Pollinations/AI Horde/Gemini/Groq calls, the Colab po
 * Don't wait 46 s for Pollinations after a failed connection: circuit breaker in images.py.
 * Never save a placeholder as a character reference: it would steer klein later.
 * Run `pytest` and check ITS exit code before committing (not a piped `tail`).
+* T4 feedback (round 3): `[CHARACTER] NAME: look` is always used for that character; your `[SCENE]` text is the
+  main prompt (shot type only appended, never replacing it, and no protagonist is added to it); every prompt ends
+  with "No text, no letters, no watermark."; blank/blurry GPU pictures are redone with a new seed (2 more tries);
+  a new picture every ~2.5-3 s via several shots per scene (scenes stay whole sentences so the voice sounds
+  natural); stronger motion (MOTION_BOOST) + zoom punch on the hook; length warning.
+* With a GPU, image errors are SHOWN (FriendlyError), never hidden behind the online queue. Online picture
+  services are only used when there is no GPU.
+* Model files are checked before loading (`models.ensure_model`: safetensors header + size); broken files
+  (e.g. "header too large" from a cut-off Drive copy) are downloaded again.
+* Never use `str.replace` with a slice that can be empty: it inserts the text between every character.
 * Never use a `spawn`/`forkserver` process pool from the app: children re-run `__main__` (the app or the
   notebook). Run helpers as `python -m storyforge.motion.clip job.json` subprocesses instead.
 * Default arguments are bound at definition time (`size=CHUNK_SCENES` ignored later changes).

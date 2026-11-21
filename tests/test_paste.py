@@ -85,8 +85,9 @@ def test_prompt_follows_shot_and_hides_people(sf_root):
     with_char = {"id": "s02", "visual": "Mira at the wheel", "shot": "close_up", "show_character": True,
                  "characters": ["Mira"], "lighting": "cold blue moonlight", "composition": "centered"}
     p, refs = characters.scene_prompt(series, with_char, with_refs=True)
-    assert p.startswith("Close-up") and "new pose" in p and refs == [ref] and "cold blue moonlight" in p
-    assert "not sepia" in p
+    assert p.startswith("Mira at the wheel.") and "Shot: close-up" in p  # your picture text first, shot after
+    assert "new pose" in p and refs == [ref] and "cold blue moonlight" in p and "silver hair" in p
+    assert "not sepia" in p and p.endswith("No text, no letters, no watermark.")
     empty = {"id": "s03", "visual": "an empty street", "shot": "environment", "show_character": False,
              "characters": ["Mira"]}
     p2, refs2 = characters.scene_prompt(series, empty, with_refs=True)

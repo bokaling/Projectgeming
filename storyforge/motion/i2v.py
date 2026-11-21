@@ -75,13 +75,15 @@ class WanEngine:
             return
         self.unload()
         s = config.get()
-        mid, cache = config.MODELS["i2v"], s.model_cache("i2v")
+        from ..models import ensure_model  # noqa: PLC0415
+
+        mid = ensure_model("i2v", rep)  # checked files
         if rep:
             rep.info("📥 Loading the video prompt reader (first time downloads ~11 GB)…")
-        tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer", cache_dir=cache)
+        tok = AutoTokenizer.from_pretrained(mid, subfolder="tokenizer")
         from ..gpu import best_dtype  # noqa: PLC0415
 
-        te = UMT5EncoderModel.from_pretrained(mid, subfolder="text_encoder", cache_dir=cache,
+        te = UMT5EncoderModel.from_pretrained(mid, subfolder="text_encoder",
                                               torch_dtype=best_dtype(), device_map="cuda")
         try:
             for p in todo:
@@ -107,15 +109,17 @@ class WanEngine:
         from diffusers import AutoencoderKLWan, WanImageToVideoPipeline, WanTransformer3DModel  # noqa: PLC0415
 
         s = config.get()
-        mid, cache = config.MODELS["i2v"], s.model_cache("i2v")
+        from ..models import ensure_model  # noqa: PLC0415
+
+        mid = ensure_model("i2v", rep)  # checked files
         if rep:
             rep.info("📥 Loading Wan 2.2 video model (first time downloads ~10 GB)…")
         from ..gpu import best_dtype  # noqa: PLC0415
 
-        transformer = WanTransformer3DModel.from_pretrained(mid, subfolder="transformer", cache_dir=cache,
+        transformer = WanTransformer3DModel.from_pretrained(mid, subfolder="transformer",
                                                             torch_dtype=best_dtype(), device_map="cuda")
-        vae = AutoencoderKLWan.from_pretrained(mid, subfolder="vae", cache_dir=cache, torch_dtype=torch.float32).to("cuda")
-        pipe = WanImageToVideoPipeline.from_pretrained(mid, cache_dir=cache, transformer=transformer, vae=vae,
+        vae = AutoencoderKLWan.from_pretrained(mid, subfolder="vae", torch_dtype=torch.float32).to("cuda")
+        pipe = WanImageToVideoPipeline.from_pretrained(mid, transformer=transformer, vae=vae,
                                                        text_encoder=None, tokenizer=None, torch_dtype=best_dtype())
         try:
             pipe.vae.enable_tiling()

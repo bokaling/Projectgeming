@@ -36,6 +36,7 @@ When you're done: **Runtime → Disconnect and delete runtime**. A connected GPU
 
 ```text
 [TITLE] The Night Radio
+[CHARACTER] MIRA: woman, 30s, short silver hair, yellow raincoat
 [SCENE] a yellow taxi parked in the rain at 3 a.m., neon signs
 NARRATOR: The radio crackled at exactly three in the morning.
 MIRA: Who's there?
@@ -43,7 +44,12 @@ MIRA: Who's there?
 NARRATOR: A voice answered with her own name.
 ```
 
-- `[SCENE]` is optional. Without it, the text is split into scenes and the picture prompts are written for you.
+- `[CHARACTER] NIKOLA: man, 40s, short dark hair, lab coat` fixes how a character looks. That description goes
+  into every picture where he appears (and decides his voice: man or woman).
+- `[SCENE]` is optional. Your `[SCENE]` text is the main picture prompt; the shot type is only added after it.
+  Without it, the text is split into scenes and the picture prompts are written for you.
+- A new picture every ~2.5 s (short) or ~3 s (long): each scene gets several shots of the same moment.
+  You get a warning if the script is shorter than the target length (~150 words for a Short).
 - `NARRATOR:` (or plain text without a name) is the narrator. `MIRA:` is a character speaking.
 - `[CHAPTER] The road` (optional) sets YouTube chapters for long videos. Without it, there's one about every 90 seconds.
 - Farsi works the same way (`راوی:` for the narrator). The language is detected automatically.

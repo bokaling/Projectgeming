@@ -23,7 +23,14 @@ from .motion import i2v
 from .project import (UPLOAD_VIDEO_EXT, Episode, EpisodeOptions, Series, dims, fingerprint, read_json,
                       write_json)
 
-LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.15, 0.35, 1.4, 2.2
+LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.15, 0.3, 1.4, 1.6
+
+
+def effects_version() -> str:
+    """Changes when the motion engine changes, so old scene clips are made again with the new motion."""
+    from .motion import effects  # noqa: PLC0415
+
+    return f"motion-{effects.MOTION_VERSION}"
 
 
 def file_sig(path: Path | None) -> str:
@@ -99,16 +106,19 @@ class Pipeline:
                 continue
             if self.ep.upload_path(sc["id"]) and not force:
                 continue
-            prompt, refs = characters.scene_prompt(self.series, sc, with_refs=use_refs)
-            seed = self.scene_seed(sc)
-            for fmt in self.image_formats():
-                out = self.ep.image_path(sc["id"], fmt)
-                fp = fingerprint(prompt, seed, fmt, [file_sig(r) for r in refs])
-                key = f"image:{sc['id']}:{fmt}"
-                if not force and self.ep.state.fresh(key, fp, [out]):
-                    continue
-                jobs.append(images.ImageJob(prompt, out, dims(fmt, "1080p"), seed, refs, key, fp,
-                                            label=f"Scene {i} ({fmt.replace('x', ':')})"))
+            n_shots = 1 + len(sc.get("shots") or [])
+            for k in range(n_shots):  # a new picture every 2-3 seconds: one per shot
+                prompt, refs = characters.scene_prompt(self.series, sc, with_refs=use_refs, shot_index=k)
+                seed = self.scene_seed(sc) + 7 * k
+                for fmt in self.image_formats():
+                    out = self.ep.image_path(sc["id"], fmt, k)
+                    fp = fingerprint(prompt, seed, fmt, [file_sig(r) for r in refs])
+                    key = f"image:{sc['id']}:{fmt}" + (f":{k}" if k else "")
+                    if not force and self.ep.state.fresh(key, fp, [out]):
+                        continue
+                    shot_label = f" shot {k + 1}/{n_shots}" if n_shots > 1 else ""
+                    jobs.append(images.ImageJob(prompt, out, dims(fmt, "1080p"), seed, refs, key, fp,
+                                                label=f"Scene {i}{shot_label} ({fmt.replace('x', ':')})"))
         if not jobs:
             self.rep.ok("All scene pictures are already done")
             return {}
@@ -184,12 +194,13 @@ class Pipeline:
             for fmt in self.opts.formats:
                 if self.hero_clip(sc["id"], fmt):
                     continue
-                src = self.ep.scene_source_image(sc["id"], fmt, self.opts.formats)
-                if src is None:
-                    continue
-                out = self.depth_for(src)
-                if not self.ep.state.fresh(f"depth:{sc['id']}:{src.stem}", file_sig(src), [out]):
-                    todo.append((sc["id"], src, out))
+                for k in range(1 + len(sc.get("shots") or [])):
+                    src = self.ep.scene_source_image(sc["id"], fmt, self.opts.formats, k)
+                    if src is None:
+                        continue
+                    out = self.depth_for(src)
+                    if not self.ep.state.fresh(f"depth:{sc['id']}:{src.stem}", file_sig(src), [out]):
+                        todo.append((sc["id"], src, out))
         todo = list({str(s): (sid, s, o) for sid, s, o in todo}.values())
         if not todo:
             return
@@ -324,19 +335,29 @@ class Pipeline:
             src = None if video else self.ep.scene_source_image(sid, fmt, self.opts.formats)
             if video is None and src is None:
                 raise FriendlyError(f"Scene {i + 1} has no picture.", "Make the pictures on the Scenes step first.")
+            hook = sc.get("kind") == "hook"
             shake = [0.12] if set(sc.get("sfx", [])) & {"impact", "thunder"} else []
-            strength = 1.25 if sc.get("kind") == "hook" else 1.0
-            dpath = self.depth_for(src) if src is not None else None
-            fp = fingerprint(file_sig(video or src), file_sig(dpath), sc["camera"], sc.get("effects"), round(seconds, 3),
-                             size, self.opts.effects, shake, strength, render.FPS)
+            if hook:
+                shake = sorted(set(shake + [LEAD + 0.05]))  # a small jolt with the zoom punch
+            shots = []
+            if video is None:
+                for k in range(1 + len(sc.get("shots") or [])):
+                    img = self.ep.scene_source_image(sid, fmt, self.opts.formats, k) or src
+                    fr = characters.frame_of(sc, k)
+                    dpath = self.depth_for(img)
+                    shots.append({"image": str(img), "depth": str(dpath) if dpath.exists() else "",
+                                  "camera": fr["camera"], "fx": fr.get("effects") or [], "seed": self.scene_seed(sc) + k,
+                                  "punch": 0.16 if (hook and k == 0) else 0.0, "shake": shake if k == 0 else [],
+                                  "strength": 1.25 if hook else 1.0})
+            fp = fingerprint(file_sig(video), [(file_sig(Path(x["image"])), file_sig(Path(x["depth"])) if x["depth"] else "",
+                                                x["camera"], x["fx"], x["punch"], x["shake"]) for x in shots],
+                             round(seconds, 3), size, self.opts.effects, render.FPS, effects_version())
             out_paths.append(out)
             if self.ep.state.fresh(f"clip:{sid}:{fmt}:{lang}", fp, [out]):
                 continue
             jobs.append({"i": i, "key": f"clip:{sid}:{fmt}:{lang}", "fp": fp, "out": str(out), "size": list(size),
                          "seconds": seconds, "fps": render.FPS, "video": str(video) if video else "",
-                         "image": str(src) if src else "", "depth": str(dpath) if dpath and dpath.exists() else "",
-                         "camera": sc["camera"], "fx": sc.get("effects") or [], "seed": self.scene_seed(sc),
-                         "shake": shake, "strength": strength, "extras": self.opts.effects})
+                         "shots": shots, "extras": self.opts.effects, "camera": sc["camera"]})
         if not jobs:
             return out_paths
         from .motion import gpu  # noqa: PLC0415

@@ -298,8 +298,9 @@ class Episode:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def image_path(self, sid: str, fmt: str) -> Path:
-        return self.scene_dir(sid) / f"image_{fmt}.png"
+    def image_path(self, sid: str, fmt: str, shot: int = 0) -> Path:
+        """Picture of shot `shot` of a scene (shot 0 = the scene's main picture)."""
+        return self.scene_dir(sid) / (f"image_{fmt}.png" if shot == 0 else f"image_{fmt}_{shot}.png")
 
     def depth_path(self, sid: str, fmt: str) -> Path:
         return self.scene_dir(sid) / f"depth_{fmt}.png"
@@ -359,16 +360,16 @@ class Episode:
     def save_options(self, opts: EpisodeOptions) -> None:
         write_json(self.options_path, {"options": opts.to_dict()})
 
-    def scene_source_image(self, sid: str, fmt: str, formats: list[str]) -> Path | None:
-        """Best picture to use for a scene in a format: upload > own format > other format."""
+    def scene_source_image(self, sid: str, fmt: str, formats: list[str], shot: int = 0) -> Path | None:
+        """Best picture to use for a shot in a format: upload > own format > other format."""
         up = self.upload_path(sid)
         if up and up.suffix.lower() in UPLOAD_IMAGE_EXT:
             return up
-        p = self.image_path(sid, fmt)
+        p = self.image_path(sid, fmt, shot)
         if p.exists():
             return p
         for other in formats:
-            q = self.image_path(sid, other)
+            q = self.image_path(sid, other, shot)
             if q.exists():
                 return q
         return None

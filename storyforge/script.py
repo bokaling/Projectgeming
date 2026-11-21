@@ -167,6 +167,14 @@ def _norm_lines(sc: dict, language: str) -> list[dict]:
     return lines
 
 
+def _norm_shot(x: dict) -> dict:
+    shot = str(x.get("shot") or "")
+    return {"shot": shot if shot in planner.SHOTS else "medium", "show_character": bool(x.get("show_character")),
+            "characters": [str(c) for c in (x.get("characters") or [])][:3],
+            "composition": str(x.get("composition") or ""), "lighting": str(x.get("lighting") or ""),
+            "camera": _pick(x.get("camera"), CAMERAS, "push_in"), "effects": _pick_list(x.get("effects"), EFFECTS)}
+
+
 def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True, language: str = "en") -> list[dict]:
     ids = _scene_ids(
         len(scenes), [sc.get("id") if re.fullmatch(r"s\d+", str(sc.get("id", ""))) else None for sc in scenes], reserved
@@ -210,6 +218,8 @@ def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True, lang
                 "lighting": str(sc.get("lighting") or "").strip(),
                 "chapter": str(sc.get("chapter") or "").strip(),
                 "regen": int(sc.get("regen") or 0),
+                "user_visual": bool(sc.get("user_visual") or sc.get("from_tag")),
+                "shots": [_norm_shot(x) for x in (sc.get("shots") or []) if isinstance(x, dict)][:8],
             }
         )
     return out
@@ -396,7 +406,10 @@ def write_script(series: Series, episode: Episode, opts: EpisodeOptions, rep) ->
                 if series.character(str(name).strip()) is None:
                     add_character(series, str(name).strip(), "", "")
     names += [c["name"] for c in series.characters if c["name"] not in names]
-    planner.assign_variety(scenes, names, names[0] if names else "", planner.episode_seed(series.slug, episode.number))
+    from . import paste  # noqa: PLC0415
+
+    planner.assign_variety(scenes, names, names[0] if names else "", planner.episode_seed(series.slug, episode.number),
+                           paste.WORDS_PER_SHOT[opts.length])
     script = normalize_script(raw, opts)
     if script["style"] and not series.data.get("style_custom") and episode.number == 1:
         series.data["style"] = script["style"]
@@ -518,6 +531,16 @@ def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, tex
         raise FriendlyError("I couldn't find any story lines in your script.",
                             "Paste the text (NARRATOR: lines or plain sentences), then press Generate again.")
     lang = parsed["language"]
+    warning = paste.length_warning(text, opts.length)
+    if warning:
+        rep.warn("📏 " + warning)
+        rep.record("warn", "Script length", warning.split(".")[0])
+    from .characters import set_description  # noqa: PLC0415
+
+    for c in parsed.get("characters", []):  # [CHARACTER] NAME: look → used in every picture of that character
+        name = c["name"].title() if paste.LATIN.search(c["name"]) else c["name"]
+        set_description(series, name, c["description"])
+        rep.info(f"🧑 {name}: {c['description']}")
     scenes = paste.to_scenes(parsed, opts.length)
     for i, sc in enumerate(scenes):
         sc["id"] = f"s{i + 1:02d}"
@@ -527,14 +550,15 @@ def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, tex
     names = [c["name"] for c in series.characters]
     protagonist = series.data.get("protagonist", "") or (names[0] if names else "")
     seed = planner.episode_seed(series.slug, episode.number)
-    planner.assign_variety(scenes, names, protagonist, seed)
-    rep.info(f"{len(scenes)} scenes, {sum(1 for s in scenes if s['show_character'])} with the main character")
+    planner.assign_variety(scenes, names, protagonist, seed, paste.WORDS_PER_SHOT[opts.length])
+    n_pics = sum(1 + len(s["shots"]) for s in scenes)
+    rep.info(f"{len(scenes)} scenes, {n_pics} pictures (a new picture every ~{paste.SECONDS_PER_IMAGE[opts.length]:g} s)")
     provider, new_chars, prot = planner.write_visuals(scenes, lang, series.characters, rep)
     for c in new_chars:
         existing = series.character(c["name"])
         if existing is None:
             add_character(series, c["name"], c.get("description", ""), c.get("gender", ""))
-        else:
+        elif not existing.get("look_from_script"):
             if c.get("description") and existing["description"].startswith(("a person in their", "a woman in their",
                                                                               "a man in their")):
                 existing["description"] = c["description"]  # replace the default look with a real one

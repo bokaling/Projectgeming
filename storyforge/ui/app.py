@@ -673,6 +673,10 @@ def build_app():
                 if not texts:
                     raise FriendlyError("The script box is empty.", "Paste your script, then press Generate.")
                 s = resolve_series(choice, name)
+                for k, t in enumerate(texts, 1):  # too short for a Short / a long video? say so (it still runs)
+                    warn = paste.length_warning(t, o.length)
+                    if warn:
+                        gr.Warning(("" if len(texts) == 1 else f"Script {k}: ") + warn)
                 if len(texts) > 1:  # batch: new episode numbers after the last one
                     first = s.next_episode_number()
                     set_current(s.slug, first)

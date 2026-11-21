@@ -14,6 +14,10 @@ from . import effects
 
 
 def available() -> bool:
+    import os  # noqa: PLC0415
+
+    if os.environ.get("STORYFORGE_FORCE_CPU") == "1":  # helper processes render on the CPU
+        return False
     try:
         import torch  # noqa: PLC0415
 
@@ -24,7 +28,7 @@ def available() -> bool:
 
 def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], duration: float, fps: int = 30,
            camera: str = "push_in", fx=(), seed: int = 0, shake_times=(), strength: float = 1.0,
-           grain: bool = True, vignette: bool = True, device: str = "cuda"):
+           grain: bool = True, vignette: bool = True, device: str = "cuda", punch: float = 0.0):
     """Yield RGB uint8 frames (numpy), computed on `device`."""
     import torch  # noqa: PLC0415
     import torch.nn.functional as F  # noqa: PLC0415
@@ -33,6 +37,7 @@ def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], dur
     canvas, dcanvas = effects.prepare_canvas(rgb, depth, size)
     Hw, Ww = canvas.shape[:2]
     move = effects.camera_move(camera, strength)
+    move.punch = punch
     if dcanvas is None:
         move.par = ((0, 0), (0, 0))
         move.dolly = (0.0, 0.0)

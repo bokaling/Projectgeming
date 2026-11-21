@@ -34,6 +34,38 @@ def from_image(image: Path, depth_path: Path | None, out: Path, size: tuple[int,
     return how
 
 
+def from_shots(shots: list[dict], out: Path, size: tuple[int, int], seconds: float, fps: int, extras: bool = True,
+               use_gpu: bool | None = None) -> str:
+    """One scene clip made of several shots (a new picture every 2-3 s), cut one after another."""
+    import cv2  # noqa: PLC0415
+
+    from . import gpu  # noqa: PLC0415
+
+    total = max(1, int(round(seconds * fps)))
+    n = len(shots)
+    counts = [total // n + (1 if k < total % n else 0) for k in range(n)]
+    use_gpu = gpu.available() if use_gpu is None else use_gpu
+    kinds = []
+
+    def all_frames():
+        for shot, count in zip(shots, counts):
+            bgr = cv2.imread(shot["image"], cv2.IMREAD_COLOR)
+            if bgr is None:
+                raise FileNotFoundError(f"picture missing: {shot['image']}")
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            d = depth_mod.load_depth(Path(shot["depth"]), rgb.shape[:2]) if shot.get("depth") else None
+            kinds.append("2.5D parallax" if d is not None else "Ken Burns")
+            args = (rgb, d, size, count / fps, fps, shot["camera"], shot.get("fx") if extras else [], shot["seed"],
+                    shot.get("shake") or [], shot.get("strength", 1.0))
+            kw = {"grain": extras, "vignette": True, "punch": shot.get("punch", 0.0)}
+            gen = gpu.frames(*args, **kw) if use_gpu else effects.frames(*args, **kw)
+            yield from gen
+
+    effects.write_video(all_frames(), out, size, fps)
+    how = kinds[0] if kinds else "motion"
+    return how + (f", {n} shots" if n > 1 else "") + (" (GPU)" if use_gpu else "")
+
+
 def render_job(job: dict) -> str:
     """One scene clip, in a separate process (used for parallel rendering on many-core machines)."""
     import cv2  # noqa: PLC0415
@@ -41,6 +73,13 @@ def render_job(job: dict) -> str:
     cv2.setNumThreads(1)
     if job["video"]:
         return from_video(Path(job["video"]), Path(job["out"]), tuple(job["size"]), job["seconds"], job["fps"])
+    if job.get("shots"):
+        try:
+            return from_shots(job["shots"], Path(job["out"]), tuple(job["size"]), job["seconds"], job["fps"],
+                              job.get("extras", True))
+        except Exception:  # noqa: BLE001 - GPU busy or out of memory: same picture on the CPU
+            return from_shots(job["shots"], Path(job["out"]), tuple(job["size"]), job["seconds"], job["fps"],
+                              job.get("extras", True), use_gpu=False)
     return from_image(Path(job["image"]), Path(job["depth"]) if job["depth"] else None, Path(job["out"]),
                       tuple(job["size"]), job["seconds"], job["fps"], job["camera"], job["fx"], job["seed"],
                       job["shake"], job["strength"], job["extras"])

@@ -25,9 +25,11 @@ def _load():
     from transformers import AutoImageProcessor, AutoModelForDepthEstimation  # noqa: PLC0415
 
     s = config.get()
-    mid, cache = config.MODELS["depth"], s.model_cache("depth")
-    proc = AutoImageProcessor.from_pretrained(mid, cache_dir=cache)
-    net = AutoModelForDepthEstimation.from_pretrained(mid, cache_dir=cache)
+    from ..models import ensure_model  # noqa: PLC0415
+
+    mid = ensure_model("depth")  # checked files
+    proc = AutoImageProcessor.from_pretrained(mid)
+    net = AutoModelForDepthEstimation.from_pretrained(mid)
     net = net.to("cuda" if s.gpu.available else "cpu").eval()
     if s.gpu.available:
         from ..gpu import best_dtype  # noqa: PLC0415

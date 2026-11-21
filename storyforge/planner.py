@@ -101,60 +101,115 @@ def mentioned(text: str, names: list[str]) -> list[str]:
     return [n for n in names if n and re.search(r"(?<!\w)" + re.escape(n.lower()) + r"(?!\w)", low)]
 
 
-def assign_variety(scenes: list[dict], character_names: list[str], protagonist: str, seed: int) -> None:
-    """Shot type, composition, lighting, camera move and effects for every scene (in place)."""
+SHOT_WORDS = [
+    (r"extreme close|detail|insert|macro", "detail"), (r"close[ -]?up|closeup", "close_up"),
+    (r"over[ -]the[ -]shoulder", "over_shoulder"), (r"top[ -]down|overhead|bird'?s[ -]eye", "top_down"),
+    (r"low[ -]angle|from below", "low_angle"), (r"\bwide\b|establishing|aerial", "wide"),
+    (r"medium shot|waist", "medium"), (r"\bempty\b|no people|nobody", "environment"),
+]
+PEOPLE = re.compile(r"\b(man|woman|men|women|person|people|boy|girl|he|she|his|her|face|crowd|child|kid|doctor|"
+                    r"scientist|soldier|driver|figure)\b", re.I)
+
+
+def infer_shot(text: str) -> str | None:
+    """The shot type you wrote in your [SCENE] text, if any ('close up of …', 'wide shot …')."""
+    low = (text or "").lower()
+    for pattern, shot in SHOT_WORDS:
+        if re.search(pattern, low):
+            return shot
+    return None
+
+
+def assign_variety(scenes: list[dict], character_names: list[str], protagonist: str, seed: int,
+                   words_per_shot: int = 0) -> None:
+    """Shot type, composition, lighting, camera move and effects for every scene and its extra shots (in place).
+
+    words_per_shot > 0: a scene gets one picture per ~words_per_shot words (a new picture every 2-3 s),
+    all of the same moment but framed differently.
+    """
     idx = seed % len(ROTATION)
-    prev_shot = prev_cam = prev_light = prev_comp = None
+    prev = {"shot": None, "camera": None, "lighting": None, "composition": None}
     canon = {n.lower(): n for n in character_names}
+    n_frames = 0
     for i, sc in enumerate(scenes):
         speakers = [canon.get(ln["speaker"].lower(), ln["speaker"]) for ln in sc.get("lines", [])
                     if ln.get("speaker") not in (None, NARRATOR)]
         text = " ".join(ln.get("text", "") for ln in sc.get("lines", []))
-        named = mentioned(sc.get("visual", "") if sc.get("from_tag") else "", character_names)
-        must_show = bool(speakers or named)
-        if sc.get("shot") in SHOTS:  # user's choice
-            shot = sc["shot"]
-        else:
-            shot = ROTATION[idx % len(ROTATION)]
-            if must_show and not SHOTS[shot][1]:
-                shot = next(s for s in ROTATION[idx % 8:] + ROTATION if SHOTS[s][1] and s != prev_shot)
-            elif shot == prev_shot:
-                idx += 1
-                shot = ROTATION[idx % len(ROTATION)]
-            idx += 1
-        sc["shot"] = shot
-        sc["show_character"] = SHOTS[shot][1]
-        chars = list(dict.fromkeys(speakers + named + mentioned(text, character_names)))
-        if sc["show_character"] and not chars and protagonist:
-            chars = [protagonist]
-        sc["characters"] = chars[:3] if sc["show_character"] else []
-        mood = sc.get("mood") or guess_mood(text + " " + sc.get("visual", ""))
+        user = bool(sc.get("from_tag") or sc.get("user_visual")) and bool(sc.get("visual", "").strip())
+        visual = sc.get("visual", "")
+        named = mentioned(visual, character_names) if user else []
+        mood = sc.get("mood") or guess_mood(text + " " + visual)
         sc["mood"] = mood
-        comps = [c for c in COMPOSITIONS if c != prev_comp]
-        sc["composition"] = sc.get("composition") or comps[(i * 2 + seed) % len(comps)]
-        lights = [x for x in LIGHTING.get(mood, LIGHTING["mysterious"]) if x != prev_light]
-        sc["lighting"] = sc.get("lighting") or lights[(i + seed) % len(lights)]
-        cams = [c for c in CAMERA_FOR_SHOT[shot] if c != prev_cam] or CAMERA_FOR_SHOT[shot]
-        sc["camera"] = sc.get("camera") or cams[(i + seed) % len(cams)]
-        if "effects" not in sc:
-            options = EFFECTS_FOR_MOOD.get(mood, [[]])
-            sc["effects"] = list(options[(i + seed) % len(options)])
-        prev_shot, prev_cam, prev_light, prev_comp = shot, sc["camera"], sc["lighting"], sc["composition"]
+        words = len(text.split())
+        n = max(1, round(words / words_per_shot)) if words_per_shot else 1 + len(sc.get("shots") or [])
+        frames = []
+        group = None  # with people / without people: the same for every shot of one scene
+        for k in range(n):
+            if k == 0 and sc.get("shot") in SHOTS:
+                shot = sc["shot"]
+            elif k == 0 and user and infer_shot(visual):
+                shot = infer_shot(visual)
+            else:
+                pool = ROTATION[idx % 8:] + ROTATION[:idx % 8]
+                if group is None:  # first shot: show people when someone is named or speaks
+                    want = True if (named or (not user and speakers)) else None
+                else:
+                    want = group
+                shot = next(x for x in pool if (want is None or SHOTS[x][1] == want) and x != prev["shot"])
+                idx = ROTATION.index(shot) + 1
+            if user and named and not SHOTS[shot][1]:
+                shot = next(x for x in CHARACTER_SHOTS if x != prev["shot"])
+            group = SHOTS[shot][1] if group is None else group
+            show = SHOTS[shot][1]
+            if user:
+                chars = named  # your [SCENE] text decides who is in it
+                show = show or bool(named)
+            else:
+                chars = list(dict.fromkeys(speakers + mentioned(text, character_names)))
+                if show and not chars and protagonist:
+                    chars = [protagonist]
+                chars = chars if show else []
+            given = sc if k == 0 else {}
+            comps = [c for c in COMPOSITIONS if c != prev["composition"]]
+            lights = [x for x in LIGHTING.get(mood, LIGHTING["mysterious"]) if x != prev["lighting"]]
+            cams = [c for c in CAMERA_FOR_SHOT[shot] if c != prev["camera"]] or CAMERA_FOR_SHOT[shot]
+            fr = {
+                "shot": shot, "show_character": show, "characters": chars[:3],
+                "composition": given.get("composition") or comps[(n_frames * 2 + seed) % len(comps)],
+                "lighting": given.get("lighting") or lights[(n_frames + seed) % len(lights)],
+                "camera": given.get("camera") or cams[(n_frames + seed) % len(cams)],
+            }
+            if "effects" in given:
+                fr["effects"] = given["effects"]
+            else:
+                options = EFFECTS_FOR_MOOD.get(mood, [[]])
+                fr["effects"] = list(options[(n_frames + seed) % len(options)])
+            frames.append(fr)
+            prev = {key: fr[key] for key in prev}
+            n_frames += 1
+        sc.update(frames[0])
+        sc["shots"] = frames[1:]
+        sc["user_visual"] = user
 
 
 def fill_characters(scenes: list[dict], names: list[str], protagonist: str) -> None:
-    """After new characters are known: who is in each character shot."""
+    """After new characters are known: who is in each character shot (also the extra shots)."""
     for sc in scenes:
-        if not sc.get("show_character"):
-            sc["characters"] = []
-            continue
+        user = sc.get("user_visual")
         text = " ".join(ln.get("text", "") for ln in sc.get("lines", [])) + " " + sc.get("visual", "")
         speakers = [ln["speaker"] for ln in sc.get("lines", []) if ln.get("speaker") not in (None, NARRATOR)]
-        found = [n for n in names if n.lower() in [s.lower() for s in speakers]] + mentioned(text, names)
-        found = list(dict.fromkeys(found))
-        if not found and protagonist:
-            found = [protagonist]
-        sc["characters"] = found[:3]
+        for fr in [sc] + list(sc.get("shots") or []):
+            if user:  # only who your [SCENE] text names
+                fr["characters"] = mentioned(sc.get("visual", ""), names)[:3]
+                continue
+            if not fr.get("show_character"):
+                fr["characters"] = []
+                continue
+            found = [n for n in names if n.lower() in [s.lower() for s in speakers]] + mentioned(text, names)
+            found = list(dict.fromkeys(found))
+            if not found and protagonist:
+                found = [protagonist]
+            fr["characters"] = found[:3]
 
 
 def fallback_visual(text: str, shot: str) -> str:
