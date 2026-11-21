@@ -1,0 +1,302 @@
+"""Settings, folders, platform detection (Colab / Kaggle / local), GPU check and secrets.
+
+Nothing heavy is imported here, so `import storyforge` stays fast.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+
+PACKAGE_DIR = Path(__file__).resolve().parent
+REPO_DIR = PACKAGE_DIR.parent
+ASSETS_DIR = REPO_DIR / "assets"
+FONTS_DIR = ASSETS_DIR / "fonts"
+
+# Optional free API keys. The app works with none of them.
+SECRET_NAMES = [
+    "GEMINI_API_KEY",  # aistudio.google.com  (free, no card)
+    "GROQ_API_KEY",  # console.groq.com     (free, no card)
+    "OPENROUTER_API_KEY",  # openrouter.ai     (free models only)
+    "HF_TOKEN",  # huggingface.co        (faster, more reliable model downloads)
+    "FREESOUND_API_KEY",  # freesound.org     (CC0 sound effects)
+    "AIHORDE_API_KEY",  # aihorde.net          (higher priority in the free queue)
+]
+
+# Model ids (all permissive licenses, see research.md section 14).
+MODELS = {
+    "image": "black-forest-labs/FLUX.2-klein-4B",  # Apache 2.0
+    "depth": "depth-anything/Depth-Anything-V2-Small-hf",  # Apache 2.0 (Small only!)
+    "i2v": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",  # Apache 2.0
+    "kokoro": "hexgrad/Kokoro-82M",  # Apache 2.0
+    "align_en": "facebook/wav2vec2-base-960h",  # Apache 2.0
+    "align_fa": "jonatasgrosman/wav2vec2-large-xlsr-53-persian",  # Apache 2.0
+    "local_llm": "Qwen/Qwen3-4B-Instruct-2507",  # Apache 2.0
+    "piper_voices": "rhasspy/piper-voices",
+}
+# Models small enough to keep on free Google Drive (15 GB).
+SMALL_MODELS = {"depth", "kokoro", "align_en", "align_fa", "piper_voices"}
+
+
+@dataclass
+class GPUInfo:
+    available: bool = False
+    name: str = ""
+    vram_gb: float = 0.0
+
+    @property
+    def label(self) -> str:
+        if not self.available:
+            return "No GPU (online + CPU mode)"
+        return f"{self.name} ({self.vram_gb:.0f} GB)"
+
+
+@dataclass
+class Settings:
+    root: Path
+    platform: str
+    gpu: GPUInfo = field(default_factory=GPUInfo)
+    cache_big_models_on_drive: bool = False
+    drive_mounted: bool = False
+
+    # ---- folders -------------------------------------------------------
+    @property
+    def series_dir(self) -> Path:
+        return self.root / "series"
+
+    @property
+    def library_dir(self) -> Path:
+        return self.root / "library"
+
+    @property
+    def music_dir(self) -> Path:
+        return self.library_dir / "music"
+
+    @property
+    def sfx_dir(self) -> Path:
+        return self.library_dir / "sfx"
+
+    @property
+    def small_model_cache(self) -> Path:
+        return self.root / "models"
+
+    @property
+    def big_model_cache(self) -> Path:
+        if self.cache_big_models_on_drive:
+            return self.root / "models"
+        return local_cache_dir(self.platform) / "models"
+
+    @property
+    def temp_dir(self) -> Path:
+        return local_cache_dir(self.platform) / "tmp"
+
+    def model_cache(self, key: str) -> str:
+        path = self.small_model_cache if key in SMALL_MODELS else self.big_model_cache
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
+
+    def ensure_dirs(self) -> None:
+        for d in (self.series_dir, self.music_dir, self.sfx_dir, self.small_model_cache, self.temp_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Platform detection
+# ---------------------------------------------------------------------------
+
+
+def detect_platform() -> str:
+    if "google.colab" in sys.modules or os.environ.get("COLAB_RELEASE_TAG"):
+        return "colab"
+    if os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or Path("/kaggle/working").is_dir():
+        return "kaggle"
+    return "local"
+
+
+def local_cache_dir(platform: str) -> Path:
+    if platform == "colab":
+        return Path("/content/sf_cache")
+    if platform == "kaggle":
+        return Path("/kaggle/tmp/sf_cache") if Path("/kaggle/tmp").is_dir() else Path("/tmp/sf_cache")
+    return Path(os.environ.get("STORYFORGE_CACHE", Path.home() / ".cache" / "storyforge"))
+
+
+def default_root(platform: str) -> tuple[Path, bool]:
+    """Return (project root, saved_to_drive)."""
+    env = os.environ.get("STORYFORGE_HOME")
+    if env:
+        return Path(env), env.startswith("/content/drive")
+    if platform == "colab":
+        drive = Path("/content/drive/MyDrive")
+        if drive.is_dir():
+            return drive / "StoryForge", True
+        return Path("/content/StoryForge"), False
+    if platform == "kaggle":
+        return Path("/kaggle/working/StoryForge"), False
+    return Path.home() / "StoryForge", False
+
+
+# ---------------------------------------------------------------------------
+# GPU
+# ---------------------------------------------------------------------------
+
+
+def detect_gpu() -> GPUInfo:
+    if os.environ.get("STORYFORGE_FORCE_CPU") == "1":
+        return GPUInfo(False)
+    smi = shutil.which("nvidia-smi")
+    if smi:
+        try:
+            out = subprocess.run(
+                [smi, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            ).stdout.strip()
+            if out:
+                first = out.splitlines()[0]
+                name, mem = [p.strip() for p in first.split(",")[:2]]
+                return GPUInfo(True, name, float(mem) / 1024.0)
+        except Exception:
+            pass
+    try:  # torch might see a GPU even if nvidia-smi is missing
+        import torch  # noqa: PLC0415
+
+        if torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            return GPUInfo(True, props.name, props.total_memory / 1024**3)
+    except Exception:
+        pass
+    return GPUInfo(False)
+
+
+# ---------------------------------------------------------------------------
+# Secrets (optional free API keys)
+# ---------------------------------------------------------------------------
+
+
+def _colab_secret(name: str) -> str | None:
+    try:
+        from google.colab import userdata  # type: ignore  # noqa: PLC0415
+
+        return userdata.get(name) or None
+    except Exception:  # not on Colab, secret missing, or notebook access not granted
+        return None
+
+
+def _kaggle_secret(name: str) -> str | None:
+    try:
+        from kaggle_secrets import UserSecretsClient  # type: ignore  # noqa: PLC0415
+
+        return UserSecretsClient().get_secret(name) or None
+    except Exception:
+        return None
+
+
+def load_secrets() -> dict[str, bool]:
+    """Copy optional keys from Colab/Kaggle secrets into this process's environment.
+
+    Call it once from the notebook's main thread (Colab secrets don't work from
+    background threads). Keys are never printed or saved to disk.
+    Returns {name: found}.
+    """
+    found = {}
+    for name in SECRET_NAMES:
+        value = os.environ.get(name) or _colab_secret(name) or _kaggle_secret(name)
+        if value:
+            os.environ[name] = value.strip()
+        found[name] = bool(value)
+    if os.environ.get("HF_TOKEN"):
+        os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", os.environ["HF_TOKEN"])
+    return found
+
+
+def secret(name: str) -> str | None:
+    return os.environ.get(name) or None
+
+
+# ---------------------------------------------------------------------------
+# FFmpeg capabilities
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def ffmpeg_path() -> str:
+    path = shutil.which("ffmpeg")
+    if not path:
+        raise FileNotFoundError("ffmpeg")
+    return path
+
+
+@lru_cache(maxsize=1)
+def video_encoder() -> str:
+    """'h264_nvenc' if it really works on this machine, else 'libx264'."""
+    try:
+        cmd = [
+            ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+            "-i", "color=c=black:s=256x256:d=0.2", "-c:v", "h264_nvenc", "-f", "null", "-",
+        ]
+        if subprocess.run(cmd, capture_output=True, timeout=30).returncode == 0:
+            return "h264_nvenc"
+    except Exception:
+        pass
+    return "libx264"
+
+
+def encoder_args(quality: str = "final") -> list[str]:
+    """FFmpeg video encoder arguments. 'final' = upload quality, 'work' = fast intermediate."""
+    enc = video_encoder()
+    if enc == "h264_nvenc":
+        cq = "19" if quality == "final" else "21"
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", cq, "-b:v", "0", "-pix_fmt", "yuv420p"]
+    if quality == "final":
+        return ["-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p"]
+
+
+# ---------------------------------------------------------------------------
+# Global settings object
+# ---------------------------------------------------------------------------
+
+_SETTINGS: Settings | None = None
+
+
+def init(root: str | os.PathLike | None = None, cache_big_models_on_drive: bool = False) -> Settings:
+    """Create (or replace) the global settings. Safe to call more than once."""
+    global _SETTINGS
+    platform = detect_platform()
+    if root:
+        root_path, on_drive = Path(root), str(root).startswith("/content/drive")
+    else:
+        root_path, on_drive = default_root(platform)
+    s = Settings(
+        root=root_path,
+        platform=platform,
+        gpu=detect_gpu(),
+        cache_big_models_on_drive=cache_big_models_on_drive,
+        drive_mounted=on_drive,
+    )
+    s.ensure_dirs()
+    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    _SETTINGS = s
+    return s
+
+
+def get() -> Settings:
+    return _SETTINGS if _SETTINGS is not None else init()
+
+
+def free_disk_gb(path: str | os.PathLike) -> float:
+    try:
+        p = Path(path)
+        while not p.exists() and p != p.parent:
+            p = p.parent
+        return shutil.disk_usage(p).free / 1024**3
+    except Exception:
+        return 0.0
