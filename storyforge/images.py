@@ -165,6 +165,19 @@ class KleinEngine:
 # ---------------------------------------------------------------------------
 
 _last_pollinations = [0.0]
+_down_until: dict[str, float] = {}  # service name -> time it may be tried again
+DOWN_MINUTES = 5
+
+
+def _service_down(name: str) -> bool:
+    return time.time() < _down_until.get(name, 0.0)
+
+
+def _mark_down(name: str, exc: BaseException) -> None:
+    """Unreachable or broken (not just busy)? Skip this service for a few minutes."""
+    status = getattr(exc, "status", None)
+    if status is None or (isinstance(status, int) and status >= 500):
+        _down_until[name] = time.time() + DOWN_MINUTES * 60
 
 
 def _image_from_bytes(data: bytes):
@@ -193,8 +206,11 @@ def pollinations(prompt: str, size: tuple[int, int], seed: int, rep=None):
     params = {"width": w, "height": h, "seed": seed, "nologo": "true", "private": "true", "model": "flux"}
     try:
         resp = net.request("GET", url, params=params, timeout=180, retries=1, backoff=20, max_wait=60)
-    finally:
-        _last_pollinations[0] = time.time()
+    except net.ServiceError as exc:
+        if exc.status is not None:  # the service answered (e.g. busy): keep the spacing
+            _last_pollinations[0] = time.time()
+        raise
+    _last_pollinations[0] = time.time()
     return _image_from_bytes(resp.content)
 
 
@@ -318,7 +334,8 @@ def _check_not_blank(img) -> None:
         raise RuntimeError("the picture came out blank")
 
 
-def generate_batch(jobs: list[ImageJob], rep, on_done=None, allow_placeholder: bool = True) -> dict[str, int]:
+def generate_batch(jobs: list[ImageJob], rep, on_done=None, allow_placeholder: bool = True,
+                   span: tuple[float, float] | None = None) -> dict[str, int]:
     """Make all pictures. Calls on_done(job, provider) after each one is saved. Returns provider counts."""
     counts: dict[str, int] = {}
     if not jobs:
@@ -337,11 +354,13 @@ def generate_batch(jobs: list[ImageJob], rep, on_done=None, allow_placeholder: b
     total = len(jobs)
     for i, job in enumerate(remaining, 1):
         rep.check_stop()
-        rep.progress((i - 1) / total, f"Picture {i}/{total}")
+        frac = rep.fraction if span is None else span[0] + (span[1] - span[0]) * (i - 1) / total
+        rep.progress(frac, f"Picture {i}/{total}")
         with Timer() as t:
             provider = _generate_one(job, rep, allow_placeholder)
         counts[provider] = counts.get(provider, 0) + 1
-        rep.ok(f"🖼️ {job.label or job.out.name} {i}/{total} ({provider}, {t.label})")
+        if not job.label.startswith("ref:"):  # character refs are logged by characters.py
+            rep.ok(f"🖼️ {job.label or job.out.name} {i}/{total} ({provider}, {t.label})")
         if on_done:
             on_done(job, provider)
     return counts
@@ -353,6 +372,17 @@ def _disable_klein(exc: BaseException, rep) -> None:
     KleinEngine.get().unload()
     if rep:
         rep.warn(f"The GPU image model couldn't run ({reason}). Using free online pictures instead.")
+
+
+def _breaker(name: str, fn):
+    def run():
+        try:
+            return fn()
+        except net.ServiceError as exc:
+            _mark_down(name, exc)
+            raise
+
+    return run
 
 
 def _generate_one(job: ImageJob, rep, allow_placeholder: bool) -> str:
@@ -367,8 +397,10 @@ def _generate_one(job: ImageJob, rep, allow_placeholder: bool) -> str:
                 raise
 
         providers.append(("FLUX.2 klein (GPU)", klein))
-    providers.append(("Pollinations", lambda: pollinations(job.prompt, job.size, job.seed, rep)))
-    providers.append(("AI Horde", lambda: ai_horde(job.prompt, job.size, job.seed, rep)))
+    for name, fn in (("Pollinations", lambda: pollinations(job.prompt, job.size, job.seed, rep)),
+                     ("AI Horde", lambda: ai_horde(job.prompt, job.size, job.seed, rep))):
+        if not _service_down(name):
+            providers.append((name, _breaker(name, fn)))
     if allow_placeholder:
         providers.append(("Placeholder", lambda: placeholder(job.prompt, gen_size(job.size, 1280), job.seed)))
 
@@ -388,10 +420,11 @@ def _generate_one(job: ImageJob, rep, allow_placeholder: bool) -> str:
     return name
 
 
-def generate_to_file(prompt: str, out: Path, size: tuple[int, int], seed: int, refs=(), rep=None) -> str:
+def generate_to_file(prompt: str, out: Path, size: tuple[int, int], seed: int, refs=(), rep=None,
+                     allow_placeholder: bool = True, label: str = "") -> str:
     """Make one picture (used for character references)."""
-    job = ImageJob(prompt=prompt, out=Path(out), size=size, seed=seed, refs=list(refs))
-    counts = generate_batch([job], rep)
+    job = ImageJob(prompt=prompt, out=Path(out), size=size, seed=seed, refs=list(refs), label=label)
+    counts = generate_batch([job], rep, allow_placeholder=allow_placeholder)
     return next(iter(counts))
 
 

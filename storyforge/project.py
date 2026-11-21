@@ -28,8 +28,7 @@ UPLOAD_VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
 
 def dims(fmt: str, resolution: str = "1080p") -> tuple[int, int]:
     """(width, height) for a format key."""
-    short = 720 if resolution == "720p" else 1080
-    long_ = 1280 if resolution == "720p" else 1920
+    short, long_ = {"720p": (720, 1280), "480p": (480, 854)}.get(resolution, (1080, 1920))
     return (short, long_) if fmt == "9x16" else (long_, short)
 
 

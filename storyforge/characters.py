@@ -121,8 +121,14 @@ def ensure_references(series: Series, names: list[str] | None, rep, force: list[
     for i, c in enumerate(todo, 1):
         rep.check_stop()
         prompt = reference_prompt(series, c)
-        with Timer() as t:
-            provider = images.generate_to_file(prompt, ref_path(series, c), (768, 1024), seed=c["seed"], refs=[], rep=rep)
+        try:
+            with Timer() as t:
+                provider = images.generate_to_file(prompt, ref_path(series, c), (768, 1024), seed=c["seed"], refs=[],
+                                                   rep=rep, allow_placeholder=False, label=f"ref:{c['name']}")
+        except FriendlyError:
+            rep.warn(f"No reference picture for {c['name']} yet (no picture service worked). "
+                     "I'll try again next time, or upload one on the Characters step.")
+            continue
         from .project import write_json  # noqa: PLC0415
 
         write_json(series.char_dir(c["name"]) / "ref.json", {"fp": fingerprint(prompt, c["seed"]), "source": provider})
