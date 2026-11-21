@@ -134,12 +134,27 @@ tests/             CPU-only tests, network calls mocked
 
 ## Status
 
-- [ ] Core: config, project/state, messages, net
-- [ ] Script: LLM chain, writer, editor round-trip, Farsi translation
-- [ ] Characters + images
-- [ ] Motion engine + i2v
-- [ ] Audio: TTS, alignment, music/SFX
-- [ ] Captions (English + Farsi tested with a real render)
-- [ ] Render + publish
-- [ ] Web app UI (desktop + phone screenshots checked)
-- [ ] Notebooks + README
+- [x] Core: config, project/state, messages, net
+- [x] Script: LLM chain, writer, editor round-trip, Farsi translation
+- [x] Characters + images
+- [x] Motion engine + i2v
+- [x] Audio: TTS, alignment, music/SFX
+- [x] Captions (English + Farsi tested with a real render)
+- [x] Render + publish
+- [x] Web app UI (desktop + phone screenshots checked)
+- [x] Notebooks + README + backup forms mode
+
+### Verified only on CPU (needs a real Colab GPU run)
+FLUX.2 klein loading/generation, Depth Anything download, Wan 2.2 hero clips, Kokoro, Edge TTS,
+wav2vec2 forced alignment, Pollinations/AI Horde/Gemini/Groq calls, the Colab port link
+(`serve_kernel_port_as_window`). Every one of these has a tested fallback.
+
+### Lessons learned (keep these)
+* libass needs `Encoding: -1` in the Farsi style, or Persian word order comes out mirrored whenever a
+  word is highlighted (verified against a Pillow+raqm reference; regression test in test_captions.py).
+* Gradio 6: theme/css/head go to `launch()`; `elem_classes` lands on two nested elements; Tabs keep a
+  hidden measuring copy; the tab container itself is the scrolling `tablist`. Use `.input` (not
+  `.change`) for "save settings", or programmatic updates trigger saves.
+* Don't wait 46 s for Pollinations after a failed connection: circuit breaker in images.py.
+* Never save a placeholder as a character reference: it would steer klein later.
+* Run `pytest` and check ITS exit code before committing (not a piped `tail`).

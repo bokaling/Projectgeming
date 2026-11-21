@@ -1,14 +1,12 @@
-# Installed by the notebook's Setup cell. Colab/Kaggle already have torch,
-# numpy, scipy, pillow, opencv and requests, so we don't reinstall them.
+# Core packages, installed by the notebook's Setup cell (storyforge/install.py).
+# Colab/Kaggle already have torch, numpy, scipy, pillow, opencv and requests.
 gradio>=5.9,<7
-diffusers>=0.37
+diffusers>=0.43,<1
 transformers>=4.56
 accelerate>=1.0
 huggingface_hub
 ftfy
-kokoro>=0.9.4
 soundfile
 edge-tts>=7.2
-piper-tts>=1.3
 arabic-reshaper
 python-bidi

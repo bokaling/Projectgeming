@@ -216,7 +216,8 @@ class Pipeline:
             rec = self.ep.own_voice_path(lang)
             if rec is None:
                 raise FriendlyError("You chose your own voice but no recording is uploaded.",
-                                    "Upload your recording on the Voice step (one file for the whole episode).")
+                                    "Upload it on the Voice step (one file for the whole episode), or put it in "
+                                    f"Google Drive as {adir / 'own_voice.m4a'}.")
             fp = fingerprint(texts, file_sig(rec))
             if all(self.ep.state.fresh(f"voice:{lang}:{sc['id']}", fp, [adir / f"{sc['id']}.wav"]) for sc in sc_all):
                 return

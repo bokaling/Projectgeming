@@ -1,52 +1,10 @@
 """End-to-end tests: the whole pipeline on CPU with fake AI and no internet."""
-import json
-
 import pytest
 
-from storyforge import llm, media, net, pipeline, project
+from storyforge import media, pipeline, project
 from storyforge.messages import Reporter
 
-SCRIPT = {
-    "title": "The Signal", "style": "moody painting",
-    "characters": [{"name": "Mira", "description": "short silver hair, yellow raincoat", "gender": "female"}],
-    "scenes": [
-        {"narration": "At midnight the radio spoke.", "visual": "Mira and a glowing radio", "characters": ["Mira"],
-         "camera": "push_in", "effects": ["dust"], "sfx": ["impact"], "mood": "tense", "hero": True},
-        {"narration": "It knew her name.", "visual": "storm over a lighthouse", "camera": "pan_left",
-         "effects": ["rain"], "sfx": ["whoosh"], "mood": "dark"},
-        {"narration": "Don't open the door.", "visual": "a door with light under it", "characters": ["Mira"],
-         "camera": "dolly_zoom", "effects": ["fog"], "sfx": [], "mood": "tense"},
-    ],
-    "cliffhanger": "Who knocks?", "summary": "Mira got a warning.", "thumbnail_text": "DON'T OPEN IT", "music_mood": "mysterious",
-}
-FA = {"title": "سیگنال", "thumbnail_text": "باز نکن", "lines": [
-    {"id": "s01", "text": "نیمه‌شب رادیو حرف زد."}, {"id": "s02", "text": "اسمش را می‌دانست."}, {"id": "s03", "text": "در را باز نکن!"}]}
-
-
-@pytest.fixture()
-def offline(sf_root, monkeypatch):
-    """No internet; the AI writer is faked."""
-    def no_net(*a, **k):
-        raise net.ServiceError("network problem", None, True)
-
-    def fake(messages, json_mode, temperature, max_tokens):
-        sysmsg = messages[0]["content"].lower()
-        if "translate" in sysmsg:
-            return json.dumps(FA, ensure_ascii=False)
-        if "titles" in sysmsg:
-            return json.dumps({"titles": ["T1"], "description": "D", "hashtags": {"youtube": ["shorts"]}})
-        return json.dumps(SCRIPT)
-
-    monkeypatch.setattr(net, "request", no_net)
-    monkeypatch.setattr(llm, "providers", lambda allow_local=True: [("FakeAI", fake)])
-    from storyforge.audio import tts
-
-    def no_engine(*a, **k):
-        raise RuntimeError("offline")
-
-    for name in ("kokoro", "edge", "piper"):
-        monkeypatch.setattr(tts, name, no_engine)
-    return sf_root
+from conftest import FA, SCRIPT  # noqa: E402,F401
 
 
 def make_episode(langs=("en",), formats=("9x16",)):
