@@ -323,6 +323,7 @@ def merge_characters(series: Series, script: dict) -> list[str]:
 def write_script(series: Series, episode: Episode, opts: EpisodeOptions, rep) -> dict:
     """Ask the AI for a new episode script and save it (script.json + script.md)."""
     rep.step("✍️ Writing the script")
+    rep.progress(0.1, "✍️ Writing the script")
     with Timer() as t:
         try:
             provider, raw = llm.generate_json(
@@ -339,6 +340,7 @@ def write_script(series: Series, episode: Episode, opts: EpisodeOptions, rep) ->
             rep.info("👉 Please rewrite the lines in the Script step (or try again in a minute).")
             provider, raw = "Template (no AI)", template_script(opts.idea, opts, series)
     raw["provider"] = provider
+    rep.progress(0.7)
     script = normalize_script(raw, opts)
     if script["style"] and not series.data.get("style_custom") and episode.number == 1:
         series.data["style"] = script["style"]
