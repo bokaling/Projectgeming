@@ -20,7 +20,7 @@ CAMERA_LABELS = {
     "dolly_zoom": "Dolly zoom", "handheld": "Handheld shake", "static": "Still (subtle drift)",
 }
 EFFECTS = ["dust", "snow", "rain", "embers", "fireflies", "fog", "light_leak", "god_rays", "flicker"]
-SFX = ["whoosh", "impact", "riser", "heartbeat", "wind", "rain", "thunder", "glitch", "sparkle", "sting"]
+SFX = ["whoosh", "impact", "riser", "heartbeat", "wind", "rain", "thunder", "sting"]
 MOODS = ["tense", "mysterious", "sad", "hopeful", "epic", "calm", "dark", "action", "romantic", "playful"]
 _CAMERA_ROTATION = ["push_in", "pan_right", "orbit_left", "pull_out", "tilt_up", "pan_left", "orbit_right", "dolly_zoom"]
 

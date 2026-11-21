@@ -1,7 +1,9 @@
 """Music and sound effects (monetization safe).
 
-* Built-in generated music beds for 10 moods (made in code: no licenses, no Content ID claims).
-* Built-in generated sound effects (whoosh, impact, riser, heartbeat, wind, rain, thunder, glitch, sparkle, sting).
+* Built-in gentle cinematic music for 10 moods (made in code: no licenses, no Content ID claims),
+  lowpassed at 8 kHz so nothing sounds sharp.
+* Built-in generated sound effects (whoosh, impact, riser, heartbeat, wind, rain, thunder, sting),
+  all soft and lowpassed. Sound effects are OFF unless you switch them on.
 * Your own music library on Drive: StoryForge/library/music/<mood>/ with licenses.csv
   (credits are added to the description automatically).
 * Optional Freesound CC0 effects with a free FREESOUND_API_KEY.
@@ -26,20 +28,24 @@ SR = 44100
 AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac"}
 
 CHORDS = {"M": [0, 4, 7], "m": [0, 3, 7], "sus": [0, 2, 7], "dim": [0, 3, 6], "m7": [0, 3, 7, 10], "M7": [0, 4, 7, 11]}
+# Gentle, soft cinematic beds only: warm pads, low soft piano, string swells, sub bass, muffled pulses.
+# No bells, hi-hats, ticks, snares or bright arpeggios (they sounded sharp under a voice).
 PRESETS = {
-    "tense": dict(root=45, bpm=100, prog=[(0, "m"), (8, "M"), (5, "m"), (7, "M")], layers=["pad", "pulse", "ticks", "beat"], wet=0.3, bright=0.5),
-    "mysterious": dict(root=50, bpm=72, prog=[(0, "m"), (1, "M"), (0, "m7"), (10, "M")], layers=["pad", "bells", "drone"], wet=0.45, bright=0.4),
-    "sad": dict(root=48, bpm=66, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["pad", "piano"], wet=0.4, bright=0.35),
-    "hopeful": dict(root=48, bpm=84, prog=[(0, "M"), (7, "M"), (9, "m"), (5, "M")], layers=["pad", "arp", "softkick"], wet=0.35, bright=0.55),
-    "epic": dict(root=50, bpm=88, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["pad", "taiko", "octbass"], wet=0.35, bright=0.7),
-    "calm": dict(root=53, bpm=64, prog=[(0, "M7"), (9, "m"), (5, "M"), (7, "sus")], layers=["pad", "piano"], wet=0.45, bright=0.35),
-    "dark": dict(root=47, bpm=60, prog=[(0, "m"), (1, "M"), (0, "m"), (6, "dim")], layers=["drone", "pad", "pulse", "boom"], wet=0.4, bright=0.25),
-    "action": dict(root=52, bpm=126, prog=[(0, "m"), (8, "M"), (10, "M"), (7, "m")], layers=["pad", "drive", "kick4", "snare", "hats"], wet=0.2, bright=0.6),
-    "romantic": dict(root=55, bpm=72, prog=[(0, "M"), (4, "m"), (9, "m"), (5, "M")], layers=["pad", "arp"], wet=0.4, bright=0.45),
-    "playful": dict(root=60, bpm=112, prog=[(0, "M"), (5, "M"), (7, "M"), (0, "M")], layers=["pluck8", "softkick", "snare", "bounce"], wet=0.2, bright=0.6),
+    "tense": dict(root=45, bpm=92, prog=[(0, "m"), (8, "M"), (5, "m"), (7, "M")], layers=["pad", "sub", "pulse"], wet=0.35, cutoff=1100),
+    "mysterious": dict(root=50, bpm=66, prog=[(0, "m"), (1, "M"), (0, "m7"), (10, "M")], layers=["pad", "sub", "piano"], wet=0.45, cutoff=1000),
+    "sad": dict(root=48, bpm=62, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["pad", "piano"], wet=0.45, cutoff=1200),
+    "hopeful": dict(root=48, bpm=76, prog=[(0, "M"), (7, "M"), (9, "m"), (5, "M")], layers=["pad", "piano", "sub"], wet=0.4, cutoff=1600),
+    "epic": dict(root=50, bpm=80, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["strings", "sub", "taiko"], wet=0.4, cutoff=1500),
+    "calm": dict(root=53, bpm=60, prog=[(0, "M7"), (9, "m"), (5, "M"), (7, "sus")], layers=["pad", "piano"], wet=0.5, cutoff=1300),
+    "dark": dict(root=47, bpm=58, prog=[(0, "m"), (1, "M"), (0, "m"), (6, "dim")], layers=["pad", "sub", "pulse"], wet=0.45, cutoff=800),
+    "action": dict(root=52, bpm=104, prog=[(0, "m"), (8, "M"), (10, "M"), (7, "m")], layers=["strings", "sub", "pulse", "taiko"], wet=0.3, cutoff=1500),
+    "romantic": dict(root=55, bpm=68, prog=[(0, "M"), (4, "m"), (9, "m"), (5, "M")], layers=["pad", "piano"], wet=0.5, cutoff=1400),
+    "playful": dict(root=55, bpm=96, prog=[(0, "M"), (5, "M"), (7, "M"), (0, "M")], layers=["pad", "piano", "sub"], wet=0.35, cutoff=1700),
 }
-SFX_GAIN = {"whoosh": 0.55, "impact": 0.8, "riser": 0.45, "heartbeat": 0.7, "wind": 0.25, "rain": 0.22,
-            "thunder": 0.6, "glitch": 0.4, "sparkle": 0.35, "sting": 0.6}
+SFX_GAIN = {"whoosh": 0.35, "impact": 0.5, "riser": 0.3, "heartbeat": 0.5, "wind": 0.18, "rain": 0.16,
+            "thunder": 0.4, "sting": 0.35}
+MUSIC_LOWPASS = 8000  # Hz: nothing sharp above this
+SFX_LOWPASS = 6000
 AMBIENT = {"wind", "rain"}
 
 
@@ -125,18 +131,6 @@ def kick(rng) -> np.ndarray:
     return np.tanh(1.6 * (body + click)).astype(np.float32)
 
 
-def snare(rng) -> np.ndarray:
-    n = int(0.3 * SR)
-    noise = _bandpass(rng.normal(0, 1, n).astype(np.float32), 1200, 7000) * decay(n, 0.07)
-    tone = osc(185, n, "sine") * decay(n, 0.05)
-    return (noise * 1.2 + tone * 0.6).astype(np.float32)
-
-
-def hat(rng, length=0.06) -> np.ndarray:
-    n = int(length * 2 * SR)
-    return (_highpass(rng.normal(0, 1, n).astype(np.float32), 7000) * decay(n, length / 2)).astype(np.float32)
-
-
 def taiko(rng) -> np.ndarray:
     n = int(0.9 * SR)
     t = np.arange(n) / SR
@@ -146,28 +140,16 @@ def taiko(rng) -> np.ndarray:
     return np.tanh(1.3 * (body + skin * 0.5)).astype(np.float32)
 
 
-def pluck(freq: float, seconds: float, shape="warm") -> np.ndarray:
-    n = int(seconds * SR)
-    return (osc(freq, n, shape) * decay(n, seconds / 3) * env(n, 0.004, 0.05)).astype(np.float32)
-
-
-def bell(freq: float, seconds: float) -> np.ndarray:
-    n = int(seconds * SR)
-    out = np.zeros(n, np.float32)
-    for ratio, amp, dec in ((1, 1, 1.0), (2.76, 0.45, 0.5), (5.4, 0.25, 0.3), (8.93, 0.12, 0.15)):
-        out += osc(freq * ratio, n, "sine") * amp * decay(n, seconds * dec / 2)
-    return out * env(n, 0.002, 0.05)
-
-
-def pad_chord(notes: list[float], seconds: float, bright: float, rng) -> np.ndarray:
+def pad_chord(notes: list[float], seconds: float, bright: float, rng, cutoff: float | None = None) -> np.ndarray:
+    """A warm pad: detuned soft waves, filtered low, slow attack and release."""
     n = int(seconds * SR)
     out = np.zeros((n, 2), np.float32)
     for m in notes:
         for ch, det in ((0, -0.07), (1, 0.07)):
             for d in (det, det * 0.4):
-                out[:, ch] += osc(midi_hz(m + d), n, "saw", rng.random()) * 0.33
-    out = _lowpass(out, 500 + 2600 * bright)
-    return out * env(n, min(0.8, seconds / 3), min(0.9, seconds / 3))[:, None] / max(1, len(notes))
+                out[:, ch] += osc(midi_hz(m + d), n, "warm", rng.random()) * 0.33
+    out = _lowpass(out, cutoff or (500 + 2600 * bright))
+    return out * env(n, min(1.5, seconds / 3), min(1.5, seconds / 3))[:, None] / max(1, len(notes))
 
 
 def _reverb(x: np.ndarray, wet: float, rng, seconds: float = 2.4) -> np.ndarray:
@@ -175,20 +157,50 @@ def _reverb(x: np.ndarray, wet: float, rng, seconds: float = 2.4) -> np.ndarray:
 
     n = int(seconds * SR)
     ir = rng.normal(0, 1, (n, 2)).astype(np.float32) * decay(n, seconds / 5)[:, None]
-    ir = _lowpass(ir, 5000)
+    ir = _lowpass(ir, 3500)
     ir /= np.sqrt((ir**2).sum(axis=0, keepdims=True)) + 1e-9
     tail = np.stack([fftconvolve(x[:, c], ir[:, c])[: len(x)] for c in range(2)], axis=1).astype(np.float32)
     return x * (1 - wet) + tail * wet * 1.4
 
 
+def soft_piano(freq: float, seconds: float) -> np.ndarray:
+    """A soft, felt-piano-like note: few harmonics, gentle attack, slow decay."""
+    n = int(seconds * SR)
+    x = osc(freq, n, "sine") + 0.25 * osc(freq * 2, n, "sine") + 0.06 * osc(freq * 3, n, "sine")
+    return (x * decay(n, seconds / 2.5) * env(n, 0.012, 0.3)).astype(np.float32)
+
+
+def strings_chord(notes: list[float], seconds: float, cutoff: float, rng) -> np.ndarray:
+    """Slow swelling strings: detuned warm waves with soft vibrato, filtered low."""
+    n = int(seconds * SR)
+    out = np.zeros((n, 2), np.float32)
+    t = np.arange(n) / SR
+    for m in notes:
+        for ch, det in ((0, -0.06), (1, 0.06)):
+            f = midi_hz(m + det) * (1 + 0.0025 * np.sin(2 * np.pi * 5.2 * t + rng.random() * 6))
+            phase = np.cumsum(f) / SR
+            out[:, ch] += _TABLES["warm"][((phase % 1.0) * _TABLE).astype(np.int32)] * 0.3
+    swell = np.sin(np.pi * np.clip(t / seconds, 0, 1)) ** 1.5
+    return _lowpass(out, cutoff) * swell[:, None] / max(1, len(notes))
+
+
+def soft_pulse(rng) -> np.ndarray:
+    """A muffled low heartbeat-like pulse (lowpassed kick)."""
+    return _lowpass(kick(rng) * 0.8, 140)
+
+
+def soft_taiko(rng) -> np.ndarray:
+    return _lowpass(taiko(rng), 600)
+
+
 def generate_music(mood: str, seconds: float, seed: int = 0) -> np.ndarray:
-    """A loopable background bed for a mood. Stereo float32 at 44.1 kHz."""
-    p = PRESETS.get(mood, PRESETS["tense"])
+    """A gentle, soft cinematic bed for a mood. Stereo float32 at 44.1 kHz, nothing sharp above 8 kHz."""
+    p = PRESETS.get(mood, PRESETS["mysterious"])
     rng = np.random.default_rng(seed)
     r = random.Random(seed)
     bpm = p["bpm"] * r.uniform(0.95, 1.05)
     beat = 60 / bpm
-    bars_per_chord = 2 if bpm < 75 else 1
+    bars_per_chord = 2 if bpm < 80 else 1
     chord_len = 4 * beat * bars_per_chord
     root = p["root"] + r.choice([0, 0, 2, -2, 3])  # a little variety between episodes
     prog = list(p["prog"])
@@ -196,69 +208,42 @@ def generate_music(mood: str, seconds: float, seed: int = 0) -> np.ndarray:
         prog = prog[2:] + prog[:2]
     n = int((seconds + 3) * SR)
     track = np.zeros((n, 2), np.float32)
-    k_kick, k_snare = kick(rng), snare(rng)
+    pulse, drum = soft_pulse(rng), soft_taiko(rng)
+    cutoff = p["cutoff"]
     t, ci = 0.0, 0
     while t < seconds + 1:
         off, q = prog[ci % len(prog)]
-        base = root + 12 + off
+        base = root + 12 + off  # chords sit around C3-C4: warm, never shrill
         notes = [base + iv for iv in CHORDS[q]]
         layers = p["layers"]
         if "pad" in layers:
-            _add(track, t, pad_chord(notes, chord_len + 0.6, p["bright"], rng), 0.55)
-        if "drone" in layers:
+            _add(track, t, pad_chord(notes, chord_len + 1.2, 0.0, rng, cutoff), 0.6)
+        if "strings" in layers:
+            _add(track, t, strings_chord(notes, chord_len + 0.8, cutoff, rng), 0.7)
+        if "sub" in layers:
             ln = int(chord_len * SR)
-            d = osc(midi_hz(root - 12), ln, "soft") * 0.5 + osc(midi_hz(root - 5), ln, "sine") * 0.25
-            _add(track, t, d * env(ln, 0.3, 0.3), 0.35)
+            sub = osc(midi_hz(root - 12 + off), ln, "sine") * env(ln, 0.4, 0.6)
+            _add(track, t, sub, 0.22)
         steps = int(round(chord_len / beat))
         for b in range(steps):
             bt = t + b * beat
-            if "pulse" in layers:
-                for e8 in (0, 0.5):
-                    _add(track, bt + e8 * beat, pluck(midi_hz(root + off), beat * 0.45, "warm"), 0.28)
-            if "drive" in layers:
-                for s16 in range(4):
-                    _add(track, bt + s16 * beat / 4, pluck(midi_hz(root + off), beat * 0.22, "saw"), 0.18)
-            if "octbass" in layers and b % 2 == 0:
-                _add(track, bt, pluck(midi_hz(root + off - 12), beat * 1.8, "warm"), 0.4)
-            if "bounce" in layers:
-                _add(track, bt, pluck(midi_hz(root + off), beat * 0.3, "warm"), 0.3)
-            if "arp" in layers:
-                for e8 in (0, 0.5):
-                    note = notes[(b * 2 + int(e8 * 2)) % len(notes)] + 12
-                    _add(track, bt + e8 * beat, pluck(midi_hz(note), beat * 1.2), 0.16, pan=r.uniform(-0.4, 0.4))
-            if "pluck8" in layers:
-                for e8 in (0, 0.5):
-                    _add(track, bt + e8 * beat, pluck(midi_hz(r.choice(notes) + 12), beat * 0.35, "soft"), 0.22, pan=r.uniform(-0.5, 0.5))
-            if "piano" in layers:
-                note = notes[b % len(notes)] + (12 if b % 4 == 3 else 0)
-                _add(track, bt, pluck(midi_hz(note), beat * 3, "soft"), 0.25, pan=r.uniform(-0.3, 0.3))
-            if "bells" in layers and r.random() < 0.35:
-                _add(track, bt + r.choice([0, 0.5]) * beat, bell(midi_hz(r.choice(notes) + 24), 3.0), 0.12, pan=r.uniform(-0.6, 0.6))
-            if "ticks" in layers:
-                for s16 in range(4):
-                    _add(track, bt + s16 * beat / 4, hat(rng, 0.03), 0.06 if s16 else 0.1, pan=0.3)
-            if "hats" in layers:
-                _add(track, bt + beat / 2, hat(rng), 0.12, pan=-0.2)
-            if "beat" in layers and b % 2 == 0:
-                _add(track, bt, k_kick, 0.45)
-                _add(track, bt + beat * 0.28, k_kick, 0.3)
-            if "kick4" in layers:
-                _add(track, bt, k_kick, 0.55)
-            if "softkick" in layers and b % 2 == 0:
-                _add(track, bt, k_kick, 0.3)
-            if "snare" in layers and b % 2 == 1:
-                _add(track, bt, k_snare, 0.3)
-            if "taiko" in layers and b in (0, 2, 3):
-                _add(track, bt, taiko(rng), 0.5 if b == 0 else 0.32)
-        if "boom" in layers and ci % 2 == 0:
-            _add(track, t, make_sfx("impact", seed + ci)[:, 0], 0.25)
+            if "piano" in layers and (b % 2 == 0 or r.random() < 0.3):
+                note = notes[(b // 2 + r.randrange(2)) % len(notes)]  # same octave as the chord: low and soft
+                _add(track, bt + r.choice([0, 0.5]) * beat, soft_piano(midi_hz(note), beat * 3.5), 0.18,
+                     pan=r.uniform(-0.25, 0.25))
+            if "pulse" in layers and b % 2 == 0:
+                _add(track, bt, pulse, 0.32)
+                _add(track, bt + beat * 0.3, pulse, 0.2)
+            if "taiko" in layers and b in (0, 2):
+                _add(track, bt, drum, 0.3 if b == 0 else 0.18)
         t += chord_len
         ci += 1
     track = _reverb(_highpass(track, 35), p["wet"], rng)[: int(seconds * SR)]
+    track = _lowpass(_lowpass(track, MUSIC_LOWPASS), MUSIC_LOWPASS)  # 4th order: no sharp highs at all
     rms = np.sqrt((track**2).mean()) + 1e-9
     peak = np.abs(track).max() + 1e-9
-    track *= min(0.12 / rms, 0.85 / peak)  # about -18 dBFS, never clipping
-    fade_in, fade_out = min(len(track), int(1.0 * SR)), min(len(track), int(2.5 * SR))
+    track *= min(0.1 / rms, 0.7 / peak)  # about -20 dBFS, never clipping
+    fade_in, fade_out = min(len(track), int(2.0 * SR)), min(len(track), int(3.0 * SR))
     track[:fade_in] *= np.linspace(0, 1, fade_in)[:, None]
     track[-fade_out:] *= np.linspace(1, 0, fade_out)[:, None]
     return np.clip(track, -1, 1).astype(np.float32)
@@ -276,7 +261,7 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
     if name == "whoosh":
         n = int(0.9 * SR)
         x = np.zeros(n, np.float32)
-        for k, (lo, hi) in enumerate(((300, 1200), (800, 3000), (2000, 7000))):
+        for k, (lo, hi) in enumerate(((200, 900), (500, 2000), (1200, 4000))):
             peak = 0.35 + 0.12 * k
             shape = np.exp(-(((np.arange(n) / SR) - peak) / 0.16) ** 2)
             x += _bandpass(noise(0.9), lo, hi) * shape
@@ -292,8 +277,8 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
     elif name == "riser":
         n = int(2.6 * SR)
         t = np.arange(n) / SR
-        sweep = np.sin(2 * np.pi * np.cumsum(180 * 2 ** (t * 1.4)) / SR) * 0.4
-        hiss = _highpass(noise(2.6), 1500) * 0.5
+        sweep = np.sin(2 * np.pi * np.cumsum(110 * 2 ** (t * 0.9)) / SR) * 0.4  # rises to ~550 Hz only
+        hiss = _bandpass(noise(2.6), 400, 2500) * 0.4
         x = (sweep + hiss) * (t / t[-1]) ** 2
         out = np.stack([x, x * 0.95], 1)
     elif name == "heartbeat":
@@ -309,7 +294,7 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         out = np.stack([_bandpass(noise(5), 150, 900) * lfo, _bandpass(noise(5), 150, 900) * lfo[::-1]], 1)
     elif name == "rain":
         n = int(5 * SR)
-        bed = _highpass(noise(5), 2500) * 0.35
+        bed = _bandpass(noise(5), 300, 2800) * 0.35
         drops = np.zeros(n, np.float32)
         for i in rng.integers(0, n - 2000, 260):
             drops[i: i + 400] += rng.normal(0, 1, 400).astype(np.float32) * decay(400, 0.002) * rng.uniform(0.2, 0.8)
@@ -319,22 +304,6 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         rumble = _lowpass(noise(4.5), 180) * decay(n, 1.3) * 3
         crack = _bandpass(noise(4.5), 600, 4000) * decay(n, 0.12)
         out = _reverb(np.stack([rumble + crack, rumble * 0.9 + crack], 1), 0.3, rng, 2.0)
-    elif name == "glitch":
-        n = int(0.7 * SR)
-        x = np.zeros(n, np.float32)
-        for st in np.sort(rng.uniform(0, 0.6, 7)):
-            i, ln = int(st * SR), int(rng.uniform(0.02, 0.07) * SR)
-            seg = np.sign(osc(rng.uniform(200, 1800), ln, "sine")) * 0.5 + rng.normal(0, 0.3, ln)
-            x[i: i + ln] += seg[: n - i].astype(np.float32)
-        out = np.stack([x, np.roll(x, 300)], 1)
-    elif name == "sparkle":
-        n = int(1.6 * SR)
-        x = np.zeros(n, np.float32)
-        for k, m in enumerate((84, 88, 91, 96, 100)):
-            b = bell(midi_hz(m), 1.2)
-            i = int(k * 0.07 * SR)
-            x[i: i + len(b)] += b[: n - i] * 0.5
-        out = _reverb(np.stack([x, x], 1), 0.4, rng, 1.5)
     else:  # "sting": dark orchestral hit
         n = int(2.4 * SR)
         x = np.zeros((n, 2), np.float32)
@@ -345,8 +314,8 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         x = _lowpass(x, 1800) * 0.3
         x[: len(hit)] += hit * 0.6
         out = _reverb(x, 0.35, rng, 2.2)
-    out = out.astype(np.float32)
-    return out / (np.abs(out).max() + 1e-9) * 0.9
+    out = _lowpass(_lowpass(out.astype(np.float32), SFX_LOWPASS), SFX_LOWPASS)  # soft, never sharp
+    return (out / (np.abs(out).max() + 1e-9) * 0.9).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +434,7 @@ def get_sfx(name: str, seed: int) -> tuple[np.ndarray, str]:
 # ---------------------------------------------------------------------------
 
 
-def duck_gain(voice: np.ndarray, depth: float = 0.6) -> np.ndarray:
+def duck_gain(voice: np.ndarray, depth: float = 0.75) -> np.ndarray:
     """Music volume follows the voice: quieter while someone speaks."""
     from scipy.ndimage import maximum_filter1d, uniform_filter1d  # noqa: PLC0415
 
@@ -492,7 +461,7 @@ def mix(voice: np.ndarray, total: float, music: np.ndarray | None, music_volume:
         fade = min(n, int(1.5 * SR))
         m = m.copy()
         m[-fade:] *= np.linspace(1, 0, fade)[:, None]
-        out += m * music_volume * 2.2 * duck_gain(v)[:, None]
+        out += _lowpass(m, MUSIC_LOWPASS) * music_volume * 2.0 * duck_gain(v)[:, None]
     for t, audio, gain, max_sec in sfx_events:
         seg = audio[: int(max_sec * SR)] if max_sec else audio
         if max_sec and len(seg) > SR:  # fade out long ambience
@@ -528,4 +497,5 @@ def loudnorm(src: Path, dst: Path, target: float = -14.0) -> None:
         js = json.loads(m.group(0))
         af = (f"{af}:measured_I={js['input_i']}:measured_TP={js['input_tp']}:measured_LRA={js['input_lra']}:"
               f"measured_thresh={js['input_thresh']}:offset={js['target_offset']}:linear=true")
+    af += ",alimiter=limit=0.84:level=false"  # safety: peaks stay under about -1.5 dB
     media.run_ffmpeg(["-i", src, "-af", af, "-ar", SR, "-ac", 2, "-sample_fmt", "s16", dst], "balance the loudness")

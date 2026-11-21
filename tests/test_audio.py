@@ -50,10 +50,27 @@ def test_snap_to_silence_finds_the_gap():
     assert 1.0 <= cut <= 1.25
 
 
+def _high_energy_db(x, hz):
+    x = x.mean(axis=1) if x.ndim == 2 else x
+    spec = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / music.SR)
+    return 10 * np.log10(spec[f > hz].sum() / spec.sum() + 1e-15)
+
+
 def test_music_generated_for_each_mood_without_clipping():
     for mood in music.PRESETS:
         x = music.generate_music(mood, 6, seed=1)
-        assert x.shape == (6 * music.SR, 2) and np.abs(x).max() <= 0.86 and np.sqrt((x**2).mean()) > 0.02
+        assert x.shape == (6 * music.SR, 2) and np.abs(x).max() <= 0.71 and np.sqrt((x**2).mean()) > 0.02
+
+
+def test_music_is_gentle_no_sharp_highs():
+    """Regression for "the mix hurts my ears": almost no energy above 4 kHz, none above 8 kHz."""
+    for mood in music.PRESETS:
+        x = music.generate_music(mood, 12, seed=2)
+        assert _high_energy_db(x, 4000) < -55, mood
+        assert _high_energy_db(x, 8000) < -75, mood
+    for name in music.SFX_GAIN:
+        assert _high_energy_db(music.make_sfx(name, 3), 8000) < -28, name
 
 
 def test_each_sfx_is_valid():
