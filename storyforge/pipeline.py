@@ -15,6 +15,7 @@ from pathlib import Path
 from . import captions, characters, config, images, publish, render, script
 from .audio import music, tts
 from .messages import FriendlyError, Reporter, Timer
+from .paste import NARRATOR
 from .motion import clip as clip_mod
 from .motion import depth as depth_mod
 from .motion import i2v
@@ -201,16 +202,40 @@ class Pipeline:
     def depth_for(self, src: Path) -> Path:
         return src.with_name(f"depth_{src.stem}.png")
 
+    def narrator_value(self, lang: str) -> str:
+        v = self.series.data.get("voices", {}).get(lang)
+        return v if isinstance(v, str) and v else f"{tts.DEFAULT_VOICE[lang]['engine']}:{tts.DEFAULT_VOICE[lang]['voice']}"
+
+    def voice_for(self, speaker: str, lang: str) -> dict:
+        if speaker in (None, "", NARRATOR):
+            return self.voice_choice(lang)
+        return characters.voice_for(self.series, speaker, lang, self.narrator_value(lang))
+
+    def scene_speech(self, sc: dict, lang: str) -> list[tuple[str, dict]]:
+        """What is said in a scene, and by which voice: [(text, voice), ...]."""
+        if lang == self.script.get("language", "en") and sc.get("lines"):
+            groups: list[list[str]] = []
+            for ln in sc["lines"]:  # consecutive lines by the same speaker are spoken in one go
+                if groups and groups[-1][0] == ln["speaker"]:
+                    groups[-1][1] += " " + ln["text"]
+                else:
+                    groups.append([ln["speaker"], ln["text"]])
+            return [(text, self.voice_for(speaker, lang)) for speaker, text in groups if text.strip()]
+        text = sc["narration"] if lang == "en" else sc.get("narration_fa", "")
+        return [(text, self.voice_choice(lang))] if text.strip() else []
+
     def voices(self, lang: str) -> None:
         sc_all = self.script["scenes"]
         choice = self.voice_choice(lang)
-        texts = []
+        speech = []
         for i, sc in enumerate(sc_all, 1):
-            text = sc["narration"] if lang == "en" else sc.get("narration_fa", "")
-            if not text.strip():
-                raise FriendlyError(f"Scene {i} has no {'Farsi ' if lang == 'fa' else ''}narration.",
-                                    "Add it on the Script step (line 'Farsi:'), then press the button again.")
-            texts.append(text)
+            parts = self.scene_speech(sc, lang)
+            if not parts:
+                raise FriendlyError(f"Scene {i} has no {'Farsi ' if lang == 'fa' else 'English '}text.",
+                                    f"Add it on the Script step (line '{'Farsi' if lang == 'fa' else 'English'}:'), "
+                                    "or turn that language off.")
+            speech.append(parts)
+        texts = [" ".join(t for t, _ in parts) for parts in speech]
         adir = self.ep.audio_dir(lang)
         if choice["engine"] == "own":
             rec = self.ep.own_voice_path(lang)
@@ -230,26 +255,41 @@ class Pipeline:
             self.rep.ok(f"Your recording is split into {len(parts)} scenes ({method})")
             self.rep.record("ok", f"Voice ({lang})", f"your voice, {method}")
             return
-        todo = [(i, sc, t) for i, (sc, t) in enumerate(zip(sc_all, texts), 1)
-                if not self.ep.state.fresh(f"voice:{lang}:{sc['id']}", fingerprint(t, choice), [adir / f"{sc['id']}.wav"])]
+        # Decide the engine for every voice ONCE, so the whole video sounds the same.
+        tts.reset_resolved()
+        resolved = {}
+        for parts in speech:
+            for _, ch in parts:
+                key = (ch.get("engine"), ch.get("voice"))
+                if key not in resolved:
+                    resolved[key] = tts.resolve(lang, ch, self.rep)
+
+        def fp_of(parts):
+            return fingerprint([(t, resolved[(c.get("engine"), c.get("voice"))]) for t, c in parts])
+
+        todo = [(i, sc, parts) for i, (sc, parts) in enumerate(zip(sc_all, speech), 1)
+                if not self.ep.state.fresh(f"voice:{lang}:{sc['id']}", fp_of(parts), [adir / f"{sc['id']}.wav"])]
         if not todo:
             return
-        self.rep.step(f"🗣️ Voiceover ({'Farsi' if lang == 'fa' else 'English'}, {len(todo)} scenes)")
-        if lang == "fa" and choice["engine"] == "edge":
+        voices_used = sorted({tts.label(*v) for v in resolved.values()})
+        self.rep.step(f"🗣️ Voiceover ({'Farsi' if lang == 'fa' else 'English'}, {len(todo)} scenes, "
+                      f"{len(voices_used)} voice{'s' if len(voices_used) > 1 else ''})")
+        if any(v[0] == "edge" for v in resolved.values()) and lang == "fa":
             self.rep.info("ℹ️ " + tts.EDGE_WARNING)
         engines = set()
-        for i, sc, text in todo:
+        for i, sc, parts in todo:
             self.rep.check_stop()
             with Timer() as t:
-                engine, words = tts.speak(text, lang, choice, adir / f"{sc['id']}.wav", self.rep)
-            write_json(adir / f"{sc['id']}.json", {"words": words, "engine": engine})
-            self.ep.state.done(f"voice:{lang}:{sc['id']}", fingerprint(text, choice), engine=engine)
-            engines.add(engine)
-            self.rep.ok(f"Scene {i}/{len(sc_all)} voice ({engine}, {t.label})")
+                used, words = tts.speak_lines(parts, lang, adir / f"{sc['id']}.wav", self.rep)
+            write_json(adir / f"{sc['id']}.json", {"words": words, "engine": ", ".join(used)})
+            self.ep.state.done(f"voice:{lang}:{sc['id']}", fp_of(parts), engine=", ".join(used))
+            engines.update(used)
+            if i == 1 or i % 10 == 0 or i == len(sc_all):
+                self.rep.ok(f"Scene {i}/{len(sc_all)} voice ({', '.join(used)}, {t.label})")
         robotic = any(e.startswith("espeak") for e in engines)
         self.rep.record("warn" if robotic else "ok", f"Voice ({lang})", ", ".join(sorted(engines)))
         if robotic:
-            self.rep.warn("The emergency robot voice was used. Check the internet and redo the voice later.")
+            self.rep.warn("The emergency robot voice was used. Check the internet and press Generate again later.")
 
     def timeline(self, lang: str) -> dict:
         adir = self.ep.audio_dir(lang)

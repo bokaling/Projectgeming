@@ -14,6 +14,7 @@ import asyncio
 import concurrent.futures
 import shutil
 import subprocess
+import time
 import wave
 from pathlib import Path
 
@@ -36,8 +37,24 @@ EDGE_VOICES = {
     "fa": {"fa-IR-FaridNeural": "Farid (man)", "fa-IR-DilaraNeural": "Dilara (woman)"},
 }
 PIPER_VOICES = {
-    "en": {"en_US-lessac-medium": "en/en_US/lessac/medium", "en_GB-alan-medium": "en/en_GB/alan/medium"},
+    "en": {"en_US-ryan-high": "en/en_US/ryan/high", "en_GB-alan-medium": "en/en_GB/alan/medium",
+           "en_US-lessac-medium": "en/en_US/lessac/medium"},
     "fa": {"fa_IR-amir-medium": "fa/fa_IR/amir/medium", "fa_IR-gyro-medium": "fa/fa_IR/gyro/medium"},
+}
+FEMALE = {"en-US-AvaMultilingualNeural", "en-GB-SoniaNeural", "fa-IR-DilaraNeural", "en_US-lessac-medium"}
+# Backups keep the same gender, so a video never switches from a man's voice to a woman's.
+FALLBACKS = {
+    ("en", "male"): [("kokoro", "am_fenrir"), ("edge", "en-US-AndrewMultilingualNeural"), ("piper", "en_US-ryan-high")],
+    ("en", "female"): [("kokoro", "af_heart"), ("edge", "en-US-AvaMultilingualNeural"), ("piper", "en_US-lessac-medium")],
+    ("fa", "male"): [("edge", "fa-IR-FaridNeural"), ("piper", "fa_IR-amir-medium")],
+    ("fa", "female"): [("edge", "fa-IR-DilaraNeural")],
+}
+# Voices for characters who speak (narrator voice is never reused for them when possible)
+CHARACTER_POOL = {
+    ("en", "male"): ["kokoro:am_michael", "kokoro:bm_george", "kokoro:am_puck", "kokoro:bm_fable", "kokoro:am_fenrir"],
+    ("en", "female"): ["kokoro:af_heart", "kokoro:af_bella", "kokoro:bf_emma", "kokoro:af_nicole"],
+    ("fa", "male"): ["piper:fa_IR-amir-medium", "piper:fa_IR-gyro-medium", "edge:fa-IR-FaridNeural"],
+    ("fa", "female"): ["edge:fa-IR-DilaraNeural"],
 }
 DEFAULT_VOICE = {
     "en": {"engine": "kokoro", "voice": "am_fenrir", "speed": 1.0},
@@ -49,14 +66,16 @@ EDGE_WARNING = (
 )
 
 
-def voice_choices(lang: str) -> list[tuple[str, str]]:
-    """(label, value) pairs for the voice dropdown. value = 'engine:voice'."""
+def voice_choices(lang: str, own: bool = True) -> list[tuple[str, str]]:
+    """(label, value) pairs for the voice dropdown. value = 'engine:voice'. Men first."""
     out = []
     if lang == "en":
-        out += [(f"⭐ {v} · Kokoro", f"kokoro:{k}") for k, v in KOKORO_VOICES.items()]
+        items = sorted(KOKORO_VOICES.items(), key=lambda kv: kv[0][1] != "m")
+        out += [(f"⭐ {v} · Kokoro", f"kokoro:{k}") for k, v in items]
     out += [(f"{v} · Edge (online)", f"edge:{k}") for k, v in EDGE_VOICES[lang].items()]
-    out += [(f"{k} · Piper (offline)", f"piper:{k}") for k in PIPER_VOICES[lang]]
-    out.append(("🎙️ My own recording (upload)", "own:own"))
+    out += [(f"{k} ({voice_gender('piper', k)}) · Piper (offline)", f"piper:{k}") for k in PIPER_VOICES[lang]]
+    if own:
+        out.append(("🎙️ My own recording (upload)", "own:own"))
     return out
 
 
@@ -224,13 +243,14 @@ def piper(text: str, voice: str, lang: str, speed: float = 1.0):
     return _resample(x, sr), []
 
 
-def espeak(text: str, lang: str, speed: float = 1.0):
+def espeak(text: str, lang: str, speed: float = 1.0, variant: str = "m3"):
     exe = shutil.which("espeak-ng") or shutil.which("espeak")
     if not exe:
         raise RuntimeError("espeak-ng is not installed")
     out = config.get().temp_dir / "espeak.wav"
     out.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([exe, "-v", "fa" if lang == "fa" else "en-us", "-s", str(int(150 * speed)), "-w", str(out), text],
+    v = ("fa" if lang == "fa" else "en-us") + ("+f3" if variant == "f3" else "+m3")
+    subprocess.run([exe, "-v", v, "-s", str(int(150 * speed)), "-w", str(out), text],
                    check=True, capture_output=True, timeout=120)
     tmp = out.with_name("espeak16.wav")
     to_wav(out, tmp)
@@ -243,60 +263,125 @@ def espeak(text: str, lang: str, speed: float = 1.0):
 # ---------------------------------------------------------------------------
 
 
+def voice_gender(engine: str, voice: str) -> str:
+    if engine == "kokoro":
+        return "female" if voice[:2] in ("af", "bf") else "male"
+    if engine == "espeak":
+        return "female" if voice.endswith("f3") else "male"
+    return "female" if voice in FEMALE else "male"
+
+
 def engine_order(lang: str, choice: dict) -> list[tuple[str, str]]:
-    """Engines to try, starting with the user's choice."""
+    """Engines to try, starting with the user's choice; backups have the same gender."""
     order = []
     eng, voice = choice.get("engine"), choice.get("voice")
+    gender = voice_gender(eng or "", voice or "") if eng in ("kokoro", "edge", "piper") else "male"
     if eng in ("kokoro", "edge", "piper") and not (eng == "kokoro" and lang != "en"):
         order.append((eng, voice))
-    if lang == "en":
-        defaults = [("kokoro", "am_fenrir"), ("edge", "en-US-AndrewMultilingualNeural"), ("piper", "en_US-lessac-medium")]
-    else:
-        defaults = [("edge", "fa-IR-FaridNeural"), ("piper", "fa_IR-amir-medium")]
-    for d in defaults:
+    for d in FALLBACKS[(lang, gender)]:
         if d[0] not in [o[0] for o in order]:
             order.append(d)
-    order.append(("espeak", "espeak"))
+    order.append(("espeak", "f3" if gender == "female" else "m3"))
     return order
+
+
+_resolved: dict = {}
+
+
+def reset_resolved() -> None:
+    """Forget engine choices (at the start of each voice step, a voice that is back online is used again)."""
+    _resolved.clear()
+
+
+def resolve(lang: str, choice: dict, rep=None) -> tuple[str, str]:
+    """Find ONE engine that works for this voice and remember it (the whole video uses it)."""
+    key = (lang, choice.get("engine"), choice.get("voice"))
+    if key in _resolved:
+        return _resolved[key]
+    test = "آماده." if lang == "fa" else "Ready."
+    errors = []
+    for eng, voice in engine_order(lang, choice):
+        try:
+            _synth(eng, voice, test, lang, 1.0)
+            _resolved[key] = (eng, voice)
+            if errors and rep is not None:
+                rep.warn(f"Your chosen voice isn't available right now, so the whole video uses "
+                         f"{ENGINE_NAMES[eng]} ({voice}) instead.")
+            return eng, voice
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{ENGINE_NAMES[eng]}: {str(exc)[:80]}")
+    raise FriendlyError("No voice engine worked.", "Check the internet, run the Setup cell again, or upload your own recording.")
+
+
+def _synth(eng: str, voice: str, text: str, lang: str, speed: float):
+    if eng == "kokoro":
+        return kokoro(text, voice, speed)
+    if eng == "edge":
+        return edge(text, voice, speed)
+    if eng == "piper":
+        return piper(text, voice, lang, speed)
+    return espeak(text, lang, speed, variant=voice)
 
 
 ENGINE_NAMES = {"kokoro": "Kokoro", "edge": "Edge TTS", "piper": "Piper", "espeak": "espeak-ng (robotic, emergency)"}
 
 
+def _speak_samples(text: str, lang: str, eng: str, voice: str, speed: float, retries: int = 3):
+    """Speak with exactly this engine (a few retries, never a different voice). Returns (samples, words)."""
+    last: Exception | None = None
+    for attempt in range(retries):
+        try:
+            x, ew = _synth(eng, voice, text, lang, speed)
+            break
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            time.sleep(2 + attempt * 4)
+    else:
+        raise FriendlyError(f"The voice ({ENGINE_NAMES[eng]}) stopped working in the middle.",
+                            "Press Generate again in a minute: finished scenes are kept and the same voice continues.") from last
+    x, cut = trim_silence(x, SR)
+    ew = [(s - cut, e - cut, t) for s, e, t in ew]
+    total = len(x) / SR
+    script_words = align.split_words(text)
+    words = align.map_timings(script_words, ew, total) if ew else align.align_audio(x, SR, text, lang)[0]
+    return x, words
+
+
+def label(eng: str, voice: str) -> str:
+    return ENGINE_NAMES[eng] + ("" if eng == "espeak" else f" ({voice})")
+
+
 def speak(text: str, lang: str, choice: dict, out_wav: Path, rep=None) -> tuple[str, list[dict]]:
-    """Make speech for one scene. Returns (engine label, word timings relative to the WAV start)."""
+    """Make speech for one piece of text with one voice. Returns (engine label, word timings)."""
     text = align.normalize_fa(text).strip()
     if not text:
         write_wav(out_wav, np.zeros(int(SR * 0.5), np.float32))
         return "silence", []
-    speed = float(choice.get("speed") or 1.0)
-    errors = []
-    for eng, voice in engine_order(lang, choice):
-        try:
-            if eng == "kokoro":
-                x, ew = kokoro(text, voice, speed)
-            elif eng == "edge":
-                x, ew = edge(text, voice, speed)
-            elif eng == "piper":
-                x, ew = piper(text, voice, lang, speed)
-            else:
-                x, ew = espeak(text, lang, speed)
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{ENGINE_NAMES[eng]}: {str(exc)[:80]}")
-            if rep is not None and len(errors) == 1:
-                rep.info(f"↪ {ENGINE_NAMES[eng]} didn't work ({str(exc)[:70]}). Trying another voice…")
+    eng, voice = resolve(lang, choice, rep)
+    x, words = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0))
+    write_wav(out_wav, x)
+    return label(eng, voice), words
+
+
+def speak_lines(lines: list[tuple[str, dict]], lang: str, out_wav: Path, rep=None, gap: float = 0.25) -> tuple[list[str], list[dict]]:
+    """A scene with several speakers: [(text, voice_choice), ...] → one WAV. Returns (engine labels, words)."""
+    parts, words, engines, t = [], [], [], 0.0
+    for text, choice in lines:
+        text = align.normalize_fa(text).strip()
+        if not text:
             continue
-        x, cut = trim_silence(x, SR)
-        ew = [(s - cut, e - cut, t) for s, e, t in ew]
-        total = len(x) / SR
-        script_words = align.split_words(text)
-        if ew:
-            words = align.map_timings(script_words, ew, total)
-        else:
-            words, _ = align.align_audio(x, SR, text, lang)
-        write_wav(out_wav, x)
-        return ENGINE_NAMES[eng] + ("" if eng in ("espeak",) else f" ({voice})"), words
-    raise FriendlyError("No voice engine worked.", "Check the internet, run the Setup cell again, or upload your own recording.")
+        eng, voice = resolve(lang, choice, rep)
+        x, w = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0))
+        if parts:
+            parts.append(np.zeros(int(SR * gap), np.float32))
+            t += gap
+        words += [{"w": d["w"], "s": round(d["s"] + t, 3), "e": round(d["e"] + t, 3)} for d in w]
+        parts.append(x)
+        t += len(x) / SR
+        if label(eng, voice) not in engines:
+            engines.append(label(eng, voice))
+    write_wav(out_wav, np.concatenate(parts) if parts else np.zeros(int(SR * 0.5), np.float32))
+    return engines, words
 
 
 def split_own_recording(recording: Path, texts: list[str], lang: str, out_dir: Path) -> tuple[str, list[tuple[Path, list[dict]]]]:

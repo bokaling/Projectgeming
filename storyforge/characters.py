@@ -177,3 +177,20 @@ def scene_prompt(series: Series, scene: dict, with_refs: bool) -> tuple[str, lis
     parts.append(f"Style: {series.data.get('style', '')}. Full natural color (not sepia, not monochrome), "
                  "cinematic, highly detailed, no text, no watermark.")
     return " ".join(p.strip() for p in parts if p and p.strip()), refs
+
+
+def voice_for(series: Series, speaker: str, lang: str, narrator_value: str) -> dict:
+    """The voice of a speaking character (picked once, saved in the series, different from the narrator)."""
+    from .audio import tts  # noqa: PLC0415
+
+    c = series.character(speaker)
+    if c is None:
+        return tts.parse_voice(narrator_value, lang)
+    key = f"voice_{lang}"
+    if not c.get(key):
+        gender = "female" if str(c.get("gender", "")).lower().startswith(("f", "w")) else "male"
+        used = {narrator_value} | {x.get(key) for x in series.characters if x.get(key)}
+        pool = tts.CHARACTER_POOL[(lang, gender)]
+        c[key] = next((v for v in pool if v not in used), pool[0])
+        series.save()
+    return tts.parse_voice(c[key], lang)

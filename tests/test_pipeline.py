@@ -44,12 +44,12 @@ def test_edit_one_line_redoes_only_that_voice(offline):
     pipe.write_script()
     pipe.make_video()
     sc = ep.load_script()
-    sc["scenes"][1]["narration"] = "It knew her name, and her secret."
+    sc["scenes"][1]["lines"] = [{"speaker": "NARRATOR", "text": "It knew her name, and her secret."}]
     script_mod.save_script(ep, sc)
     rep = Reporter(echo=False)
     pipeline.Pipeline(series, ep, rep, opts).make_video()
     text = rep.text(200)
-    assert "Voiceover (English, 1 scenes)" in text  # only the edited scene
+    assert "Voiceover (English, 1 scenes, 1 voice)" in text  # only the edited scene
     assert "Scene pictures" not in text  # pictures kept
 
 
