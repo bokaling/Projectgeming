@@ -34,15 +34,18 @@ def test_the_library_covers_every_kind_of_topic():
     assert assets.resolve("windmill") == "wind_turbine" and assets.resolve("H2O") == "molecule"
     assert assets.resolve("power plant") == "power_station" and assets.resolve("turbine") == "turbine"
     w = assets.build("molecule", formula="CO2")
-    assert sum(p.name in ("C", "O") for p in w.parts) == 3  # one carbon, two oxygens
+    from storyforge.world.assets_more import ATOM_COLORS
+
+    assert {ATOM_COLORS["C"], ATOM_COLORS["O"]} <= {p.color for p in w.parts}  # carbon and oxygen (merged per colour)
 
 
 def test_new_moving_parts_animate(cow):
     p, texts = cow
     p = copy.deepcopy(p)
-    p["objects"] += [{"id": "eng", "asset": "engine", "area": "power", "pos": [8, 6]},
-                     {"id": "jack", "asset": "pumpjack", "area": "power", "pos": [-8, 6]},
-                     {"id": "camp", "asset": "fire", "area": "power", "pos": [0, 9]}]
+    p["objects"] += [{"id": "eng", "asset": "engine", "area": "power", "pos": [1.5, 8]},
+                     {"id": "jack", "asset": "pumpjack", "area": "power", "pos": [-2.5, 9]},
+                     {"id": "camp", "asset": "fire", "area": "power", "pos": [0, 10]}]
+    p["scenes"][10]["camera"] = {"move": "static", "target": "camp", "angle": 0, "height": 40, "zoom": 0.3}
     p["scenes"][10]["actions"] += [{"do": "spin", "target": "eng", "at": 0.0}, {"do": "spin", "target": "jack", "at": 0.0}]
     p, _ = P.validate(p, texts)
     w = World(p, fake_timeline(texts), (180, 320))
@@ -226,20 +229,42 @@ def _qc_world(texts):
 
 
 def test_quality_check_finds_and_fixes_broken_shots(cow, sf_root):
+    """Framing is automatic now; a camera can still break (e.g. a bug, or a forced fill). The check catches it."""
     p, texts = cow
-    bad = copy.deepcopy(p)
-    bad["scenes"][4]["camera"].update({"move": "static", "zoom": 0.2})  # the tank is a dot
-    bad["scenes"][6]["camera"].update({"move": "static", "distance": 0.5, "zoom": 5, "height": 2})  # inside the digester
     make_world, still = _qc_world(texts)
-    w = make_world(bad)
+
+    def broken_world(q):  # a tiny zoom stands for "something made this shot's camera wrong"
+        w = make_world(q)
+        for i, sc in enumerate(q["scenes"]):
+            z = sc["camera"].get("zoom", 1.0)
+            if z < 0.5:
+                w._cams[i]["fill"] = 0.12  # the subject is a dot
+            elif z > 4:
+                w._cams[i]["fill"] = 9.0  # the camera ends up inside it
+        return w
+
+    bad = copy.deepcopy(p)
+    bad["scenes"][4]["camera"].update({"move": "static", "zoom": 0.2})
+    bad["scenes"][6]["camera"].update({"move": "static", "zoom": 5, "height": 2})
+    w = broken_world(bad)
     assert "target_too_small" in checker.local_problems(w, 4)
-    assert any(x.startswith("camera_inside") for x in checker.local_problems(w, 6))
+    probs6 = checker.local_problems(w, 6)
+    assert any(x.startswith("camera_inside") or x == "target_too_big" for x in probs6), probs6
     assert all(not checker.local_problems(make_world(p), i) for i in range(len(texts)))  # the good plan passes
-    new, report, stills = checker.check(bad, make_world, still, texts, use_ai=False)
+    new, report, stills = checker.check(bad, broken_world, still, texts, use_ai=False)
     assert any(r.startswith("Shot 5") for r in report) and any(r.startswith("Shot 7") for r in report)
-    w2 = make_world(new)
+    w2 = broken_world(new)
     assert not checker.local_problems(w2, 4) and not checker.local_problems(w2, 6) and len(stills) == len(texts)
     assert checker.empty_picture(np.full((64, 36, 3), 20, np.uint8))
+
+
+def test_every_demo_shot_is_framed_by_the_rules(cow):
+    """Rule 1: the main object fills ≥ 30 % of the frame, fully visible inside the safe area; nothing mostly empty."""
+    p, texts = cow
+    w = World(p, fake_timeline(texts), (270, 480))
+    for i in range(len(texts)):
+        assert checker.local_problems(w, i) == [], (i, checker.local_problems(w, i))
+    assert p["scenes"][0]["camera"]["move"] not in P.WIDE_MOVES  # the hook is close
 
 
 def test_gemini_vision_fixes_what_it_sees(cow, sf_root, monkeypatch):

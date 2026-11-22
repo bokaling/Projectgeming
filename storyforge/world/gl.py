@@ -119,6 +119,7 @@ class Frame:
     flash: float = 0.0  # 0..1 white flash
     sun: tuple | None = None  # direction TO the sun (default: from the upper left)
     card: object = None  # optional full-frame RGBA overlay (end card)
+    lights: list = field(default_factory=list)  # warm point lights [(pos, rgb, radius)], max 4
 
 
 STYLE = {
@@ -140,6 +141,7 @@ LIT = """
 uniform vec3 u_sun_dir; uniform vec3 u_sun_col; uniform vec3 u_sky; uniform vec3 u_ground;
 uniform vec3 u_fog; uniform float u_fog_near; uniform float u_fog_far; uniform vec3 u_eye;
 uniform vec3 u_bg_top; uniform vec3 u_bg_bottom; uniform vec2 u_res;
+uniform int u_nl; uniform vec3 u_lpos[4]; uniform vec3 u_lcol[4]; uniform float u_lrad[4];
 uniform sampler2DShadow u_shadow; uniform float u_texel;
 float shadow_at(vec4 lp, vec3 n){
   vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
@@ -147,16 +149,22 @@ float shadow_at(vec4 lp, vec3 n){
   float bias = 0.0015 + 0.003 * (1.0 - max(dot(n, u_sun_dir), 0.0));
   float s = 0.0;
   for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++)
-    s += texture(u_shadow, vec3(p.xy + vec2(x, y) * u_texel * 1.5, p.z - bias));
+    s += texture(u_shadow, vec3(p.xy + vec2(x, y) * u_texel * 1.0, p.z - bias));
   return s / 9.0;
 }
 vec3 light(vec3 base, vec3 n, vec3 world, vec4 lp){
   float hemi = 0.5 + 0.5 * n.y;
-  vec3 amb = mix(u_ground, u_sky, hemi) * 0.55;
+  vec3 amb = mix(u_ground, u_sky, hemi) * 0.47;
   float d = max(dot(n, u_sun_dir), 0.0);
   float sh = shadow_at(lp, n);
   float ao = mix(0.68, 1.0, smoothstep(0.0, 0.9, world.y));  // contact shading: bases sit ON the floor
-  vec3 col = base * (amb * ao + u_sun_col * d * (0.25 + 0.75 * sh) * 0.85);
+  vec3 col = base * (amb * ao + u_sun_col * d * (0.2 + 0.8 * sh) * 1.05);
+  for (int k = 0; k < 4; k++) {  // warm lamps and lit windows
+    if (k >= u_nl) break;
+    vec3 L = u_lpos[k] - world; float dl = length(L);
+    float att = clamp(1.0 - dl / u_lrad[k], 0.0, 1.0);
+    col += base * u_lcol[k] * att * att * (0.35 + 0.65 * max(dot(n, L / max(dl, 1e-3)), 0.0)) * 1.2;
+  }
   return col;
 }
 vec3 bg_at(){  // the background colour behind this pixel (same formula as the background pass)
@@ -183,7 +191,7 @@ void main(){
   float rim = pow(1.0 - max(dot(n, V), 0.0), 3.0);
   vec3 col = light(base, n, v_world, v_light) + rim * 0.2 * u_sky + base * u_emissive * 1.6;
   float a = u_opacity;
-  if (u_xray == 1) { a = 0.12 + 0.55 * rim; col = mix(col, u_color * 1.4 + 0.2, 0.5); }
+  if (u_xray == 1) { a = 0.06 + 0.22 * rim; col = mix(col, u_color * 1.2 + 0.1, 0.4); }  // a faint ghost
   f_color = vec4(fogged(col, v_world), a);
 }"""
 
@@ -199,7 +207,7 @@ void main(){
   float fade = 1.0 - smoothstep(u_radius * 0.35, u_radius, length(p - u_center));
   float sh = shadow_at(v_light, vec3(0.0, 1.0, 0.0));
   vec3 col = u_floor * (0.55 + 0.45 * sh);
-  col += u_grid * (minor * 0.11 + major * 0.42) * fade;
+  col += u_grid * (minor * 0.06 + major * 0.24) * fade;  // faint: the places are the stars
   f_color = vec4(fogged(col, v_world), 1.0);
 }"""
 
@@ -374,13 +382,20 @@ class Renderer:
         vals = {"u_sun_dir": tuple(sun), "u_sun_col": hex_rgb(st["sun"]), "u_sky": hex_rgb(st["sky"]),
                 "u_ground": hex_rgb(st["ground_light"]), "u_fog": hex_rgb(st["horizon"]), "u_eye": tuple(fr.eye),
                 "u_texel": 1.0 / self.shadow_size, "u_bg_top": hex_rgb(st["background"]),
-                "u_bg_bottom": hex_rgb(st["horizon"]), "u_res": (float(self.W), float(self.H))}
+                "u_bg_bottom": hex_rgb(st["horizon"]), "u_res": (float(self.W), float(self.H)),
+                "u_nl": len(fr.lights[:4])}
         dist = float(np.linalg.norm(np.asarray(fr.eye) - np.asarray(fr.target)))
         vals["u_fog_near"] = max(20.0, dist * 1.6)
         vals["u_fog_far"] = max(60.0, dist * 4.5)
         for k, v in vals.items():
             if k in prog:
                 prog[k].value = v
+        lights = list(fr.lights[:4]) + [((0.0, -99.0, 0.0), (0.0, 0.0, 0.0), 1.0)] * (4 - len(fr.lights[:4]))
+        for name, idx in (("u_lpos", 0), ("u_lcol", 1)):
+            if name in prog:
+                prog[name].value = [tuple(float(x) for x in li[idx]) for li in lights]
+        if "u_lrad" in prog:
+            prog["u_lrad"].value = [float(li[2]) for li in lights]
         if "u_shadow" in prog:
             prog["u_shadow"].value = 0
 

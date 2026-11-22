@@ -356,6 +356,7 @@ class Part:
     pivot: tuple = (0.0, 0.0, 0.0)  # spin / swing around this point
     axis: str = "y"  # spin axis
     kind: str = ""  # "liquid" (fill level), "light" (turns on), "blade" (spins), "screen", …
+    boxes: list = field(default_factory=list)  # boxes of the pieces merged into this part (for "camera inside" checks)
 
 
 @dataclass

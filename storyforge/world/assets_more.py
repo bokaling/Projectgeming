@@ -1225,3 +1225,57 @@ def house_cutaway(w=6.0, d=4.0, color="#f3e3c3"):
     m.add("stairs", M.merge(*[M.xf(M.box(0.8, 0.3, 0.5, base=True), (w / 2 - 0.6, 0.2 + k * 0.3, -d / 2 + 0.4 + k * 0.33))
                               for k in range(8)]), "#7a5232")
     return m
+
+
+# ---------------------------------------------------------------------------
+# Set dressing (added around every area automatically, see world/decor.py)
+# ---------------------------------------------------------------------------
+
+
+@asset("pad", "a flat ground pad: concrete, dirt, grass or gravel (the floor of a place)", ["helper", "terrain"],
+       aliases=["concrete_pad", "slab", "yard", "floor"])
+def pad(w=12.0, d=10.0, color="concrete"):
+    base = {"concrete": "#8e979c", "dirt": "#8a7253", "grass": "#5f9e4a", "gravel": "#7d7c78"}.get(color, color)
+    m = Model().add("pad", M.box(w, 0.06, d, base=True), base)
+    m.add("edge", M.merge(M.xf(M.box(w, 0.1, 0.18, base=True), (0, 0, d / 2)), M.xf(M.box(w, 0.1, 0.18, base=True),
+                                                                                       (0, 0, -d / 2)),
+                          M.xf(M.box(0.18, 0.1, d, base=True), (w / 2, 0, 0)), M.xf(M.box(0.18, 0.1, d, base=True),
+                                                                                    (-w / 2, 0, 0))), "#6f777c")
+    return m
+
+
+@asset("lamp_post", "a lamp post with a warm light", ["city", "helper"], aliases=["street_lamp", "lamppost"])
+def lamp_post(h=4.0):
+    m = Model().add("pole", M.cylinder(0.08, h, 8), "#3a3f45")
+    m.add("arm", M.xf(M.box(0.7, 0.08, 0.08), (0.3, h, 0)), "#3a3f45")
+    m.add("lamp", M.xf(M.cone(0.22, 0.2, 8), (0.62, h - 0.2, 0)), "#ffd98a", emissive=0.9, kind="lamp")
+    return m
+
+
+@asset("hay_bale", "a round hay bale (farm)", ["farm", "helper"], aliases=["hay", "straw", "bale", "hay_bales"])
+def hay_bale(r=0.6):
+    return Model().add("bale", M.xf(M.cylinder(r, 1.1, 12, base=False), (0, r, 0), (90, 0, 0)), "#d9bb62")
+
+
+@asset("bucket", "a bucket", ["helper", "farm"], aliases=["pail", "buckets"])
+def bucket(color="#3d8fd6"):
+    return Model().add("bucket", M.cylinder(0.22, 0.35, 10, r_top=0.27), col(color, C["blue"]))
+
+
+@asset("railing", "a steel safety railing", ["helper", "industry"], aliases=["handrail", "guard_rail"])
+def railing(length=6.0, color="#c9ced3"):
+    c = col(color, "#c9ced3")
+    m = Model()
+    for y in (0.55, 1.05):
+        m.add("rail", M.xf(M.box(length, 0.06, 0.06), (0, y, 0)), c)
+    n = max(2, int(length / 1.5) + 1)
+    m.add("posts", M.merge(*[M.xf(M.box(0.07, 1.1, 0.07, base=True), (-length / 2 + k * length / (n - 1), 0, 0))
+                             for k in range(n)]), c)
+    return m
+
+
+@asset("pipe_stand", "a small steel stand that holds a pipe up", ["helper", "industry"], aliases=["pipe_support"])
+def pipe_stand(h=0.6):
+    m = Model().add("post", M.box(0.12, h, 0.12, base=True), "#8f9ba8")
+    m.add("foot", M.box(0.4, 0.06, 0.4, base=True), "#6f777c")
+    return m

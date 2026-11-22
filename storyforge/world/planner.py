@@ -23,7 +23,10 @@ Rules:
 - Tiny things (bacteria, cells, molecules, atoms) go in their own area with "micro": true; reach it with camera "zoom_into" on the container in the scene before.
 - Every scene: one camera move with a target object; 1-3 actions that happen ON a spoken word ("at": a word from that scene's text); 0-2 labels (1-3 words, next to an object); 0-2 keywords (only the important words, max 3 words).
 - Kinds: problem (red) for problems/dangers, part (orange) for names of parts, number (white) for numbers, info (teal) otherwise.
-- Vary the camera (never the same move 3 times in a row). Scene 1 is the hook: a striking, wide, moving shot.
+- Vary the camera (never the same move 3 times in a row). Scene 1 is the hook: CLOSE, funny or shocking, showing the
+  first line directly (e.g. close_up of one cow dropping a huge poop with a "50 kg" label). Never start wide.
+- The camera frames its target automatically (it fills the picture); add the things the line talks about as actions or
+  labels in the same area so they are framed together. Use close_up for details, wide moves only for overviews.
 - Exactly one plan scene per script scene, same order.
 Reply with JSON only."""
 

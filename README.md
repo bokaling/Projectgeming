@@ -10,8 +10,15 @@ Plus the thumbnail, title, description, hashtags and YouTube chapters. **Everyth
 
 - 🎬 **Short** (~60 s, 9:16, 1080×1920) or **Long** (~10 min, 16:9, 1920×1080, with chapters)
 - 🧊 **The look:** simple shapes, flat colors, soft shadows, a dark teal background and a glowing grid floor
-- 🎥 **Camera:** orbit, push in, pull out, fly over, follow, low angle, top down, cutaway (cut open a tank),
-  x-ray (see through walls), and zoom into tiny things like bacteria
+- 🎥 **Camera:** every shot is framed automatically: the thing the line talks about fills the picture, fully
+  visible, between the captions (top 15 %) and the app buttons (bottom 20 %). Orbit, push in, follow, low angle,
+  close up, cutaway (cut open a tank), x-ray (see through walls), zoom into tiny things like bacteria
+- 🏗️ **Real places, not floating objects:** every area gets a ground pad, fences or railings, lamps with warm light,
+  hay bales, buckets, barrels, crates, cars and people, automatically
+- 🪝 **A close, funny hook** (the demo starts with a cow dropping a 50 kg poop) and an **ending overview** of the
+  whole system that flies back to the first shot, so the Short loops. ("Part X" end cards are only for story series.)
+- 🧐 **Self-review:** after the render you get `contact_sheet.jpg` (one frame per shot); empty or badly framed shots
+  are fixed and only those are rendered again
 - ⏱ **In sync:** every shot lasts exactly as long as its voice line, and actions start on the spoken word
   ("the agitator **spins**" → it spins on "spins")
 - 🔑 **Keyword captions** at the top, colored by meaning: 🔴 red = problem, 🟠 orange = part name,

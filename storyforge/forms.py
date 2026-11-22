@@ -63,7 +63,7 @@ def _show_videos(paths) -> None:
 def run(action: str, script_text: str = "", series_name: str = "My Series", episode: int = 0, length: str = "Short",
         languages: str = "English", quality: str = "1080p", narrator_en: str = "kokoro:am_fenrir",
         narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True, topic: str = "",
-        end_card: bool = True, final_episode: bool = False, shot: int = 0, fix: str = "") -> None:
+        end_card: bool = False, final_episode: bool = False, shot: int = 0, fix: str = "") -> None:
     s = config.init(root=None) if config._SETTINGS is None else config.get()
     found = config.load_secrets()
     prof = config.gpu_profile()

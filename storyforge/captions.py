@@ -255,9 +255,9 @@ def keyword_header(size: tuple[int, int], fmt: str, lang: str) -> list[str]:
     W, H = size
     rtl = is_rtl(lang)
     font = FONT_FA if rtl else FONT_EN
-    fs = int(min(W, H) * (0.075 if fmt == "9x16" else 0.057) * (1.1 if rtl else 1.0))  # big enough on a phone
-    outline = max(4, fs // 9)
-    margin = int(H * (0.105 if fmt == "9x16" else 0.07))
+    fs = int(min(W, H) * (0.088 if fmt == "9x16" else 0.062) * (1.1 if rtl else 1.0))  # big and bold on a phone
+    outline = max(5, fs // 8)
+    margin = int(H * (0.055 if fmt == "9x16" else 0.045))  # inside the top 15 % (the safe area for captions)
     enc = -1 if rtl else 1
     lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 0",
              "ScaledBorderAndShadow: yes", "YCbCr Matrix: TV.709", "", "[V4+ Styles]",

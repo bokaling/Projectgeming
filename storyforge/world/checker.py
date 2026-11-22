@@ -15,11 +15,41 @@ import io
 import numpy as np
 
 from .gl import project_points
+from .scene import SAFE_BOTTOM, SAFE_TOP
+
+MIN_FILL = 0.30  # the main object must fill at least 30 % of the frame (width or height)
+MIN_COVERAGE = 0.30  # at least 30 % of the picture shows things (not just floor and sky)
+
+
+def coverage(world, i: int, T: float, eye, tgt, fov, grid=(18, 32)) -> float:
+    """How much of the picture is covered by objects (projected boxes on a coarse grid; pads don't count)."""
+    from .decor import inst_box  # noqa: PLC0415
+
+    W, H = world.size
+    gx, gy = grid if W < H else grid[::-1]
+    cover = np.zeros((gy, gx), bool)
+    for inst in world.insts:
+        if inst.asset in ("pad", "ground", "terrain"):
+            continue
+        st = world.state(inst, T)
+        if st["vis"] < 0.5:
+            continue
+        lo, hi = inst_box(inst, st["pos"], st["yaw"], st["scale"])
+        c = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+        p = project_points(eye, tgt, fov, (W, H), c)
+        if (p[:, 2] <= 0.05).any():
+            continue
+        x0, x1 = int(np.clip(p[:, 0].min() / W * gx, 0, gx)), int(np.clip(np.ceil(p[:, 0].max() / W * gx), 0, gx))
+        y0, y1 = int(np.clip(p[:, 1].min() / H * gy, 0, gy)), int(np.clip(np.ceil(p[:, 1].max() / H * gy), 0, gy))
+        cover[y0:y1, x0:x1] = True
+    return float(cover.mean())
 
 VISION_SYSTEM = """You check still frames of a low poly 3D "how it works" explainer video (dark teal studio, glowing grid floor).
 For each shot you get the narration and one still frame from the middle of the shot.
-A shot is NOT ok only if something is clearly broken: the main object is missing or cut off, the camera is inside an
-object or wall, the frame is empty or almost empty, labels overlap, or the picture clearly doesn't fit the narration.
+A shot is NOT ok only if something is clearly broken: the main object is missing, tiny (under 30 % of the frame) or
+cut off, it sits under the captions (top 15 %) or the app buttons (bottom 20 %), the camera is inside an object or wall,
+the frame is empty or mostly floor and sky, labels overlap, the first shot is a far-away wide shot instead of a close,
+funny or shocking hook, or the picture clearly doesn't fit the narration.
 Simple low poly shapes are the style: they are fine. For every bad shot give ONE short fix instruction in plain words,
 like "camera further away", "show the gas flowing in the pipe", "make the tank bigger", "remove the labels".
 Reply with JSON only: {"shots": [{"n": 1, "ok": true}, {"n": 2, "ok": false, "problem": "…", "fix": "…"}]}"""
@@ -38,11 +68,11 @@ def local_problems(world, i: int, at: float = 0.6, label_tex=None) -> list[str]:
     if eye[1] < 0.3:
         out.append("under_floor")
     spec = world._cams[i]
-    lo, hi = world.group_box(spec["target"], T)
+    lo, hi = world.focus_box(i, T)  # what the line talks about (the same box the camera frames)
     corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
     pts = project_points(eye, tgt, fov, (W, H), corners)
     front = pts[pts[:, 2] > 0.05]
-    if len(front) < 4:
+    if len(front) < 8:
         out.append("target_behind")
     else:
         x0, x1 = front[:, 0].min(), front[:, 0].max()
@@ -51,22 +81,35 @@ def local_problems(world, i: int, at: float = 0.6, label_tex=None) -> list[str]:
         if not (0.0 < cx < W and 0.0 < cy < H):
             out.append("target_off_screen")
         size = max((x1 - x0) / W, (y1 - y0) / H)  # how much of the frame the subject fills
-        if size < 0.22 and spec["move"] not in ("fly_over", "pull_out", "reveal"):
+        if size < MIN_FILL:
             out.append("target_too_small")
+        elif spec["move"] not in ("zoom_into", "close_up") and (
+                x0 < -0.02 * W or x1 > 1.02 * W or y0 < (SAFE_TOP - 0.03) * H or y1 > (1 - SAFE_BOTTOM + 0.03) * H):
+            out.append("cut_off")  # not fully visible, or under the captions / the app buttons
         if (x1 - x0) > W * 2.6 and (y1 - y0) > H * 2.6 and spec["move"] not in ("zoom_into", "close_up"):
             out.append("target_too_big")
+        if coverage(world, i, T, eye, tgt, fov) < MIN_COVERAGE:
+            out.append("mostly_empty")
     for inst in world.insts:  # the camera inside something solid
         st = world.state(inst, T)
         if st["vis"] < 0.5 or st["cut"] > 0 or st["xray"]:
             continue
-        if not any(p.opacity > 0.9 and not p.shell for p in inst.model.parts):
+        solid = [p for p in inst.model.parts if p.opacity > 0.9 and p.geo.tris]
+        if not solid or float(np.linalg.norm(np.asarray(eye) - st["pos"])) > inst.radius * 1.5 + 1:
             continue
-        s = inst.scale * st["scale"]
-        a, b = st["pos"] + inst.lo * s, st["pos"] + inst.hi * s
-        if np.all(np.asarray(eye) > a + 0.05) and np.all(np.asarray(eye) < b - 0.05):
-            if spec["move"] != "zoom_into":
-                out.append(f"camera_inside:{inst.oid}")
+        m = world.inst_matrix(inst, {**st, "vis": 1.0})  # the eye in the object's own space, then part by part
+        local = np.linalg.solve(m, np.append(np.asarray(eye, np.float64), 1.0))[:3]
+        inside = False
+        for p in solid:  # an open barn is fine to stand in; its floor, posts and rails are not
+            for a, b in (p.boxes or [p.geo.bounds()]):
+                if np.all(local > a + 0.05) and np.all(local < b - 0.05):
+                    inside = True
+                    break
+            if inside:
                 break
+        if inside and spec["move"] != "zoom_into":
+            out.append(f"camera_inside:{inst.oid}")
+            break
     if label_tex is not None and sc["plan"]["labels"]:
         e2, t2, f2, _ = world.camera(i, sc["dur"] - 0.25)
         labels = world.labels(i, sc["start"] + sc["dur"] - 0.25, e2, t2, f2, label_tex)
@@ -87,6 +130,15 @@ def local_problems(world, i: int, at: float = 0.6, label_tex=None) -> list[str]:
     return out
 
 
+def content_fraction(img: np.ndarray) -> float:
+    """How much of a finished frame shows things, not just the dark teal background and the faint grid."""
+    a = img[::4, ::4].astype(np.float32)
+    teal = np.array([16.0, 55.0, 62.0])
+    dark_teal = np.linalg.norm(a - teal, axis=2) < 38
+    grid = (a[..., 1] > a[..., 0] + 40) & (a[..., 2] > a[..., 0] + 30) & (a[..., 0] < 90)  # cyan lines
+    return float(1.0 - (dark_teal | grid).mean())
+
+
 def empty_picture(img: np.ndarray) -> bool:
     """A still with (almost) nothing in it: only the background and grid."""
     small = img[::8, ::8].astype(np.float32)
@@ -99,10 +151,18 @@ def fix_local(plan: dict, i: int, problems: list[str]) -> list[str]:
     cam = sc["camera"]
     done = []
     for p in problems:
-        if p in ("target_too_small", "empty_picture"):
-            cam["zoom"] = round(min(5.0, float(cam.get("zoom", 1.0)) * 1.5), 2)
+        if p in ("target_too_small", "empty_picture", "mostly_empty"):
+            cam["zoom"] = round(min(2.5, max(1.0, float(cam.get("zoom", 1.0))) * 1.4), 2)
             cam.pop("distance", None)
+            if cam.get("move") in ("fly_over", "pull_out", "top_down", "reveal"):
+                cam["move"] = "push_in"
+            if p == "mostly_empty":  # a wide subject in a tall frame: look down more, so the place fills the picture
+                cam["height"] = min(60.0, float(cam.get("height", 24.0)) + 14)
             done.append("camera closer")
+        elif p == "cut_off":
+            cam["zoom"] = round(max(0.5, min(1.0, float(cam.get("zoom", 1.0))) * 0.8), 2)
+            cam.pop("distance", None)
+            done.append("whole object in the safe area")
         elif p == "target_too_big":
             cam["zoom"] = round(max(0.2, float(cam.get("zoom", 1.0)) / 1.5), 2)
             done.append("camera further away")

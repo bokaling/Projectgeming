@@ -325,7 +325,8 @@ def build_app():
                             gr.HTML(keys_html())
                         with gr.Group(elem_classes="sf-card"):
                             gr.HTML('<div class="sf-card-title">End</div>')
-                            end_cb = gr.Checkbox(value=True, label="👀 End card: “Part X 👀” (X = the next episode)")
+                            end_cb = gr.Checkbox(value=False, label="👀 End card “Part X 👀” (only for story series; "
+                                                                  "explainers end on an overview that loops)")
                             final_cb = gr.Checkbox(value=False, label="🏁 Final episode: the end card says “The End”")
 
             # ------------------------------------------------------------ 2 Scene plan

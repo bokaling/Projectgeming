@@ -243,9 +243,14 @@ class Pipeline:
             for w in (read_json(adir / f"{sc['id']}.json", {}) or {}).get("words", []):
                 words.append({"w": w["w"], "s": round(t + LEAD + w["s"], 3), "e": round(t + LEAD + w["e"], 3)})
             t += dur
-        end = render.snap(END_CARD if self.opts.end_card else END_HOLD)
+        from .world.scene import END_OVERVIEW  # noqa: PLC0415
+
+        # explainers end on an overview of the whole system that flies back to shot 1 (the video loops);
+        # "Part X" end cards are only for story series (option)
+        end = render.snap(END_CARD if self.opts.end_card else END_OVERVIEW)
         total = round(t + end, 3)
-        tl = {"scenes": scenes, "words": words, "end": {"start": round(t, 3), "dur": end}, "total": total,
+        tl = {"scenes": scenes, "words": words, "total": total,
+              "end": {"start": round(t, 3), "dur": end, "kind": "card" if self.opts.end_card else "overview"},
               "beats": beats.find_beats(words, total, self.opts.length)}
         write_json(adir / "timeline.json", tl)
         return tl
@@ -320,6 +325,8 @@ class Pipeline:
             return outs
         renderer, rsize, how = video.make_renderer(size)
         try:
+            if tuple(rsize) != tuple(size):  # drawn smaller on a CPU: labels must be placed in the pixels drawn
+                world = World(lang_plan, tl, rsize, lang)
             world.upload(renderer)
             labels = LabelMaker((renderer.W, renderer.H), lang)
             self.rep.step(f"🎬 3D render ({fmt.replace('x', ':')}, {len(todo)} clip(s), {how}, encoder "
@@ -338,7 +345,7 @@ class Pipeline:
                                                 card={"text": card, "lang": lang} if card else None,
                                                 stop=lambda: self.rep.stop_requested)
                 self.ep.state.done(key, fp, frames=int(round((t1 - t0) * video.FPS)))
-                label = ("End card" if card else "Fade out") if cid == "end" else f"Scene {k + 1}/{n}"
+                label = ("End card" if card else "Overview of the whole system") if cid == "end" else f"Scene {k + 1}/{n}"
                 self.rep.ok(f"{label} ({t1 - t0:.1f} s video, {tm.label})")
                 self.rep.progress(a + (b - a) * j / len(todo), f"3D render {j}/{len(todo)}")
             self.rep.record("ok", "3D render", how)
@@ -356,8 +363,8 @@ class Pipeline:
         from .world.scene import World  # noqa: PLC0415
 
         size = self.out_size(fmt)
-        world = World(plan, tl, size, lang)
         renderer, rsize, how = video.make_renderer(size)
+        world = World(plan, tl, rsize, lang)  # the size actually drawn (smaller on a CPU)
         try:
             world.upload(renderer)
             labels = LabelMaker((renderer.W, renderer.H), lang)
@@ -397,7 +404,7 @@ class Pipeline:
                 for e in world.events:
                     snd = {"spin": "hum", "flow": "pour", "fill": "pour", "drain": "pour", "bubbles": "bubbles",
                            "sparks": "zap", "light_on": "click", "appear": "pop", "alarm": "alarm_hum",
-                           "smoke": "steam", "shake": "rumble", "cutaway": "low_whoosh"}.get(e.do)
+                           "smoke": "steam", "shake": "rumble", "cutaway": "low_whoosh", "drop": "pop"}.get(e.do)
                     if e.do == "move" and any(p.kind == "wheel" for p in world.groups[e.oid][0].model.parts):
                         snd = "rumble"  # a vehicle drives
                     if not snd:
@@ -413,6 +420,9 @@ class Pipeline:
                     events_spec.append((round(e.start, 3), snd, round(length, 3)))
             if len(tl["scenes"]) > 1:
                 events_spec.append((round(max(0.0, tl["scenes"][-1]["start"] - 2.55), 3), "soft_riser", 0))
+            if tl.get("end", {}).get("kind") == "overview":  # up to the overview, and back down to shot 1
+                events_spec.append((round(tl["end"]["start"], 3), "low_whoosh", 0))
+                events_spec.append((round(tl["total"] - 1.0, 3), "low_whoosh", 0))
         mix_path = self.ep.audio_dir(lang) / "mix.wav"
         fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, self.opts.sfx, reveals, "sound-3d-3",
                          [file_sig(self.ep.audio_dir(lang) / f"{s['id']}.wav") for s in sc["scenes"]])
@@ -500,8 +510,8 @@ class Pipeline:
                     from .world.scene import World  # noqa: PLC0415
 
                     size = (1280, 720) if fmt == "16x9" else (1080, 1920)
-                    world = World(plan, tl, size, lang)
-                    renderer, _, _ = video.make_renderer(size)
+                    renderer, rsize, _ = video.make_renderer(size)
+                    world = World(plan, tl, rsize, lang)
                     try:
                         world.upload(renderer)
                         s = world.scenes[best]
@@ -562,6 +572,8 @@ class Pipeline:
                 with rep.timed("🔍 Quality check"):
                     plan = self.quality_check(plan)
             videos = self.final_videos(plan)
+            with rep.timed("🧐 Self-review"):
+                plan, videos = self.self_review(plan, videos)
             rep.progress(0.95, "Thumbnail")
             with rep.timed("🖼️ Thumbnail & text"):
                 extra = self.thumbnails_and_text(plan)
@@ -637,6 +649,80 @@ class Pipeline:
         self.rep.record("ok" if not report else "warn", "Quality check", f"{len(report)} fixed")
         self.ep.state.done("qc", fingerprint(new, tl, fmt, "qc-1", bool(config.secret("GEMINI_API_KEY"))))
         return new
+
+    def contact_sheet(self, video: Path, tl: dict, cols: int = 7) -> tuple[Path, list]:
+        """One frame per shot (60 % into it) + the ending, from the finished video → export/contact_sheet.jpg."""
+        import subprocess  # noqa: PLC0415
+
+        import numpy as np  # noqa: PLC0415
+        from PIL import Image, ImageDraw  # noqa: PLC0415
+
+        times = [s["start"] + s["dur"] * 0.6 for s in tl["scenes"]] + [tl["end"]["start"] + tl["end"]["dur"] * 0.55]
+        frames = []
+        for t in times:
+            p = subprocess.run([config.ffmpeg_path(), "-v", "error", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1",
+                                "-vf", "scale=270:-2", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True)
+            w = 270
+            h = len(p.stdout) // (w * 3)
+            frames.append(np.frombuffer(p.stdout[: w * h * 3], np.uint8).reshape(h, w, 3) if h else
+                          np.zeros((480, 270, 3), np.uint8))
+        h = max(f.shape[0] for f in frames)
+        rows = (len(frames) + cols - 1) // cols
+        sheet = Image.new("RGB", (cols * 270, rows * h), (8, 20, 24))
+        draw = ImageDraw.Draw(sheet)
+        for k, f in enumerate(frames):
+            x, y = (k % cols) * 270, (k // cols) * h
+            sheet.paste(Image.fromarray(f), (x, y))
+            draw.text((x + 6, y + 4), f"{k + 1}" if k < len(tl["scenes"]) else "end", fill=(255, 255, 255))
+        out = self.ep.export_dir / "contact_sheet.jpg"
+        sheet.save(out, quality=85)
+        return out, frames
+
+    def self_review(self, plan: dict, videos: list) -> tuple[dict, list]:
+        """🧐 After rendering: a contact sheet of every shot, checked on the real pixels (and by Gemini vision with a
+        free key). Bad shots are fixed in the plan and only those are rendered again (one round)."""
+        from .world import checker, fixer  # noqa: PLC0415
+
+        if not videos:
+            return plan, videos
+        lang = self.opts.languages[0]
+        tl = read_json(self.ep.audio_dir(lang) / "timeline.json", None)
+        if not tl:
+            return plan, videos
+        self.rep.step("🧐 Self-review (a contact sheet of every shot)")
+        sheet, frames = self.contact_sheet(Path(videos[0]), tl)
+        texts = [s["narration"] for s in self.script["scenes"]]
+        n = len(texts)
+        fp = fingerprint(file_sig(Path(videos[0])), "review-1")
+        if self.ep.state.fresh("review", fp):
+            self.rep.ok(f"Contact sheet: {sheet.name} (already reviewed)")
+            return plan, videos
+        bad: dict[int, list] = {}
+        for i in range(n):
+            if checker.content_fraction(frames[i]) < 0.3:
+                bad.setdefault(i, []).append("mostly_empty")
+        seen = checker.ask_vision(frames[:n], texts, self.rep)  # {} without a free Gemini key
+        new = json.loads(json.dumps(plan))
+        report = []
+        for i, probs in bad.items():
+            done = checker.fix_local(new, i, probs)
+            report += [f"Shot {i + 1}: {', '.join(done)}"] if done else []
+        for i, info in seen.items():
+            try:
+                new, changes, _ = fixer.fix(new, i, info["fix"], texts[i], self.rep)
+                report.append(f"Shot {i + 1} (Gemini: {info['problem'] or 'looked wrong'}): {', '.join(changes)}")
+            except ValueError:
+                report.append(f"Shot {i + 1}: Gemini saw a problem ({info['problem']}); check it on step 2.")
+        if report and new != plan:
+            for line in report[:10]:
+                self.rep.info("🔧 " + line)
+            plan = self.save_plan(new)
+            videos = self.final_videos(plan)  # only the fixed shots are rendered again
+            sheet, _ = self.contact_sheet(Path(videos[0]), tl)
+        ai = "Gemini vision + pixel checks" if config.secret("GEMINI_API_KEY") else "pixel checks"
+        self.rep.ok(f"{n} shots reviewed ({ai}), {len(report)} fixed. Contact sheet: {sheet.name}")
+        self.ep.state.done("review", fingerprint(file_sig(Path(videos[0])), "review-1"))
+        return plan, videos
 
     def fix_scene(self, i: int, instruction: str) -> dict:
         """🔧 Change one shot by typing what you want. Only the shots that show the change are rendered again."""

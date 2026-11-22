@@ -64,6 +64,24 @@ The owner is a beginner coder. Explain things simply, in short sentences.
   the view turn x-ray automatically.
 * **Keyword captions** (`captions.keyword_header/keyword_events`): top of the screen, one at a time, colored
   by kind: problem red, part orange, number white, info teal.
+* **Framing (phase 4):** every shot is framed from the box of what the line talks about (`World.focus_ids`: the
+  camera target + nearby action/label targets, only if the subject stays big; groups use their 3 members closest to
+  the middle; boxes use `solid_bounds`, so thin chains/cables don't count). `World.fit` solves the distance so the box
+  fills `FILL` (0.78) of the SAFE AREA (top 15 % captions, bottom 20 % app buttons) and shifts the camera so it sits
+  in its middle. Moves only change angle/elevation and a distance factor k around that fit: every shot moves.
+  Wide, low subjects in a tall frame get el ≥ 36. The first shot is never a wide move (`plan.WIDE_MOVES` → close_up).
+* **Set dressing** (`world/decor.py`): every area gets a pad (dirt/concrete/grass), props on its edges (hay, buckets,
+  barrels, crates, cars), people, a fence or railing, lamp posts (warm point lights, max 4 per frame), stands under
+  low pipes; the micro world gets a muddy floor and floating food bits. Env instances are `_env*` ids, not in the plan.
+* **Models:** blocky cows (patches, ears, pink muzzle and udder, tail), original blocky people (face, hair/hat),
+  steel-frame barn (trusses, stalls, feed rail, lamps, x-ray when it blocks), tractor with glass cab, banded white
+  tank with walkway, banded digester, blue genset, bigger houses. `assets._merge_static` merges plain parts of the
+  same look into one mesh (cow 40 → 6 draws); `frame()` skips objects outside the view.
+* **Ending:** explainers end on `END_OVERVIEW` (3.6 s): fly up to an overview of the whole system working (flows and
+  sparks keep running), then back down to shot 1's camera so the video loops. "Part X" end cards are opt-in (story).
+* **🧐 Self-review** (`Pipeline.self_review`, after the render): `export/contact_sheet.jpg` (one frame per shot +
+  the ending), pixel check (`checker.content_fraction` ≥ 0.3) + Gemini vision with the framing rules; fixes the plan
+  and re-renders only the stale clips (one round).
 * **Frozen layout:** after planning, each area's x/z is written into the plan (`scene.freeze_layout`), so a fix
   (bigger tank) never moves other areas. `Pipeline.scene_fp` covers only `plan.relevant_objects(plan, i)` (the
   areas shot i and the shot before look at + what its actions/labels name), so a fix re-renders only the shots
@@ -212,6 +230,10 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Phase 2: asset library 126 objects (piston/rocker/flame kinds), long videos planned in parts with one
       shared world, frozen area layout + per-shot fingerprints, 🔧 fix one shot (AI + rules, app + backup form),
       🔍 quality check (local + Gemini vision), see-through liquids drawn correctly
+- [x] Phase 4 visual quality: bounding-box framing in the safe area (+ check: ≥ 30 % of the frame, not cut off, not
+      mostly empty), set dressing, better cow/person/barn/tractor/tank/digester/generator/house, point lights,
+      crisper shadows, fainter grid, close hook with a "drop", overview ending that loops, bigger captions,
+      post-render self-review with a contact sheet
 - [x] Phase 3 polish: seamless horizon (fog melts into the exact background colour per pixel), contact shading,
       stronger rim light, gentle colour grade, slow camera drift (global clock), bigger keyword captions with a
       soft outline, "explainer" music bed as the default, more action sounds (rumble for vehicles and shaking,
@@ -253,5 +275,7 @@ wav2vec2 alignment, the Colab port link (`serve_kernel_port_as_window`). Every o
 * moderngl: `depth_mask` is a FRAMEBUFFER setting (`fbo.depth_mask`); `ctx.depth_mask = False` silently does
   nothing, and glass then hides the liquid inside it. Thick see-through parts (opacity ≥ 0.6) write depth,
   thin glass and x-ray shells don't.
+* Frame by what you SEE: a model's box includes thin chains/cables (the scraper's 3 m chain made its blade tiny);
+  use `World.solid_bounds`. A long site seen side-on in a tall frame is a thin line: look ALONG it.
 * `plan.validate` must be idempotent (numbers always float, label `count` kept): saved plans are checked again
   after every edit, and any drift changes every fingerprint (= the whole video re-renders).

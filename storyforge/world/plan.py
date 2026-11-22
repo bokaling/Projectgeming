@@ -39,7 +39,9 @@ ACTIONS = {
     "alarm": "pulse red (danger)", "shake": "shake", "cutaway": "cut it open to show the inside",
     "xray": "make the outside see-through", "float": "gently bob and turn (micro world, space)",
     "show_part": "make a hidden part appear (e.g. 'crust')", "hide_part": "hide a part", "count_up": "a number counts up",
+    "drop": "fall from above and land with a plop (a poop, a box, a coin…); 'from' = height in m",
 }
+WIDE_MOVES = {"fly_over", "pull_out", "top_down", "reveal"}
 KINDS = {"problem": "red", "part": "orange", "number": "white", "info": "teal"}
 LAYOUTS = {"grid", "row", "circle", "scatter", "column"}
 ALIASES = {
@@ -183,6 +185,9 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
             move = "orbit"
         tgt = target(cam.get("target"), last_target).split(".")[0]
         last_target = tgt
+        if i == 0 and move in WIDE_MOVES:  # the hook is close and direct, never a far-away wide shot
+            fixes.append(f"scene 1: camera '{move}' → close_up (the first shot is the hook)")
+            move = "close_up"
         camera = {"move": move, "target": tgt}
         for k, lo, hi in (("angle", -720, 720), ("to_angle", -720, 720), ("height", -5, 89), ("distance", 0.5, 300),
                           ("zoom", 0.2, 5), ("fov", 15, 80)):
