@@ -186,7 +186,7 @@ button.secondary {{ backdrop-filter: blur(8px); }}
 .sf-progress-top {{ display:flex; justify-content:space-between; gap: 10px; font-weight:600; font-size: 14.5px; color:#fff; }}
 .sf-progress-pct {{ font-variant-numeric: tabular-nums; color: #ffd1ea; }}
 .sf-bar {{ height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow:hidden; margin: 10px 0 8px; }}
-.sf-fill {{ height:100%; border-radius:999px; background: var(--sf-grad); box-shadow: 0 0 18px rgba(255,46,151,0.65);
+.sf-fill {{ display:block; height:10px; min-height:10px; border-radius:999px; background: var(--sf-grad); box-shadow: 0 0 18px rgba(255,46,151,0.65);
   transition: width .6s ease; background-size: 200% 100%; animation: sfmove 2.5s linear infinite; }}
 @keyframes sfmove {{ 0% {{ background-position: 0 0; }} 100% {{ background-position: 200% 0; }} }}
 .sf-progress-sub {{ color: var(--sf-muted); font-size: 12.5px; }}
@@ -239,5 +239,34 @@ button.secondary {{ backdrop-filter: blur(8px); }}
   .sf-row-stack {{ flex-direction: column !important; }}
   .sf-row-stack > * {{ width: 100% !important; min-width: 0 !important; }}
   button.lg, .sf-big {{ min-height: 56px !important; width: 100%; }}
+}}
+
+/* ---- phase 5: live progress, checklist, badges, button states ---- */
+.sf-badges {{ display:flex; gap:8px; flex-wrap:wrap; margin: 4px 0 8px; }}
+.sf-steps-live {{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }}
+.sf-step {{ font-size:12.5px; padding:5px 10px; border-radius:999px; background: rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.08); color:#cfc6e8; }}
+.sf-step.running {{ border-color:#ff5cc8; color:#fff; box-shadow: 0 0 12px rgba(255,46,151,0.35); }}
+.sf-step.done {{ border-color: rgba(57,255,136,0.45); color:#d9ffe9; }}
+.sf-step.failed {{ border-color: rgba(255,80,80,0.7); background: rgba(255,60,60,0.15); color:#fff; }}
+.sf-step.skipped {{ opacity:.55; }}
+.sf-minilog {{ margin-top:10px; font: 12.5px/1.45 ui-monospace, Menlo, monospace; color:#bfb6dc;
+  background: rgba(0,0,0,0.25); border-radius: 12px; padding: 8px 10px; max-height: 190px; overflow:auto; }}
+.sf-error {{ margin-top:10px; padding:10px 12px; border-radius:12px; background: rgba(255,60,60,0.14);
+  border:1px solid rgba(255,80,80,0.55); color:#fff; font-size:14px; }}
+.sf-donebox {{ margin-top:10px; padding:10px 12px; border-radius:12px; background: rgba(57,255,136,0.10);
+  border:1px solid rgba(57,255,136,0.45); color:#eafff2; font-size:14px; }}
+button.sf-btn-busy {{ background: linear-gradient(90deg,#6b4fd8,#a24bd6) !important; opacity: .92; cursor: progress; }}
+button.sf-btn-busy::before {{ content:""; display:inline-block; width:14px; height:14px; margin-right:8px;
+  border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation: sfspin .8s linear infinite;
+  vertical-align: -2px; }}
+button.sf-btn-done {{ background: linear-gradient(90deg,#16a34a,#22c55e) !important; color:#fff !important; }}
+button.sf-btn-fail {{ background: linear-gradient(90deg,#b91c1c,#ef4444) !important; color:#fff !important; }}
+@keyframes sfspin {{ to {{ transform: rotate(360deg); }} }}
+.sf-result-video video {{ max-height: 70vh; }}
+@media (max-width: 768px) {{
+  .sf-step {{ font-size: 12px; padding: 4px 8px; }}
+  button {{ min-height: 48px; }}
+  .sf-minilog {{ max-height: 150px; }}
 }}
 """

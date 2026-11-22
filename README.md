@@ -79,6 +79,12 @@ simple starter script to edit.
 
 ## 🎬 The 4 steps in the app
 
+While something runs you always see, at the top: the step it's on ("Rendering shot 4 of 13"), a progress bar with %,
+time passed and time left, a checklist (⏳ waiting · 🔄 running · ✅ done · ❌ failed · ⏭️ skipped, reused from before), the
+last 10 log lines in plain English, and badges for your GPU, Gemini key, HF token, Drive and compute units. A button
+you press turns into a spinner ("Working…") and can't be pressed twice; when it's done it turns green ✅, or red ❌ with a
+plain error and what to do. Pop-ups tell you "Script ready", "Video saved to Drive", "Shot 7 fixed".
+
 | Step | What it's for |
 |---|---|
 | **1 · 💡 Topic & Script** | Type a topic or paste a script. 🩺 Script doctor score + ✨ Improve. Short/Long, language, quality. **🚀 Make the video**, or **🧭 Plan first** to see every shot before the render. |

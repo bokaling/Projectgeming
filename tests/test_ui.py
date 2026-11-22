@@ -6,7 +6,7 @@ import pytest
 gr = pytest.importorskip("gradio")
 
 from storyforge.messages import FriendlyError  # noqa: E402
-from storyforge.ui import app, jobs  # noqa: E402
+from storyforge.ui import app, jobs, status  # noqa: E402
 
 
 def wait(manager, timeout=10):
@@ -18,7 +18,7 @@ def wait(manager, timeout=10):
 def test_app_builds(sf_root):
     demo = app.build_app()
     assert demo is not None
-    assert "StoryForge" in app.header_html() and "No GPU" in app.header_html()
+    assert "StoryForge" in app.header_html() and "CPU (no GPU)" in status.badges()
     assert "Ready" in app.progress_html() or "%" in app.progress_html()
 
 

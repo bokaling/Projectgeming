@@ -189,6 +189,7 @@ storyforge/
   forms.py         backup mode without the web app
   ui/theme.py      custom Gradio theme + CSS (dark, neon pink/purple)
   ui/app.py        the 4-step web app
+  ui/status.py     live progress panel, step checklist, clean mini log, badges, toasts (pure functions)
 assets/fonts/      Vazirmatn, Anton, Montserrat (SIL OFL, licenses included)
 tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa (skip without OpenGL)
 ```
@@ -240,6 +241,11 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Phase 2: asset library 126 objects (piston/rocker/flame kinds), long videos planned in parts with one
       shared world, frozen area layout + per-shot fingerprints, 🔧 fix one shot (AI + rules, app + backup form),
       🔍 quality check (local + Gemini vision), see-through liquids drawn correctly
+- [x] Phase 5 C (UI): job buttons go purple "Working…" (spinner, disabled) → green ✅ Done / red ❌ Failed (ticker,
+      `JOB_BUTTONS`, `job.button`); quick buttons use `sync_click`. Always-visible panel: friendly step ("Rendering
+      shot 4 of 13"), bar + %, time passed + left, live checklist ⏳🔄✅❌⏭️, last 10 clean log lines, red error box
+      with what to do; full log in an accordion; badges (GPU, Gemini, HF, Drive, units); toasts from log lines;
+      Export shows the video big + download button + Drive path + contact sheet + timing report
 - [x] Phase 5 A: ports + routed pipes/cables, assemblies, pushing into pits, grounding, flows switch things on,
       clean composition (no ghosts, no props in front), ground + roads, side views of animals, opaque captions,
       logic check in QC + self-review

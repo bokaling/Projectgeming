@@ -14,6 +14,7 @@ from ..audio import music, tts
 from ..messages import FriendlyError, explain
 from ..project import EpisodeOptions, Series, list_series, read_json, slugify, write_json
 from .jobs import JOBS
+from . import status
 from .theme import CSS, HEAD, build_theme
 
 NEW = "__new__"
@@ -67,20 +68,9 @@ def _toast(exc: BaseException) -> None:
 
 
 def header_html() -> str:
-    s = config.get()
-    n_keys = sum(bool(config.secret(k)) for k in config.SECRET_NAMES)
-    gpu = s.gpu
-    chips = [
-        f'<span class="sf-chip {"ok" if gpu.available else "warn"}">{"⚡ GPU: " + html.escape(gpu.label) if gpu.available else "☁️ No GPU: online mode"}</span>',
-        f'<span class="sf-chip {"ok" if s.drive_mounted or s.platform != "colab" else "bad"}">'
-        f'{"💾 Saving to Google Drive" if s.drive_mounted else ("💾 Saving to " + s.platform.title() if s.platform != "colab" else "⚠️ Not saving to Drive")}</span>',
-        f'<span class="sf-chip">{"🔑 " + str(n_keys) + " free key(s)" if n_keys else "🔓 No keys (works anyway)"}</span>',
-    ]
-    return (
-        '<div class="sf-header"><div class="sf-logo"><div class="sf-logo-mark">✦</div>'
-        '<div><h1>StoryForge</h1><p>Free AI story episodes · consistent characters · hooks &amp; cliffhangers</p></div></div>'
-        f'<div class="sf-chips">{"".join(chips)}</div></div>'
-    )
+    return ('<div class="sf-header"><div class="sf-logo"><div class="sf-logo-mark">✦</div>'
+            '<div><h1>StoryForge</h1><p>Low poly 3D "how it works" videos · topic or script → finished Short · free</p>'
+            '</div></div></div>')
 
 
 def keys_html() -> str:
@@ -115,28 +105,7 @@ def project_html() -> str:
 
 
 def progress_html() -> str:
-    job = JOBS.job
-    if job is None:
-        return ('<div class="sf-progress idle"><div class="sf-progress-top"><span>✨ Ready</span>'
-                '<span class="sf-progress-pct"></span></div><div class="sf-bar"><div class="sf-fill" style="width:0%"></div></div>'
-                '<div class="sf-progress-sub">Nothing is running. Pick a step below.</div></div>')
-    rep = job.rep
-    pct = int(round(rep.fraction * 100))
-    if rep.failed:
-        cls, label = "failed", f"❌ {html.escape(job.name)} stopped"
-    elif rep.finished:
-        cls, label, pct = "done", f"✅ {html.escape(job.name)}: done", 100
-    else:
-        step = rep.label or "working"
-        same = job.name.lower() in step.lower()
-        cls, label = "", f"⏳ {html.escape(step if same else job.name + ' · ' + step)}"
-    last = ""
-    lines = [ln.strip() for ln in rep.lines if ln.strip()]
-    if lines:
-        last = html.escape(lines[-1][:160])
-    return (f'<div class="sf-progress {cls}"><div class="sf-progress-top"><span>{label}</span>'
-            f'<span class="sf-progress-pct">{pct}%</span></div><div class="sf-bar"><div class="sf-fill" style="width:{pct}%"></div></div>'
-            f'<div class="sf-progress-sub">{last} · {rep.elapsed()}</div></div>')
+    return status.panel(JOBS.job)
 
 
 def usage_html(result: dict | None) -> str:
@@ -240,6 +209,7 @@ def build_app():
 
     with gr.Blocks(title="StoryForge · 3D explainer videos") as demo:
         gr.HTML(header_html())
+        badges_box = gr.HTML(status.badges())
         with gr.Row(elem_classes="sf-row-stack"):
             project_box = gr.HTML(project_html())
             session_box = gr.HTML(session_html())
@@ -247,12 +217,12 @@ def build_app():
             progress_box = gr.HTML(progress_html())
             with gr.Row(elem_classes="sf-row-stack"):
                 stop_btn = gr.Button("⏹ Stop", size="sm", variant="secondary", elem_classes="sf-stop", scale=0, min_width=110)
-                with gr.Accordion("Show details (log)", open=False):
+                with gr.Accordion("📜 Full log", open=False):
                     log_box = gr.Textbox(show_label=False, lines=10, max_lines=14, autoscroll=True, interactive=False,
                                          elem_classes="sf-log")
 
         r_script, r_plan, r_export = gr.State(0), gr.State(0), gr.State(0)
-        seen = gr.State({"count": -1, "ver": ""})
+        seen = gr.State({"count": -1, "ver": "", "lines": 0, "job": 0})
 
         with gr.Tabs(elem_classes="sf-steps", selected="script") as tabs:
             # ------------------------------------------------------------ 1 Topic & Script
@@ -421,11 +391,18 @@ def build_app():
                         gr.HTML('<div class="sf-empty">Your finished videos will appear here.</div>')
                         return
                     vids = [v for v in res_.get("videos", []) if Path(v).exists()]
+                    gr.HTML(f'<div class="sf-donebox">🎉 Done! Saved in Google Drive: <b>{html.escape(str(ep.export_dir))}'
+                            f'</b></div>')
                     with gr.Row(elem_classes="sf-grid"):
                         for v in vids:
-                            with gr.Column(elem_classes="sf-scene", min_width=240):
+                            with gr.Column(elem_classes=["sf-scene", "sf-result-video"], min_width=280):
                                 gr.Video(value=v, label=Path(v).stem.split("_", 2)[-1].replace("_", " · "),
-                                         height=420, interactive=False)
+                                         height=560, interactive=False)
+                                gr.DownloadButton("⬇️ Download this video", value=v, variant="primary", size="lg")
+                    sheet = ep.export_dir / "contact_sheet.jpg"
+                    if sheet.exists():
+                        gr.Image(value=str(sheet), label="🧐 Contact sheet: one frame per shot (checked by the self-review)",
+                                 interactive=False, buttons=["fullscreen"])
                     thumbs = [t for t in res_.get("thumbnails", []) if Path(t).exists()]
                     if thumbs:
                         gr.Gallery(value=thumbs, label="Thumbnails", columns=4, height=300, object_fit="contain")
@@ -447,11 +424,40 @@ def build_app():
                     clean_btn = gr.Button("🧹 Free up Drive space (delete re-makeable shot clips)", variant="secondary")
 
         timer = gr.Timer(1.0)
-        gr.Timer(20.0).tick(lambda: session_html(), None, session_box, show_progress="hidden")
+        gr.Timer(20.0).tick(lambda: (session_html(), status.badges()), None, [session_box, badges_box],
+                            show_progress="hidden")
 
         # ------------------------------------------------------------ wiring
         settings = [paste_box, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_cb, final_cb, qc_cb]
         refreshers = [r_script, r_plan, r_export]
+
+        JOB_BUTTONS = {"gen": (gen_btn, "🚀 Make the video"), "plan": (plan_btn, "🧭 Plan first (see every shot)"),
+                       "make": (make_btn, "🚀 Make the video with this plan"),
+                       "quick": (quick_btn, "⚡ Quick test (3 scenes, 720p)")}
+
+        def busy():
+            return gr.update(value="Working…", interactive=False, elem_classes=["sf-btn-busy"])
+
+        def normal(label):
+            return gr.update(value=label, interactive=True, elem_classes=[])
+
+        def job_click(key, handler, inputs):
+            """Pressed: purple spinner 'Working…', disabled. The ticker turns it green ✅ or red ❌ when the job ends."""
+            btn, label = JOB_BUTTONS[key]
+
+            def run(*args):
+                before = JOBS.job
+                out = handler(*args)
+                started = JOBS.job is not None and JOBS.job is not before
+                if started:
+                    JOBS.job.button = key
+                return out, (gr.update() if started else normal(label))
+
+            btn.click(busy, None, btn, queue=False).then(run, inputs, [progress_box, btn])
+
+        def sync_click(btn, label, fn, inputs, outputs):
+            """Quick actions: spinner while working, then back to normal (the result shows as a toast)."""
+            btn.click(busy, None, btn, queue=False).then(fn, inputs, outputs).then(lambda: normal(label), None, btn)
 
         def start_job(name, fn, goto=None, refresh=("script", "plan", "export")):
             ok, msg = JOBS.start(name, fn, goto, refresh)
@@ -460,27 +466,43 @@ def build_app():
 
         def tick(seen_info, rs, rp, re_):
             job = JOBS.job
+            n_btn = len(JOB_BUTTONS)
             if job is None:
-                return [gr.skip()] * 7
-            seen_info = seen_info if isinstance(seen_info, dict) else {"count": -1, "ver": ""}
+                return [gr.skip()] * (7 + n_btn)
+            seen_info = seen_info if isinstance(seen_info, dict) else {"count": -1, "ver": "", "lines": 0, "job": 0}
+            if seen_info.get("job") != id(job):
+                seen_info = {**seen_info, "lines": 0, "job": id(job)}
+            for msg in status.new_toasts(job.rep, seen_info.get("lines", 0))[0]:
+                gr.Info(msg)
+            seen_info = {**seen_info, "lines": len(job.rep.lines)}
             ver = f"{id(job)}:{job.rep.version}"
             done_now = JOBS.finished_count != seen_info["count"] and job.rep.finished
             if not done_now and ver == seen_info["ver"]:
-                return [gr.skip()] * 7
-            out = [progress_html(), job.rep.text(120)]
+                return [gr.skip()] * 6 + [seen_info] + [gr.skip()] * n_btn
+            out = [progress_html(), job.rep.text(400)]
+            buttons = [gr.skip()] * n_btn
             if done_now:
                 bump = lambda key, v: v + 1 if key in job.refresh else gr.skip()  # noqa: E731
                 out += [bump("script", rs), bump("plan", rp), bump("export", re_)]
                 out.append(gr.Tabs(selected=job.goto) if job.goto and not job.rep.failed else gr.skip())
-                out.append({"count": JOBS.finished_count, "ver": ver})
+                out.append({**seen_info, "count": JOBS.finished_count, "ver": ver})
+                buttons = []
+                for key, (_, label) in JOB_BUTTONS.items():
+                    if key == getattr(job, "button", None):
+                        buttons.append(gr.update(value="❌ Failed: see the red box" if job.rep.failed else "✅ Done",
+                                                 interactive=True,
+                                                 elem_classes=["sf-btn-fail" if job.rep.failed else "sf-btn-done"]))
+                    else:
+                        buttons.append(normal(label))
                 if job.rep.failed:
-                    what = [ln for ln in job.rep.lines if "❌" in ln]
-                    gr.Warning((what[-1].strip() if what else "Something went wrong.") + " See the log for what to do.")
+                    what, todo = status.error_of(job.rep)
+                    gr.Warning(f"❌ {what or 'Something went wrong.'} {todo}".strip())
             else:
-                out += [gr.skip()] * 4 + [{"count": seen_info["count"], "ver": ver}]
-            return out
+                out += [gr.skip()] * 4 + [{**seen_info, "ver": ver}]
+            return out + buttons
 
-        timer.tick(tick, [seen] + refreshers, [progress_box, log_box] + refreshers + [tabs, seen], show_progress="hidden")
+        timer.tick(tick, [seen] + refreshers, [progress_box, log_box] + refreshers + [tabs, seen]
+                   + [b for b, _ in JOB_BUTTONS.values()], show_progress="hidden")
         stop_btn.click(lambda: gr.Info(JOBS.stop()), None, None)
         r_script.change(lambda _: project_html(), r_script, project_box)
 
@@ -526,7 +548,7 @@ def build_app():
                 _toast(exc)
                 return gr.skip()
 
-        gen_btn.click(on_generate, [series_dd, new_name, ep_no] + settings, [progress_box])
+        job_click("gen", on_generate, [series_dd, new_name, ep_no] + settings)
 
         def on_plan(choice, name, number, *vals):
             try:
@@ -540,7 +562,7 @@ def build_app():
                 _toast(exc)
                 return gr.skip()
 
-        plan_btn.click(on_plan, [series_dd, new_name, ep_no] + settings, [progress_box])
+        job_click("plan", on_plan, [series_dd, new_name, ep_no] + settings)
 
         def on_make():
             try:
@@ -552,7 +574,7 @@ def build_app():
                 _toast(exc)
                 return gr.skip()
 
-        make_btn.click(on_make, None, [progress_box])
+        job_click("make", on_make, [])
 
         def on_fix(k, instruction):
             try:
@@ -580,13 +602,13 @@ def build_app():
                 _toast(exc)
                 return gr.skip()
 
-        save_plan_btn.click(on_save_plan, plan_json, r_plan)
+        sync_click(save_plan_btn, "💾 Check and save the plan", on_save_plan, plan_json, r_plan)
 
         def on_quick(text, langs_, length_):
             return start_job("Quick test", lambda rep: pipeline.quick_test(rep, text or "", langs_ or ["en"], length_),
                              goto="export")
 
-        quick_btn.click(on_quick, [paste_box, langs, length], [progress_box])
+        job_click("quick", on_quick, [paste_box, langs, length])
 
         def on_write(topic, length_, langs_, note_):
             try:
@@ -601,7 +623,8 @@ def build_app():
                 _toast(exc)
                 return gr.skip()
 
-        write_btn.click(on_write, [idea, length, langs, note], paste_box)
+        sync_click(write_btn, "✍️ Write the script (free AI, retention rules)", on_write, [idea, length, langs, note],
+                   paste_box)
 
         # ---- 🩺 Script doctor
         def on_score(text, length_):
@@ -636,7 +659,8 @@ def build_app():
                          + (f'<ul style="margin:4px 0 0 18px">{notes}</ul>' if notes else "") + "</div>")
             return gr.update(visible=True), first, res_["script"], doctor.compare_html(old_r, new_r), note_html
 
-        improve_btn.click(on_improve, [paste_box, length], [cmp_box, old_txt, new_txt, cmp_scores, cmp_notes])
+        sync_click(improve_btn, "✨ Improve script (for retention)", on_improve, [paste_box, length],
+                   [cmp_box, old_txt, new_txt, cmp_scores, cmp_notes])
 
         def on_use_new(new_text, text):
             parts = split_scripts(text)
@@ -699,7 +723,7 @@ def build_app():
                 _toast(exc)
                 return None
 
-        preview_btn.click(on_preview, [preview_lang, voice_en, voice_fa], preview_audio)
+        sync_click(preview_btn, "🔊 Preview voice", on_preview, [preview_lang, voice_en, voice_fa], preview_audio)
 
         def on_own(lang, file):
             try:
@@ -730,7 +754,7 @@ def build_app():
             except Exception as exc:  # noqa: BLE001
                 _toast(exc)
 
-        clean_btn.click(on_clean, None, None)
+        sync_click(clean_btn, "🧹 Free up Drive space (delete re-makeable shot clips)", on_clean, None, None)
 
         # ---- first load: reopen the last project
         def on_load():
