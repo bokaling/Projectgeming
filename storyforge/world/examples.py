@@ -466,7 +466,7 @@ PYRAMID_PLAN = {
          "labels": [{"target": "wet", "text": "Wet sand", "kind": "info", "at": "Wet"}],
          "keywords": [{"text": "wet sand", "kind": "info", "at": "Wet"},
                       {"text": "half the force", "kind": "number", "at": "half"}]},
-        {"camera": {"move": "follow", "target": "sled1", "angle": -70, "height": 22},
+        {"camera": {"move": "orbit", "target": "ramp1", "angle": -55, "to_angle": -30, "height": 26},
          "actions": [{"do": "move", "target": "sled1", "to": [-2.5, 4.5], "y": 2.95, "at": 0.05},
                      {"do": "move", "target": "team", "to": [-0.8, 4.5], "y": 3.95, "at": 0.05}],
          "labels": [{"target": "ramp1", "text": "Mud brick ramp", "kind": "part", "at": "ramps"}],
