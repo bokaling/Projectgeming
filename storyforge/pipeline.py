@@ -377,7 +377,7 @@ class Pipeline:
         machine hums, bubbling, sparks, booms on reveals). Nothing above 8 kHz, -14 LUFS."""
         sc = self.script
         plan = plan or {"scenes": []}
-        mood = self.opts.music_mood if self.opts.music_mood != "auto" else sc.get("music_mood", "mysterious")
+        mood = self.opts.music_mood if self.opts.music_mood != "auto" else sc.get("music_mood", "explainer")
         seed = characters.stable_seed(f"{self.series.slug}/{self.ep.number}/music")
         prev = [p.get("music", "") for p in self.series.previous_summaries(self.ep.number, 3)]
         pick = music.choose_music(mood, seed, avoid=prev)
@@ -393,11 +393,19 @@ class Pipeline:
 
             if plan.get("scenes"):
                 world = World(plan, tl, (1080, 1920), lang)
+                looping = set()
                 for e in world.events:
-                    snd = {"spin": "hum", "flow": "pour", "bubbles": "bubbles", "sparks": "zap", "light_on": "click",
-                           "appear": "pop", "alarm": "alarm_hum"}.get(e.do)
+                    snd = {"spin": "hum", "flow": "pour", "fill": "pour", "drain": "pour", "bubbles": "bubbles",
+                           "sparks": "zap", "light_on": "click", "appear": "pop", "alarm": "alarm_hum",
+                           "smoke": "steam", "shake": "rumble", "cutaway": "low_whoosh"}.get(e.do)
+                    if e.do == "move" and any(p.kind == "wheel" for p in world.groups[e.oid][0].model.parts):
+                        snd = "rumble"  # a vehicle drives
                     if not snd:
                         continue
+                    if snd in music.LOOPED:  # one loop of each kind per shot is enough (5 houses ≠ 5 hums)
+                        if (snd, e.scene) in looping:
+                            continue
+                        looping.add((snd, e.scene))
                     end = min(e.end, world.scenes[e.scene]["end"])
                     length = max(0.0, end - e.start) if snd in music.LOOPED else 0
                     if snd in ("pop", "click") and any(abs(e.start - t0) < 0.25 for t0, n, _ in events_spec if n == snd):
@@ -406,7 +414,7 @@ class Pipeline:
             if len(tl["scenes"]) > 1:
                 events_spec.append((round(max(0.0, tl["scenes"][-1]["start"] - 2.55), 3), "soft_riser", 0))
         mix_path = self.ep.audio_dir(lang) / "mix.wav"
-        fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, self.opts.sfx, reveals, "sound-3d-1",
+        fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, self.opts.sfx, reveals, "sound-3d-3",
                          [file_sig(self.ep.audio_dir(lang) / f"{s['id']}.wav") for s in sc["scenes"]])
         credits = [pick["credit"]] if pick.get("credit") else []
         if self.ep.state.fresh(f"mix:{lang}", fp, [mix_path]):

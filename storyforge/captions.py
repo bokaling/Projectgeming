@@ -255,8 +255,8 @@ def keyword_header(size: tuple[int, int], fmt: str, lang: str) -> list[str]:
     W, H = size
     rtl = is_rtl(lang)
     font = FONT_FA if rtl else FONT_EN
-    fs = int(min(W, H) * (0.062 if fmt == "9x16" else 0.05) * (1.1 if rtl else 1.0))
-    outline = max(3, fs // 11)
+    fs = int(min(W, H) * (0.075 if fmt == "9x16" else 0.057) * (1.1 if rtl else 1.0))  # big enough on a phone
+    outline = max(4, fs // 9)
     margin = int(H * (0.105 if fmt == "9x16" else 0.07))
     enc = -1 if rtl else 1
     lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 0",
@@ -283,7 +283,7 @@ def keyword_events(items: list[dict], lang: str, total: float) -> list[tuple]:
         if end - it["start"] < 0.15:
             continue
         text = escape(it["text"].upper() if not rtl else it["text"])
-        pop = r"{\fscx70\fscy70\t(0,110,\fscx106\fscy106)\t(110,180,\fscx100\fscy100)\fad(0,120)}"
+        pop = r"{\blur1.5\fscx70\fscy70\t(0,110,\fscx106\fscy106)\t(110,180,\fscx100\fscy100)\fad(0,120)}"
         style = f"Key_{it.get('kind') if it.get('kind') in KEY_COLORS else 'info'}"
         events.append((round(it["start"], 3), round(end, 3), style, pop + _wrap(text, rtl)))
     return events

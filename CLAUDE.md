@@ -89,7 +89,7 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 | Farsi voice | Own recording or Edge TTS fa-IR (warn: no commercial grant) | Piper fa_IR |
 | Word timing | Kokoro / Edge word timestamps; own voice: CTC forced alignment | Proportional timing by word length |
 | Captions | ASS keyword captions, libass `shaping=complex`, Vazirmatn for Farsi | n/a |
-| Music + SFX | Generated beds + mechanical SFX (hum, pour, bubbles, zap, click, pop, alarm hum), all < 8 kHz | User library on Drive with `licenses.csv`; Freesound CC0 (optional key) |
+| Music + SFX | Generated beds ("explainer" by default) + mechanical SFX (hum, pour, bubbles, zap, click, pop, alarm hum, rumble, steam), all < 8 kHz | User library on Drive with `licenses.csv`; Freesound CC0 (optional key) |
 | Render | FFmpeg (NVENC if available, else libx264), 30 fps, −14 LUFS, true peak ≤ −1.5 dB | n/a |
 
 ### Colab specifics
@@ -212,7 +212,10 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Phase 2: asset library 126 objects (piston/rocker/flame kinds), long videos planned in parts with one
       shared world, frozen area layout + per-shot fingerprints, 🔧 fix one shot (AI + rules, app + backup form),
       🔍 quality check (local + Gemini vision), see-through liquids drawn correctly
-- [ ] Phase 3: polish (camera, lighting, captions, sound), final report
+- [x] Phase 3 polish: seamless horizon (fog melts into the exact background colour per pixel), contact shading,
+      stronger rim light, gentle colour grade, slow camera drift (global clock), bigger keyword captions with a
+      soft outline, "explainer" music bed as the default, more action sounds (rumble for vehicles and shaking,
+      steam hiss for smoke, pour for fill/drain, whoosh on cutaways), one loop of each kind per shot
 
 ### Verified only on CPU (needs a real Colab run)
 NVIDIA EGL rendering on a T4/L4, NVENC, Kokoro (torch), Edge TTS, Gemini/Groq calls (script + plan),
@@ -246,6 +249,7 @@ wav2vec2 alignment, the Colab port link (`serve_kernel_port_as_window`). Every o
   before the camera is inside the wall.
 * 3D: python `hash()` changes every run; seeds come from `zlib.crc32`. Looped sounds need a seamless loop
   (`music._loopable`), or each repeat clicks.
+* Changing the look (shaders, camera, captions): bump `video.RENDER_VERSION`, or old clips on Drive are reused.
 * moderngl: `depth_mask` is a FRAMEBUFFER setting (`fbo.depth_mask`); `ctx.depth_mask = False` silently does
   nothing, and glass then hides the liquid inside it. Thick see-through parts (opacity ≥ 0.6) write depth,
   thin glass and x-ray shells don't.

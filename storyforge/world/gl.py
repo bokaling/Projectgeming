@@ -139,6 +139,7 @@ void main(){
 LIT = """
 uniform vec3 u_sun_dir; uniform vec3 u_sun_col; uniform vec3 u_sky; uniform vec3 u_ground;
 uniform vec3 u_fog; uniform float u_fog_near; uniform float u_fog_far; uniform vec3 u_eye;
+uniform vec3 u_bg_top; uniform vec3 u_bg_bottom; uniform vec2 u_res;
 uniform sampler2DShadow u_shadow; uniform float u_texel;
 float shadow_at(vec4 lp, vec3 n){
   vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
@@ -154,12 +155,17 @@ vec3 light(vec3 base, vec3 n, vec3 world, vec4 lp){
   vec3 amb = mix(u_ground, u_sky, hemi) * 0.55;
   float d = max(dot(n, u_sun_dir), 0.0);
   float sh = shadow_at(lp, n);
-  vec3 col = base * (amb + u_sun_col * d * (0.25 + 0.75 * sh) * 0.85);
+  float ao = mix(0.68, 1.0, smoothstep(0.0, 0.9, world.y));  // contact shading: bases sit ON the floor
+  vec3 col = base * (amb * ao + u_sun_col * d * (0.25 + 0.75 * sh) * 0.85);
   return col;
 }
-vec3 fogged(vec3 col, vec3 world){
+vec3 bg_at(){  // the background colour behind this pixel (same formula as the background pass)
+  vec2 uv = gl_FragCoord.xy / u_res; vec2 c = uv - 0.5;
+  return mix(u_bg_bottom, u_bg_top, smoothstep(0.0, 1.0, uv.y)) * (1.0 - 0.35 * dot(c, c));
+}
+vec3 fogged(vec3 col, vec3 world){  // far things melt into the background: no hard horizon line
   float t = smoothstep(u_fog_near, u_fog_far, length(u_eye - world));
-  return mix(col, u_fog, t);
+  return mix(col, bg_at(), t);
 }
 """
 
@@ -175,7 +181,7 @@ void main(){
   if (!gl_FrontFacing) { n = -n; if (u_clip_on == 1) base = u_inner; }
   vec3 V = normalize(u_eye - v_world);
   float rim = pow(1.0 - max(dot(n, V), 0.0), 3.0);
-  vec3 col = light(base, n, v_world, v_light) + rim * 0.12 * u_sky + base * u_emissive * 1.6;
+  vec3 col = light(base, n, v_world, v_light) + rim * 0.2 * u_sky + base * u_emissive * 1.6;
   float a = u_opacity;
   if (u_xray == 1) { a = 0.12 + 0.55 * rim; col = mix(col, u_color * 1.4 + 0.2, 0.5); }
   f_color = vec4(fogged(col, v_world), a);
@@ -238,6 +244,11 @@ uniform sampler2D u_scene; uniform sampler2D u_bloom; uniform float u_bloom_k; u
 uniform float u_fade; uniform float u_flash; in vec2 v_uv; out vec4 f_color;
 void main(){ vec3 c = texture(u_scene, v_uv).rgb + texture(u_bloom, v_uv).rgb * u_bloom_k;
   c = c / (1.0 + 0.18 * max(c - 0.8, 0.0));
+  c = clamp(c, 0.0, 1.0);
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  c = mix(vec3(l), c, 1.1);                                   // a little more colour
+  c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);                  // gentle contrast curve
+  c += (1.0 - l) * vec3(-0.006, 0.004, 0.010) + l * vec3(0.012, 0.006, -0.008);  // teal shadows, warm light
   vec2 d = v_uv - 0.5; c *= 1.0 - 0.28 * dot(d, d);
   c = mix(c, u_fade_col, u_fade); c = mix(c, vec3(1.0), u_flash);
   f_color = vec4(clamp(c, 0.0, 1.0), 1.0); }"""
@@ -362,7 +373,8 @@ class Renderer:
                 prog[name].write(val)
         vals = {"u_sun_dir": tuple(sun), "u_sun_col": hex_rgb(st["sun"]), "u_sky": hex_rgb(st["sky"]),
                 "u_ground": hex_rgb(st["ground_light"]), "u_fog": hex_rgb(st["horizon"]), "u_eye": tuple(fr.eye),
-                "u_texel": 1.0 / self.shadow_size}
+                "u_texel": 1.0 / self.shadow_size, "u_bg_top": hex_rgb(st["background"]),
+                "u_bg_bottom": hex_rgb(st["horizon"]), "u_res": (float(self.W), float(self.H))}
         dist = float(np.linalg.norm(np.asarray(fr.eye) - np.asarray(fr.target)))
         vals["u_fog_near"] = max(20.0, dist * 1.6)
         vals["u_fog_far"] = max(60.0, dist * 4.5)

@@ -20,7 +20,7 @@ NEW = "__new__"
 TAB_IDS = ["script", "plan", "voice", "export"]
 LANG_CHOICES = [("English", "en"), ("Farsi · فارسی", "fa")]
 MOOD_CHOICES = [("Auto (from the script)", "auto")] + [(m.title(), m) for m in
-                                                        ("mysterious", "tense", "hopeful", "epic", "calm", "dark", "action")]
+                                                        ("explainer", "mysterious", "tense", "hopeful", "epic", "calm", "dark", "action")]
 
 
 # ---------------------------------------------------------------------------

@@ -235,7 +235,7 @@ def test_keyword_captions_are_colored_by_meaning():
     assert captions.RLE in fa[0][3] and captions.PDF in fa[0][3]
 
 
-@pytest.mark.parametrize("name", ["hum", "pour", "bubbles", "zap", "click", "pop", "alarm_hum"])
+@pytest.mark.parametrize("name", ["hum", "pour", "bubbles", "zap", "click", "pop", "alarm_hum", "rumble", "steam"])
 def test_mechanical_sounds_are_soft(name):
     x = music.make_sfx(name, 1)
     assert len(x) > music.SR * 0.1 and np.abs(x).max() <= 1.0

@@ -107,9 +107,9 @@ def normalize_script(raw: dict, opts: EpisodeOptions) -> dict:
 
 
 def _explainer_mood(text: str) -> str:
-    """Music for an explainer: curious by default, tense or dark only when the story is."""
-    m = beats.guess_mood(text, "mysterious")
-    return m if m in ("tense", "dark", "action", "epic", "sad") else "mysterious"
+    """Music for an explainer: the curious 'explainer' bed by default, tense or dark only when the story is."""
+    m = beats.guess_mood(text, "explainer")
+    return m if m in ("tense", "dark", "action", "epic", "sad", "mysterious") else "explainer"
 
 
 def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, text: str, rep) -> dict:

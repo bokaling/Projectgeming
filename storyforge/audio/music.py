@@ -31,6 +31,8 @@ CHORDS = {"M": [0, 4, 7], "m": [0, 3, 7], "sus": [0, 2, 7], "dim": [0, 3, 6], "m
 # Gentle, soft cinematic beds only: warm pads, low soft piano, string swells, sub bass, muffled pulses.
 # No bells, hi-hats, ticks, snares or bright arpeggios (they sounded sharp under a voice).
 PRESETS = {
+    # how-it-works videos: curious and steady, a soft muffled pulse that keeps things moving under the voice
+    "explainer": dict(root=50, bpm=84, prog=[(0, "sus"), (5, "M"), (9, "m"), (7, "M")], layers=["pad", "sub", "pulse", "piano"], wet=0.38, cutoff=1300),
     "tense": dict(root=45, bpm=92, prog=[(0, "m"), (8, "M"), (5, "m"), (7, "M")], layers=["pad", "sub", "pulse"], wet=0.35, cutoff=1100),
     "mysterious": dict(root=50, bpm=66, prog=[(0, "m"), (1, "M"), (0, "m7"), (10, "M")], layers=["pad", "sub", "piano"], wet=0.45, cutoff=1000),
     "sad": dict(root=48, bpm=62, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["pad", "piano"], wet=0.45, cutoff=1200),
@@ -44,12 +46,14 @@ PRESETS = {
 }
 SFX_GAIN = {"whoosh": 0.35, "impact": 0.5, "riser": 0.3, "heartbeat": 0.5, "wind": 0.18, "rain": 0.16,
             "thunder": 0.4, "sting": 0.35, "low_whoosh": 0.17, "boom": 0.42, "soft_riser": 0.24,
-            "hum": 0.12, "pour": 0.12, "bubbles": 0.14, "zap": 0.1, "click": 0.16, "pop": 0.12, "alarm_hum": 0.1}
+            "hum": 0.12, "pour": 0.12, "bubbles": 0.14, "zap": 0.1, "click": 0.16, "pop": 0.12, "alarm_hum": 0.1,
+            "rumble": 0.14, "steam": 0.07}
 MUSIC_LOWPASS = 8000  # Hz: nothing sharp above this
 SFX_LOWPASS = 6000
 AMBIENT = {"wind", "rain"}
-DESIGN_SFX = {"low_whoosh", "boom", "soft_riser", "hum", "pour", "bubbles", "zap", "click", "pop", "alarm_hum"}
-LOOPED = {"hum", "pour", "bubbles", "alarm_hum"}  # last as long as the action (machines running, liquid flowing)
+DESIGN_SFX = {"low_whoosh", "boom", "soft_riser", "hum", "pour", "bubbles", "zap", "click", "pop", "alarm_hum",
+              "rumble", "steam"}
+LOOPED = {"hum", "pour", "bubbles", "alarm_hum", "rumble", "steam"}  # last as long as the action (machines running, liquid flowing)
 
 
 def midi_hz(m: float) -> float:
@@ -351,6 +355,15 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         x = x * (0.85 + 0.15 * np.sin(2 * np.pi * 0.7 * t)) + _lowpass(noise(4.0), 300) * 0.3
         out = np.stack([x, x], 1)
         out = _lowpass(out, 900)
+    elif name == "rumble":  # a vehicle driving / a big engine: low, round, slowly wobbling (loops)
+        n = int(4.0 * SR)
+        t = np.arange(n) / SR
+        x = np.sin(2 * np.pi * 42 * t) * (0.7 + 0.3 * np.sin(2 * np.pi * 3.5 * t)) + _lowpass(noise(4.0), 180) * 0.8
+        out = _lowpass(np.stack([x, x], 1), 400)
+    elif name == "steam":  # smoke or steam: soft airy hiss, kept low (no sharp highs)
+        n = int(4.0 * SR)
+        x = _bandpass(noise(4.0), 400, 2200) * (0.8 + 0.2 * np.sin(np.arange(n) / SR * 2 * np.pi * 0.9))
+        out = np.stack([x, np.roll(x, 2200)], 1)
     elif name == "alarm_hum":  # a low warning pulse (danger), never shrill
         n = int(4.0 * SR)
         t = np.arange(n) / SR
@@ -610,7 +623,7 @@ def write_stereo(path: Path, x: np.ndarray) -> None:
 def loudnorm(src: Path, dst: Path, target: float = -14.0) -> None:
     """Two-pass FFmpeg loudness normalization (YouTube/TikTok level)."""
     ff = config.ffmpeg_path()
-    af = f"loudnorm=I={target}:TP=-1.5:LRA=11"
+    af = f"loudnorm=I={target}:TP=-2.0:LRA=11"  # 0.5 dB spare: the AAC encoder adds a little
     p1 = subprocess.run([ff, "-hide_banner", "-i", str(src), "-af", af + ":print_format=json", "-f", "null", "-"],
                         capture_output=True, text=True)
     m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", p1.stderr or "", re.S)
@@ -618,5 +631,5 @@ def loudnorm(src: Path, dst: Path, target: float = -14.0) -> None:
         js = json.loads(m.group(0))
         af = (f"{af}:measured_I={js['input_i']}:measured_TP={js['input_tp']}:measured_LRA={js['input_lra']}:"
               f"measured_thresh={js['input_thresh']}:offset={js['target_offset']}:linear=true")
-    af += ",alimiter=limit=0.84:level=false"  # safety: peaks stay under about -1.5 dB
+    af += ",alimiter=limit=0.79:level=false"  # safety: about -2 dB here, so the final AAC file stays under -1.5 dB
     media.run_ffmpeg(["-i", src, "-af", af, "-ar", SR, "-ac", 2, "-sample_fmt", "s16", dst], "balance the loudness")

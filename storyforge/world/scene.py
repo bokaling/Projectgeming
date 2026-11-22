@@ -442,7 +442,19 @@ class World:
         return eye, c, sp["fov"]
 
     def camera(self, i: int, t: float) -> tuple[np.ndarray, np.ndarray, float, float]:
-        """(eye, target, fov, fade) for scene i at local time t, flying in from the previous scene."""
+        """(eye, target, fov, fade) for scene i at local time t, flying in from the previous scene.
+
+        A very small, slow drift (like a camera operator breathing) keeps even still shots alive. It follows the
+        clock of the whole video, so it never jumps from one shot to the next."""
+        eye, tgt, fov, fade = self._camera(i, t)
+        T = self.scenes[i]["start"] + t
+        d = float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt)))
+        k = 0.011 * d
+        drift = np.array([math.sin(T * 0.61), 0.6 * math.sin(T * 0.47 + 1.3), math.sin(T * 0.53 + 2.1)]) * k
+        look = np.array([math.sin(T * 0.43 + 0.7), 0.5 * math.sin(T * 0.37 + 2.4), math.sin(T * 0.51 + 1.1)]) * k * 0.35
+        return np.asarray(eye) + drift, np.asarray(tgt) + look, fov, fade
+
+    def _camera(self, i: int, t: float) -> tuple[np.ndarray, np.ndarray, float, float]:
         eye, tgt, fov = self._cam_path(i, t)
         fade = 0.0
         du = self.scenes[i]["dur"]

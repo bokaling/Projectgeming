@@ -24,6 +24,8 @@ Plus the thumbnail, title, description, hashtags and YouTube chapters. **Everyth
   camera not inside a wall, labels apart) and, with a free Gemini key, Gemini looks at every still too
 - 🩺 **Script doctor** scores your script for retention and **✨ Improve** rewrites it (you pick)
 - 🗣️ One male narrator (Kokoro, 1.1× speed); backups keep the same voice; Farsi works too
+- 🎵 A soft "explainer" music bed and sound design that follows the 3D action: machines hum, liquid pours,
+  bubbles bubble, sparks zap, vehicles rumble, lights click on, a low whoosh on every camera flight
 - 📚 **Batch:** several scripts (or topics) separated by a line of `=====`
 - 💻 Works on a **T4 GPU** and also on a **free CPU runtime** (no GPU, no compute units, just slower)
 
@@ -99,11 +101,12 @@ I tested three free renderers on the same low poly scene at 1080×1920:
 | Blender (Eevee) | not usable | ~350 MB download every session, and Blender's Python module doesn't match Colab's Python version. |
 
 So StoryForge draws everything itself with **moderngl**: flat-shaded low poly, sun + sky light, soft shadow
-map, fog into the teal background, a glowing grid floor, bloom (soft glow), cutaways and x-ray.
+map, soft contact shading where things touch the floor, fog that melts into the teal background (no horizon
+line), a glowing grid floor, bloom (soft glow), a gentle colour grade, cutaways and x-ray.
 
 | Runtime | 60 s Short | Compute units |
 |---|---|---|
-| **CPU** (measured: 4 cores, drawn at 720p and scaled to 1080p) | **3 min 1 s** for a 52 s Short | ~0.01 |
+| **CPU** (measured: 4 cores, drawn at 720p and scaled to 1080p) | **3 min 14 s** for a 52 s Short (with the quality check) | ~0.01 |
 | Colab **CPU** runtime (2 cores) | ~5-7 min (estimate) | 0 on the free plan, ~0.01 with compute units |
 | Colab **T4** | ~1.5-2.5 min (estimate, full 1080p) | ~0.05 |
 | Colab **L4** | ~1-2 min (estimate) | ~0.05 |
