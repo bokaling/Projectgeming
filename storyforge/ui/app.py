@@ -86,6 +86,18 @@ def header_html() -> str:
     )
 
 
+def keys_html() -> str:
+    """Which free keys the app found and what each one turns on."""
+    rows = []
+    for name, status, what in config.key_report():
+        icon = {"found": "✅", "no_access": "⚠️"}.get(status, "➖")
+        note = {"found": "found", "no_access": "in Secrets, but Notebook access is OFF"}.get(status, "not set")
+        rows.append(f'<tr><td>{icon} <code>{name}</code></td><td>{note}</td><td>{html.escape(what)}</td></tr>')
+    return ('<div class="sf-doctor"><table style="width:100%;font-size:13px">' + "".join(rows) + "</table>"
+            '<div class="sf-note">Add keys in Colab: 🔑 Secrets (left bar) → name + value → Notebook access ON. '
+            'Then run cell 2️⃣ again (Colab only shares secrets when that cell starts).</div></div>')
+
+
 def session_html() -> str:
     """⏱ Session time + estimated compute units (Colab doesn't show this live)."""
     prof = config.gpu_profile()
@@ -314,6 +326,8 @@ def build_app():
                                                         "2.5D motion effects.")
                             res = gr.Radio([("1080p (best)", "1080p"), ("720p (faster)", "720p")],
                                            value=default_opts.resolution, label="Quality")
+                        with gr.Accordion("🔑 Free keys: what the app found", open=False):
+                            gr.HTML(keys_html())
                         with gr.Group(elem_classes="sf-card"):
                             gr.HTML('<div class="sf-card-title">Start and end</div>')
                             cold_cb = gr.Checkbox(value=True, label="⚡ Cold open: a 1 s flash of the most dramatic "
@@ -1331,7 +1345,10 @@ def launch(public_link: bool = False, root: str | None = None, port: int = 7860,
     s = config.init(root=root, cache_big_models_on_drive=cache_big_models_on_drive)
     found = config.load_secrets()
     print(f"✅ StoryForge {s.platform} · {s.gpu.label} · saving to {s.root}")
-    print("🔑 Free keys found: " + (", ".join(k for k, v in found.items() if v) or "none (that's OK)"))
+    n = sum(found.values())
+    print(f"🔑 Free keys found: {n}" + ("" if n else " (that's OK, everything still works)"))
+    for line in config.key_lines():
+        print(line)
     if s.platform == "colab" and not s.drive_mounted:
         print("⚠️ Google Drive is not mounted: projects will be lost when Colab closes. Run the Setup cell again.")
     demo = build_app()
@@ -1362,7 +1379,15 @@ def _show_links(demo, platform: str, port: int, shared: bool) -> None:
         try:
             from google.colab import output  # type: ignore  # noqa: PLC0415
 
-            output.serve_kernel_port_as_window(port, anchor_text="👉 OPEN STORYFORGE (click here)")
+            import contextlib  # noqa: PLC0415
+            import io  # noqa: PLC0415
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):  # hide Colab's iframe notice
+                output.serve_kernel_port_as_window(port, anchor_text="👉 OPEN STORYFORGE (click here)")
+            for line in buf.getvalue().splitlines():
+                if line.strip() and not config.NOISE.search(line) and "browser security" not in line:
+                    print(line)
             print("☝️ Click the link above to open the app in a new tab (keep this Colab tab open).")
         except Exception as exc:  # noqa: BLE001
             print(f"Couldn't make the Colab link ({exc}).")

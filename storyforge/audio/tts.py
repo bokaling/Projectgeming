@@ -152,19 +152,22 @@ _kokoro: dict = {}
 
 def kokoro(text: str, voice: str, speed: float = 1.0):
     import torch  # noqa: PLC0415
-    from huggingface_hub import hf_hub_download  # noqa: PLC0415
     from kokoro import KModel, KPipeline  # noqa: PLC0415
 
+    from ..models import ensure_file, ensure_model  # noqa: PLC0415
+
     s = config.get()
-    repo, cache = config.MODELS["kokoro"], s.model_cache("kokoro")
+    repo = config.MODELS["kokoro"]
     lang_code = "b" if voice.startswith("b") else "a"
     if "model" not in _kokoro:
-        cfg = hf_hub_download(repo, "config.json", cache_dir=cache)
-        weights = hf_hub_download(repo, "kokoro-v1_0.pth", cache_dir=cache)
-        _kokoro["model"] = KModel(repo_id=repo, config=cfg, model=weights).to("cuda" if s.gpu.available else "cpu").eval()
+        folder = Path(ensure_model("kokoro", allow_patterns=["config.json", "kokoro-v1_0.pth"]))  # real, checked files
+        _kokoro["model"] = KModel(repo_id=repo, config=str(folder / "config.json"),
+                                  model=str(folder / "kokoro-v1_0.pth")).to("cuda" if s.gpu.available else "cpu").eval()
     if lang_code not in _kokoro:
         _kokoro[lang_code] = KPipeline(lang_code=lang_code, repo_id=repo, model=_kokoro["model"])
-    voice_file = hf_hub_download(repo, f"voices/{voice}.pt", cache_dir=cache)
+    if voice not in _kokoro:
+        _kokoro[voice] = ensure_file("kokoro", f"voices/{voice}.pt")
+    voice_file = _kokoro[voice]
     chunks, words, offset = [], [], 0.0
     with torch.no_grad():
         for result in _kokoro[lang_code](text, voice=voice_file, speed=speed):
@@ -222,16 +225,16 @@ _piper: dict = {}
 
 
 def piper(text: str, voice: str, lang: str, speed: float = 1.0):
-    from huggingface_hub import hf_hub_download  # noqa: PLC0415
     from piper import PiperVoice  # noqa: PLC0415
+
+    from ..models import ensure_model  # noqa: PLC0415
 
     if voice not in _piper:
         folder = PIPER_VOICES[lang].get(voice) or next(iter(PIPER_VOICES[lang].values()))
         name = folder.split("/")[1] + "-" + folder.split("/")[2] + "-" + folder.split("/")[3]
-        cache = config.get().model_cache("piper_voices")
-        onnx = hf_hub_download(config.MODELS["piper_voices"], f"{folder}/{name}.onnx", cache_dir=cache)
-        hf_hub_download(config.MODELS["piper_voices"], f"{folder}/{name}.onnx.json", cache_dir=cache)
-        _piper[voice] = PiperVoice.load(onnx)
+        files = [f"{folder}/{name}.onnx", f"{folder}/{name}.onnx.json"]
+        local = Path(ensure_model("piper_voices", allow_patterns=files))
+        _piper[voice] = PiperVoice.load(str(local / files[0]))
     v = _piper[voice]
     out = config.get().temp_dir / "piper.wav"
     with wave.open(str(out), "wb") as wf:
@@ -290,11 +293,27 @@ def engine_order(lang: str, choice: dict) -> list[tuple[str, str]]:
     for d in FALLBACKS[(lang, gender)]:
         if d[0] not in [o[0] for o in order]:
             order.append(d)
+    order = [o for o in order if o not in _broken]  # stopped working earlier in this session
     order.append(("espeak", "f3" if gender == "female" else "m3"))
     return order
 
 
 _resolved: dict = {}
+_broken: set = set()  # (engine, voice) that stopped working in the middle of a video this session
+
+
+class VoiceFailed(FriendlyError):
+    """One voice engine stopped working in the middle (after retries)."""
+
+    def __init__(self, what: str, todo: str, eng: str, voice: str):
+        super().__init__(what, todo)
+        self.eng, self.voice = eng, voice
+
+
+def error_text(exc: BaseException) -> str:
+    """The real error in one line, e.g. 'UnpicklingError: invalid load key'."""
+    msg = " ".join(str(exc).split())
+    return f"{type(exc).__name__}: {msg[:220]}" if msg else type(exc).__name__
 
 
 def reset_resolved() -> None:
@@ -313,14 +332,19 @@ def resolve(lang: str, choice: dict, rep=None) -> tuple[str, str]:
     errors = []
     for eng, voice in engine_order(lang, choice):
         try:
-            _synth(eng, voice, test, lang, 1.0)
+            _synth(eng, voice, test, lang, float(choice.get("speed") or 1.0))
             _resolved[key] = (eng, voice)
             if errors and rep is not None:
+                for e in errors:  # the REAL reason, so it can be fixed
+                    rep.warn(f"🔧 {e}")
                 rep.warn(f"Your chosen voice isn't available right now, so the whole video uses "
                          f"{ENGINE_NAMES[eng]} ({voice}) instead.")
             return eng, voice
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"{ENGINE_NAMES[eng]}: {str(exc)[:80]}")
+            errors.append(f"{ENGINE_NAMES[eng]} ({voice}) didn't work: {error_text(exc)}")
+    if rep is not None:
+        for e in errors:
+            rep.warn(f"🔧 {e}")
     raise FriendlyError("No voice engine worked.", "Check the internet, run the Setup cell again, or upload your own recording.")
 
 
@@ -337,21 +361,35 @@ def _synth(eng: str, voice: str, text: str, lang: str, speed: float):
 ENGINE_NAMES = {"kokoro": "Kokoro", "edge": "Edge TTS", "piper": "Piper", "espeak": "espeak-ng (robotic, emergency)"}
 
 
-def _speak_samples(text: str, lang: str, eng: str, voice: str, speed: float, retries: int = 3):
-    """Speak with exactly this engine (a few retries, never a different voice). Returns (samples, words)."""
+RETRY_WAITS = (2.0, 4.0)  # seconds between the 3 tries of one piece of text
+
+
+def _speak_samples(text: str, lang: str, eng: str, voice: str, speed: float, retries: int = 3, rep=None):
+    """Speak with exactly this engine: up to 3 tries with a short wait (never a different voice).
+
+    Returns (samples, words). If all tries fail: VoiceFailed (the video then switches to the backup voice
+    for EVERY scene, so the voice never changes in the middle).
+    """
     last: Exception | None = None
     for attempt in range(retries):
         try:
             x, ew = _synth(eng, voice, text, lang, speed)
+            if len(x) < SR * 0.05:
+                raise RuntimeError("no audio came back")
             break
         except Exception as exc:  # noqa: BLE001
             last = exc
-            time.sleep(2 + attempt * 4)
+            if attempt < retries - 1:
+                if rep is not None:
+                    rep.info(f"↻ {ENGINE_NAMES[eng]} try {attempt + 2}/{retries} ({error_text(exc)})")
+                time.sleep(RETRY_WAITS[min(attempt, len(RETRY_WAITS) - 1)])
     else:
         for key in [k for k, v in _resolved.items() if v == (eng, voice)]:  # next time: look for a working voice again
             _resolved.pop(key, None)
-        raise FriendlyError(f"The voice ({ENGINE_NAMES[eng]}) stopped working in the middle.",
-                            "Press Generate again in a minute: finished scenes are kept and the same voice continues.") from last
+        _broken.add((eng, voice))
+        raise VoiceFailed(f"The voice ({ENGINE_NAMES[eng]}) stopped working in the middle "
+                          f"({error_text(last) if last else 'no audio'}).",
+                          "Press Generate again in a minute: finished scenes are kept.", eng, voice) from last
     x, cut = trim_silence(x, SR)
     ew = [(s - cut, e - cut, t) for s, e, t in ew]
     total = len(x) / SR
@@ -371,7 +409,7 @@ def speak(text: str, lang: str, choice: dict, out_wav: Path, rep=None) -> tuple[
         write_wav(out_wav, np.zeros(int(SR * 0.5), np.float32))
         return "silence", []
     eng, voice = resolve(lang, choice, rep)
-    x, words = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0))
+    x, words = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0), rep=rep)
     write_wav(out_wav, x)
     return label(eng, voice), words
 
@@ -387,10 +425,10 @@ def speak_lines(lines: list[tuple], lang: str, out_wav: Path, rep=None, gap: flo
         text, choice = item[0], item[1]
         pause = float(item[2]) if len(item) > 2 and item[2] is not None else gap
         text = align.normalize_fa(text).strip()
-        if not text:
+        if not any(ch.isalnum() for ch in text):  # only punctuation ("…", "—"): nothing to say
             continue
         eng, voice = resolve(lang, choice, rep)
-        x, w = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0))
+        x, w = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0), rep=rep)
         if parts:
             parts.append(np.zeros(int(SR * pause), np.float32))
             t += int(SR * pause) / SR

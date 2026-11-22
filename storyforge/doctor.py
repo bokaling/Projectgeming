@@ -44,32 +44,41 @@ class Report:
     seconds: float = 0.0
     style_line: str = ""  # the mood lock that will be used ([STYLE] or made from the script)
     has_style: bool = False
+    lines: int = 0  # spoken lines
+    speakers: list = field(default_factory=list)
 
 
 def spoken_lines(text: str) -> list[Line]:
     """The lines that are spoken (not [TAG] lines), with their line numbers."""
-    known: set[str] = set()
+    known: set[str] = set(paste.frequent_labels(text))
     out = []
+    title_seen = False
     for no, raw in enumerate((text or "").replace("\r\n", "\n").split("\n"), 1):
         line = raw.strip()
         if not line or re.fullmatch(r"={5,}", line):
             continue
+        if line.startswith("#") and not title_seen:
+            title_seen = True
+            continue
+        line = re.sub(r"^[-•>]\s+", "", line)
         m = paste.TAG.match(line)
         if m:
-            if m.group(1).upper() == "CHARACTER":
+            kind = m.group(1).upper()
+            if kind == "TITLE":
+                title_seen = True
+            if kind == "CHARACTER":
                 name = m.group(2).partition(":")[0].strip()
                 if name:
                     known.add(name.upper() if paste.LATIN.search(name) else name)
-            continue
-        speaker, content = paste.NARRATOR, line
-        sm = paste.SPEAKER.match(line)
-        if sm:
-            who = paste._speaker(sm.group(1), known)
-            if who:
-                speaker, content = who, sm.group(2).strip()
-                known.add(who)
-        content = content.strip().strip('"“”').strip()
-        if content:
+            if kind != "SCENE":
+                continue
+            inline = re.search(r"\s((?:NARRATOR|Narrator|[A-Z][A-Z.'\-]{1,20}(?: [A-Z][A-Z.'\-]{1,20})?)\s*:\s*\S.*)$",
+                               m.group(2))
+            if not (inline and paste._speaker(inline.group(1).split(":")[0], known)):
+                continue
+            line = inline.group(1).strip()
+        speaker, content = paste.split_label(line, known)
+        if any(ch.isalnum() for ch in content):
             out.append(Line(no, speaker, content, raw))
     return out
 
@@ -85,7 +94,9 @@ def score(text: str, length: str = "short") -> Report:
     rep = Report()
     parsed = paste.parse_lines(first)
     all_text = " ".join(ln.text for ln in lines)
-    rep.words = len(all_text.split())
+    rep.words = paste.count_words(all_text)
+    rep.lines = len(lines)
+    rep.speakers = sorted({ln.speaker for ln in lines}, key=lambda x: (x != paste.NARRATOR, x))
     rep.seconds = round(rep.words / paste.WORDS_PER_SECOND, 1)
     rep.has_style = bool(parsed.get("style"))
     from .planner import guess_mood  # noqa: PLC0415
@@ -132,7 +143,7 @@ def score(text: str, length: str = "short") -> Report:
     window = round(5 * paste.WORDS_PER_SECOND)
     seen: set[str] = set()
     good = total = 0
-    words_by_line = [(ln, [beats.norm(w) for w in ln.text.split()]) for ln in lines]
+    words_by_line = [(ln, [beats.norm(w) for w in paste.WORD_SPLIT.split(ln.text) if beats.norm(w)]) for ln in lines]
     flat = [(ln, w) for ln, ws in words_by_line for w in ws]
     for k in range(0, len(flat), window):
         chunk = flat[k:k + window]
@@ -222,7 +233,9 @@ def report_html(r: Report, title: str = "🩺 Script doctor") -> str:
              f'<code>{html.escape(r.style_line)}</code></div>')
     return (f'<div class="sf-doctor"><div style="display:flex;justify-content:space-between;align-items:baseline">'
             f'<b>{title}</b><span style="font-size:28px;font-weight:800;color:{color}">{r.total}<small>/100</small></span>'
-            f'</div><div style="opacity:.75;margin-bottom:6px">{r.words} words · about {r.seconds:.0f} s of voice</div>'
+            f'</div><div style="opacity:.75;margin-bottom:6px">{r.words} spoken words in {r.lines} lines '
+            f'({html.escape(", ".join(r.speakers))}) · about {r.seconds:.0f} s of voice · speaker names like '
+            f'NARRATOR: are not counted</div>'
             f'{rows}{style}'
             + (f'<div style="margin-top:8px"><b>Weak lines</b><ul style="margin:4px 0 0 18px">{weak}</ul></div>' if weak else
                '<div style="margin-top:8px">✅ No weak lines found.</div>')
@@ -332,7 +345,8 @@ def improve(text: str, length: str = "short", rep=None) -> dict:
 
     try:
         provider, obj = llm.generate_json(IMPROVE_SYSTEM, json.dumps(payload, ensure_ascii=False), validate=validate,
-                                          rep=rep, task="script doctor", temperature=0.8, max_tokens=6000)
+                                          rep=rep, task="script doctor", temperature=0.8, max_tokens=6000,
+                                          strong=True)
         new = keep_format(original, str(obj["script"]))
         changes = [str(c) for c in (obj.get("changes") or []) if str(c).strip()][:8]
         return {"script": new, "changes": changes, "provider": provider, "ai": True}

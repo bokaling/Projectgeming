@@ -6,6 +6,7 @@ Nothing heavy is imported here, so `import storyforge` stays fast.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -247,12 +248,34 @@ def detect_gpu() -> GPUInfo:
 # ---------------------------------------------------------------------------
 
 
+# What each free key turns on (shown in the log and in the app).
+KEY_FEATURES = {
+    "GEMINI_API_KEY": "Gemini (free): ✨ Improve script, picture prompts, titles and descriptions, Farsi translation",
+    "GROQ_API_KEY": "Groq (free): backup AI writer when Gemini is busy",
+    "OPENROUTER_API_KEY": "OpenRouter free models: second backup AI writer",
+    "HF_TOKEN": "Hugging Face: faster, more reliable model downloads (FLUX, Wan, Kokoro, depth)",
+    "FREESOUND_API_KEY": "Freesound: extra CC0 sound effects",
+    "AIHORDE_API_KEY": "AI Horde: faster online pictures when there is no GPU",
+}
+_SECRET_STATUS: dict[str, str] = {}
+
+
 def _colab_secret(name: str) -> str | None:
     try:
         from google.colab import userdata  # type: ignore  # noqa: PLC0415
-
-        return userdata.get(name) or None
-    except Exception:  # not on Colab, secret missing, or notebook access not granted
+    except Exception:  # not on Colab
+        return None
+    try:
+        value = userdata.get(name) or None
+        if value:
+            _SECRET_STATUS[name] = "found"
+        return value
+    except Exception as exc:  # noqa: BLE001 - missing, or "Notebook access" is off for this notebook
+        kind = type(exc).__name__
+        if "Access" in kind or "access" in str(exc).lower():
+            _SECRET_STATUS[name] = "no_access"
+        elif "Timeout" in kind:
+            _SECRET_STATUS[name] = "timeout"
         return None
 
 
@@ -281,6 +304,32 @@ def load_secrets() -> dict[str, bool]:
     if os.environ.get("HF_TOKEN"):
         os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", os.environ["HF_TOKEN"])
     return found
+
+
+def key_report() -> list[tuple[str, str, str]]:
+    """[(name, status, what it turns on)]. status: found / missing / no_access (in Secrets but access is off)."""
+    out = []
+    for name in SECRET_NAMES:
+        if os.environ.get(name):
+            status = "found"
+        else:
+            status = _SECRET_STATUS.get(name, "missing")
+        out.append((name, status, KEY_FEATURES.get(name, "")))
+    return out
+
+
+def key_lines() -> list[str]:
+    """Simple lines for the log: which keys were found and what each one turns on."""
+    lines = []
+    for name, status, what in key_report():
+        if status == "found":
+            lines.append(f"   ✅ {name} → {what}")
+        elif status == "no_access":
+            lines.append(f"   ⚠️ {name} is in Colab Secrets but 'Notebook access' is OFF: switch it on (🔑 on the left), "
+                         "then run cell 2️⃣ again")
+        elif name in ("GEMINI_API_KEY", "HF_TOKEN"):
+            lines.append(f"   ➖ {name} not set (optional) → would turn on: {what}")
+    return lines
 
 
 def secret(name: str) -> str | None:
@@ -340,12 +389,52 @@ def encoder_args(quality: str = "final") -> list[str]:
 _SETTINGS: Settings | None = None
 
 
+NOISE = re.compile(r"torchao|serve_kernel_port_as_iframe|cpp extensions|TRANSFORMERS_CACHE|symlinks|"
+                   r"resume_download|torch\.utils\._pytree|weight_norm|dropout option adds dropout|"
+                   r"upgrade_state_dict|`torch_dtype` is deprecated|Torch was not compiled with flash attention")
+
+
+class _QuietFilter:
+    """Drops harmless library chatter (torchao, Colab iframe notice) from the log."""
+
+    def filter(self, record) -> bool:
+        try:
+            return not NOISE.search(record.getMessage())
+        except Exception:  # noqa: BLE001
+            return True
+
+
+def quiet_warnings() -> None:
+    """Hide harmless warnings (torch UserWarning/FutureWarning, torchao, Colab iframe notice). Real errors still show."""
+    import logging  # noqa: PLC0415
+    import warnings  # noqa: PLC0415
+
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    for mod in ("torch", "torchvision", "torchaudio", "torchao", "diffusers", "transformers", "huggingface_hub",
+                "kokoro", "misaki", "spacy", "thinc", "gradio", "google.colab", "accelerate", "librosa", "phonemizer"):
+        warnings.filterwarnings("ignore", category=UserWarning, module=mod.replace(".", r"\.") + r"(\.|$)")
+    warnings.filterwarnings("ignore", message=r".*(torchao|serve_kernel_port_as_iframe|symlink).*")
+    for name in ("torchao", "diffusers", "transformers", "huggingface_hub", "accelerate", "httpx", "phonemizer"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+    flt = _QuietFilter()
+    for lg in (logging.getLogger(), logging.getLogger("torchao"), logging.getLogger("py.warnings")):
+        lg.addFilter(flt)
+        for h in lg.handlers:
+            h.addFilter(flt)
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    os.environ.setdefault("DIFFUSERS_VERBOSITY", "error")
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("PYTHONWARNINGS", "ignore::FutureWarning,ignore::UserWarning,ignore::DeprecationWarning")
+
+
 def init(root: str | os.PathLike | None = None, cache_big_models_on_drive: bool | str = "auto") -> Settings:
     """Create (or replace) the global settings. Safe to call more than once.
 
     cache_big_models_on_drive: True / False / "auto" (= yes if your Drive has enough free space).
     """
     global _SETTINGS
+    quiet_warnings()
     platform = detect_platform()
     if root:
         root_path, on_drive = Path(root), str(root).startswith("/content/drive")

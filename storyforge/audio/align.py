@@ -184,11 +184,13 @@ def _load_ctc(lang: str):
         return _ctc_cache[lang]
     from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor  # noqa: PLC0415
 
+    from ..models import ensure_model  # noqa: PLC0415
+
     s = config.get()
     key = "align_fa" if lang == "fa" else "align_en"
-    mid = config.MODELS[key]
-    proc = Wav2Vec2Processor.from_pretrained(mid, cache_dir=s.model_cache(key))
-    model = Wav2Vec2ForCTC.from_pretrained(mid, cache_dir=s.model_cache(key)).eval()
+    mid = ensure_model(key)  # real, checked files
+    proc = Wav2Vec2Processor.from_pretrained(mid)
+    model = Wav2Vec2ForCTC.from_pretrained(mid).eval()
     if s.gpu.available:
         model = model.to("cuda")
     _ctc_cache[lang] = (proc, model)

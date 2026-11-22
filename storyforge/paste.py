@@ -51,9 +51,56 @@ def detect_language(text: str) -> str:
     return "fa" if len(PERSIAN.findall(text or "")) > len(LATIN.findall(text or "")) else "en"
 
 
+WORD_SPLIT = re.compile(r"[\s\u2014\u2013/]+|\.{2,}|\u2026")  # spaces, em/en dashes, slashes, "..." and "…"
+LABEL = re.compile(r"^\s*(?:[-•*_>]+\s*)?([A-Za-z\u0600-\u06FF][\w.'\- \u0600-\u06FF\u200c]{0,30}?)\s*"
+                   r"(?:\([^)]{0,30}\))?\s*[*_]*\s*[:：]")
+
+
+def count_words(text: str) -> int:
+    """Spoken words, the way the narrator says them: "whispered—then" and "Wait...what" are 2 words,
+    "don't" and "3:15" are 1. Punctuation alone is not a word."""
+    return sum(1 for t in WORD_SPLIT.split(text or "") if any(ch.isalnum() for ch in t))
+
+
+def _clean_name(name: str) -> str:
+    """'**MIRA (whispering)**' → 'MIRA'."""
+    n = re.sub(r"\([^)]*\)", " ", name or "")
+    return re.sub(r"\s+", " ", n.strip().strip("*_-•> ").strip())
+
+
+def frequent_labels(text: str, min_count: int = 2) -> set[str]:
+    """Title Case names used as a label at least twice ('Dr. Shaw: …' twice) are speakers too."""
+    counts: dict[str, int] = {}
+    for raw in (text or "").split("\n"):
+        m = LABEL.match(raw)
+        if m:
+            n = _clean_name(m.group(1))
+            if 1 <= len(n.split()) <= 3 and all(w[:1].isupper() for w in n.split() if w[:1].isalpha()):
+                counts[n] = counts.get(n, 0) + 1
+    return {n for n, c in counts.items() if c >= min_count}
+
+
+def split_label(line: str, known: set[str]) -> tuple[str, str]:
+    """'MIRA (whispering): "Who?"' → ('MIRA', 'Who?'). No label → (NARRATOR, line). Adds new speakers to `known`."""
+    speaker, content = NARRATOR, line.strip()
+    lm = LABEL.match(line)
+    sm = SPEAKER.match(line)
+    who = _speaker(lm.group(1), known) if lm else None
+    if who:  # "MIRA (whispering): …", "**NARRATOR:** …"
+        speaker, content = who, line[lm.end():].strip()
+    elif sm and _speaker(sm.group(1), known):
+        speaker, content = _speaker(sm.group(1), known), sm.group(2).strip()
+    if speaker != NARRATOR:
+        known.add(speaker)
+    content = content.strip().strip("*_").strip()
+    if content.count('"') % 2 == 1 or (content[:1] in '"“' and content[-1:] in '"”'):
+        content = content.strip('"“”').strip()  # unbalanced or whole-line quotes
+    return speaker, content
+
+
 def _speaker(name: str, known: set[str]) -> str | None:
     """Is 'name' (text before a colon) a speaker? Returns the speaker name or None."""
-    n = name.strip().strip("*").strip()
+    n = _clean_name(name)
     low = n.lower()
     if low in NARRATOR_WORDS:
         return NARRATOR
@@ -84,12 +131,24 @@ def parse_lines(text: str, known: set[str] = frozenset()) -> dict:
         chapter = ""
         blocks.append(cur)
 
+    known |= frequent_labels(text)
     for raw in (text or "").replace("\r\n", "\n").split("\n"):
         line = raw.strip()
         if not line:
             para += 1
             continue
+        if line.startswith("#") and not title:  # a markdown heading = the title
+            title = line.lstrip("#").strip()
+            continue
+        line = re.sub(r"^[-•>]\s+", "", line)  # bullet points
         m = TAG.match(line)
+        if m and m.group(1).upper() == "SCENE":  # "[SCENE] dark room NARRATOR: text" on one line: split it
+            inline = re.search(r"\s((?:NARRATOR|Narrator|[A-Z][A-Z.'\-]{1,20}(?: [A-Z][A-Z.'\-]{1,20})?)\s*:\s*\S.*)$",
+                               m.group(2))
+            if inline and _speaker(inline.group(1).split(":")[0], known):
+                new_block(m.group(2)[: inline.start()].strip() or " ")
+                line = inline.group(1).strip()
+                m = None
         if m:
             kind, value = m.group(1).upper(), m.group(2).strip()
             if kind == "TITLE":
@@ -111,15 +170,7 @@ def parse_lines(text: str, known: set[str] = frozenset()) -> dict:
             else:
                 new_block(value or " ")
             continue
-        speaker, content = NARRATOR, line
-        sm = SPEAKER.match(line)
-        if sm:
-            who = _speaker(sm.group(1), known)
-            if who:
-                speaker, content = who, sm.group(2).strip()
-                if who != NARRATOR:
-                    known.add(who)
-        content = content.strip().strip('"“”').strip()
+        speaker, content = split_label(line, known)
         if not content:
             continue
         if cur is None:
@@ -138,7 +189,7 @@ def _sentences(text: str) -> list[str]:
 
 
 def _word_count(text: str) -> int:
-    return len(text.split())
+    return count_words(text)
 
 
 def _pieces(sentence: str, target: int) -> list[str]:
@@ -211,7 +262,7 @@ def narration_of(lines: list[dict]) -> str:
 
 def length_warning(text: str, length: str) -> str:
     """'' if the script is long enough, else a friendly warning."""
-    words = len(narration_of([ln for b in parse_lines(text)["blocks"] for ln in b["lines"]]).split())
+    words = count_words(narration_of([ln for b in parse_lines(text)["blocks"] for ln in b["lines"]]))
     seconds = words / WORDS_PER_SECOND
     need = TARGET_WORDS.get(length, 150)
     if words >= need * 0.8:

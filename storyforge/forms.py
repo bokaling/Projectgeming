@@ -71,9 +71,13 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
         narrator_en: str = "kokoro:am_fenrir", narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True,
         idea: str = "", regenerate: str = "", end_card: bool = True, final_episode: bool = False) -> None:
     s = config.init(root=None) if config._SETTINGS is None else config.get()
-    config.load_secrets()
+    found = config.load_secrets()
     prof = config.gpu_profile()
-    print(f"✅ StoryForge forms mode · {s.gpu.label} → {prof.label} · saving to {s.root}\n")
+    print(f"✅ StoryForge forms mode · {s.gpu.label} → {prof.label} · saving to {s.root}")
+    print(f"🔑 Free keys found: {sum(found.values())}")
+    for line in config.key_lines():
+        print(line)
+    print()
     rep = Reporter(echo=True)
     try:
         opts = EpisodeOptions.from_dict({

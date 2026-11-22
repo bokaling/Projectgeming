@@ -196,6 +196,8 @@ tests/             CPU-only tests, network calls mocked
 - [x] Gemini images mode (`gemini.py`, tab "🍌 My images"): numbered standalone prompts (character sheets C1.. first),
       upload/Drive folder `episodes/epNN/my_images/`, match by number or order, crop to fill, replace/swap,
       missing → ask (FLUX or nearest). `EpisodeOptions.image_source = "mine"` skips FLUX; Generate sets it back to "flux".
+- [x] Round 5 fixes: models as real files on Drive (no re-download), real voice errors + whole-video backup,
+      keys report, word counter, quiet log.
 - [x] Update 4 (viral): script doctor, mood lock + expressions, cold open, fast cuts from crops, pop captions,
       hook text, end card, tension music + editing sounds, 1.1x narrator + reveal pauses, parallel voice,
       single encode + copy join, timing report; uploads ordered by File.lastModified (JS) / Drive mtime,
@@ -236,3 +238,12 @@ wav2vec2 forced alignment, Pollinations/AI Horde/Gemini/Groq calls, the Colab po
   change/drop, and the upload event's `js=` passes it to Python as an extra input.
 * Remembered things (voice engines, focus points, end card PNG) must be keyed so they can't go stale:
   a failing voice is forgotten; the end card PNG name contains a hash of its text.
+* Google Drive can't keep symlinks: after a reconnect, every Hugging Face cache "file" is a 79-byte text stub
+  ("../../blobs/<sha>"). Models now live as REAL files in `models/files/<org>--<name>/` (`snapshot_download(local_dir=…)`),
+  old caches are migrated by renaming blobs (no download), and `.storyforge_verified.json` lets the next session
+  skip the network entirely. Never check sizes on the snapshot path; check the real file (`models.file_problem`).
+* Show the real engine error (`tts.error_text`) whenever a voice falls back; a voice that dies mid-video is
+  marked broken and the WHOLE video is redone with the backup (`tts.VoiceFailed`).
+* Speaker labels can carry notes or markdown: `MIRA (whispering):`, `**NARRATOR:**`, `Dr. Shaw:` (Title Case
+  names count when used twice). Count words with `paste.count_words` (dashes and "..." split words).
+* Colab secrets are read only when cell 2 starts (main thread); `config.key_lines()` says which keys were found.

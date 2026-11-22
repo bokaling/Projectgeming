@@ -335,6 +335,16 @@ class Pipeline:
             self.rep.ok(f"Your recording is split into {len(parts)} scenes ({method})")
             self.rep.record("ok", f"Voice ({lang})", f"your voice, {method}")
             return
+        for attempt in range(3):
+            try:
+                return self._tts_voices(lang, sc_all, speech, adir)
+            except tts.VoiceFailed as exc:  # a voice broke halfway: the WHOLE video switches to the backup voice
+                if attempt == 2:
+                    raise
+                self.rep.warn(f"{exc.what} Switching the whole video to the backup voice (same gender), so the "
+                              "voice never changes in the middle.")
+
+    def _tts_voices(self, lang: str, sc_all: list, speech: list, adir: Path) -> None:
         # Decide the engine for every voice ONCE, so the whole video sounds the same.
         tts.reset_resolved()
         resolved = {}

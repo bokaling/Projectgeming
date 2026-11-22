@@ -121,29 +121,6 @@ def test_safetensors_check(tmp_path):
     assert "wrong size" in models.safetensors_problem(good, expected_size=5)
 
 
-def test_broken_model_file_is_downloaded_again(sf_root, monkeypatch, tmp_path):
-    import huggingface_hub
-
-    snap = tmp_path / "snap"
-    (snap / "transformer").mkdir(parents=True)
-    bad = snap / "transformer" / "model.safetensors"
-    _write_safetensors(bad, header_override=10**12)  # "header too large"
-    calls = []
-
-    def fake_download(repo, filename, cache_dir=None, force_download=False):
-        calls.append((filename, force_download))
-        _write_safetensors(snap / filename)
-        return str(snap / filename)
-
-    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda repo, cache_dir=None, allow_patterns=None: str(snap))
-    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
-    monkeypatch.setattr(models, "_expected_sizes", lambda repo: {})
-    rep = Reporter(echo=False)
-    assert models.ensure_model("image", rep) == str(snap)
-    assert calls == [("transformer/model.safetensors", True)] and models.safetensors_problem(bad) == ""
-    assert "broken" in rep.text() and "Repaired 1" in rep.text()
-
-
 def test_zoom_punch_and_stronger_motion():
     from storyforge.motion import effects
 

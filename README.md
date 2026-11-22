@@ -171,15 +171,17 @@ them, and models stay loaded for the next video in the same session (on L4/A100)
 
 ## 🔑 Optional free keys (better picture prompts and titles)
 
-Everything works **without keys**. With a free key, the AI picture prompts, translations and titles
-are better. In Colab click **🔑 Secrets** → add the name → paste the key → **Notebook access** ON.
+Everything works **without keys**. With a free key, the AI parts are much better. In Colab click
+**🔑 Secrets** (left bar) → add the name → paste the key → switch **Notebook access** ON → run cell 2️⃣ again
+(Colab only shares secrets when that cell starts). Cell 2️⃣ prints which keys it found, and the app shows
+them in step 1 under **🔑 Free keys**.
 
-| Name | Where (free, no card) |
-|---|---|
-| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) → Get API key |
-| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) → API Keys |
-| `HF_TOKEN` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens): faster model downloads |
-| `FREESOUND_API_KEY` | [freesound.org](https://freesound.org/apiv2/apply): extra CC0 sound effects |
+| Name | Where (free, no card) | What it turns on |
+|---|---|---|
+| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) → Get API key | ✨ Improve script (Gemini Flash), picture prompts, titles and descriptions, Farsi translation |
+| `HF_TOKEN` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (a "Read" token) | Faster, more reliable model downloads (FLUX, Kokoro, depth, Wan) |
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) → API Keys | Backup AI writer when Gemini is busy |
+| `FREESOUND_API_KEY` | [freesound.org](https://freesound.org/apiv2/apply) | Extra CC0 sound effects |
 
 ---
 
@@ -209,7 +211,8 @@ This update is on the branch `claude/nice-noether-0u7lld` and is **not on `main`
 | "Couldn't download StoryForge" | Check the BRANCH name. Private repo: make it public, or add a `GITHUB_TOKEN` secret. |
 | The app link doesn't open / Colab stops the session | Use the **🧰 Backup mode** cell (paste your script there, no web app needed). |
 | "The GPU ran out of memory" | **Runtime → Restart session**, run cell 2️⃣, press Generate again. Finished work is kept. |
-| Robot voice | The voice services were unreachable. Press Generate later: only the voice is redone, and the whole video gets the same voice. |
+| Robot voice | The voice services were unreachable. Press Generate later: only the voice is redone, and the whole video gets the same voice. The log shows the real reason with a 🔧 line. |
+| "Moved N model file(s) … (no download needed)" | Good: models saved by an older version are turned into real files once. After that, models load from Drive with no download. |
 | A picture is wrong | Step 4 → **🔄 Regenerate** or **📤 Replace**, then press Generate again. |
 | Placeholder pictures (abstract hills) | No picture service worked at that moment. Regenerate later. |
 

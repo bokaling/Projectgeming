@@ -160,14 +160,17 @@ def _openai_chat(base: str, key: str | None, model: str, messages, json_mode: bo
     return content
 
 
-def _keyed_provider(provider: str, base: str, env: str):
+def _keyed_provider(provider: str, base: str, env: str, strong: bool = False):
     key = config.secret(env)
     if not key:
         return None
 
     def call(messages, json_mode, temperature, max_tokens):
         last: Exception | None = None
-        for model in _list_models(provider, base, key)[:2]:
+        models = _list_models(provider, base, key)
+        if strong:  # writing (✨ Improve): the bigger free model first (e.g. Gemini Flash before Flash-Lite)
+            models = sorted(models, key=lambda m: 0 if re.search(r"flash(?!-lite)|70b|120b", m) else 1)
+        for model in models[:2]:
             try:
                 return _openai_chat(base, key, model, messages, json_mode, temperature, max_tokens)
             except net.ServiceError as exc:
@@ -221,12 +224,11 @@ def _local_chat(messages, json_mode, temperature, max_tokens):
     from .gpu import best_dtype  # noqa: PLC0415
 
     if _local["model"] is None:
-        mid = config.MODELS["local_llm"]
-        cache = s.model_cache("local_llm")
-        _local["tok"] = AutoTokenizer.from_pretrained(mid, cache_dir=cache)
-        _local["model"] = AutoModelForCausalLM.from_pretrained(
-            mid, cache_dir=cache, torch_dtype=best_dtype(), device_map="cuda"
-        )
+        from .models import ensure_model  # noqa: PLC0415
+
+        mid = ensure_model("local_llm")  # real, checked files
+        _local["tok"] = AutoTokenizer.from_pretrained(mid)
+        _local["model"] = AutoModelForCausalLM.from_pretrained(mid, torch_dtype=best_dtype(), device_map="cuda")
     tok, model = _local["tok"], _local["model"]
     prompt = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tok(prompt, return_tensors="pt").to(model.device)
@@ -253,14 +255,14 @@ def unload_local() -> None:
 # ---------------------------------------------------------------------------
 
 
-def providers(allow_local: bool = True) -> list[tuple[str, object]]:
+def providers(allow_local: bool = True, strong: bool = False) -> list[tuple[str, object]]:
     out = []
     for name, base, env in (
         ("Gemini", GEMINI_BASE, "GEMINI_API_KEY"),
         ("Groq", GROQ_BASE, "GROQ_API_KEY"),
         ("OpenRouter", OPENROUTER_BASE, "OPENROUTER_API_KEY"),
     ):
-        fn = _keyed_provider(name.lower(), base, env)
+        fn = _keyed_provider(name.lower(), base, env, strong) if strong else _keyed_provider(name.lower(), base, env)
         if fn:
             out.append((name, fn))
     out.append(("Pollinations", _pollinations))
@@ -279,7 +281,7 @@ def chat(messages, *, json_mode=False, temperature=0.8, max_tokens=4000, rep=Non
 
 
 def generate_json(system: str, user: str, *, validate=None, rep=None, task="script", temperature=0.85,
-                  max_tokens=4000, allow_local=True):
+                  max_tokens=4000, allow_local=True, strong=False):
     """Ask for JSON, check it with `validate(obj)` (raise ValueError if bad). Returns (provider, obj)."""
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -303,5 +305,9 @@ def generate_json(system: str, user: str, *, validate=None, rep=None, task="scri
 
         return run
 
-    calls = [(name, make(fn)) for name, fn in providers(allow_local)]
+    try:
+        found = providers(allow_local, strong=True) if strong else providers(allow_local)
+    except TypeError:  # a simpler providers() (tests)
+        found = providers(allow_local)
+    calls = [(name, make(fn)) for name, fn in found]
     return net.try_in_order(task, calls, rep)

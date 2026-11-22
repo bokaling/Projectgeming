@@ -30,6 +30,7 @@ def fresh_services():
     from storyforge.audio import tts
 
     tts._resolved.clear()  # voices remembered in a session must not leak between tests
+    tts._broken.clear()
     yield
 
 

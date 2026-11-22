@@ -63,9 +63,10 @@ def test_voice_failing_in_the_middle_stops_instead_of_switching(sf_root, tmp_pat
 
     fake_engine(monkeypatch, behaviour)
     tts.speak("One.", "en", tts.DEFAULT_VOICE["en"], tmp_path / "a.wav")
-    with pytest.raises(FriendlyError) as err:
+    with pytest.raises(FriendlyError) as err:  # never a silent switch inside one scene…
         tts.speak("Two.", "en", tts.DEFAULT_VOICE["en"], tmp_path / "b.wav")
-    assert "same voice continues" in err.value.todo
+    assert isinstance(err.value, tts.VoiceFailed) and "network down" in err.value.what
+    assert ("kokoro", "am_fenrir") in tts._broken  # …the pipeline then redoes the WHOLE video with the backup
 
 
 def test_two_speakers_in_one_scene(sf_root, tmp_path, monkeypatch):
