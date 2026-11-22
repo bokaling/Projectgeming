@@ -171,6 +171,7 @@ def _norm_shot(x: dict) -> dict:
     shot = str(x.get("shot") or "")
     return {"shot": shot if shot in planner.SHOTS else "medium", "show_character": bool(x.get("show_character")),
             "characters": [str(c) for c in (x.get("characters") or [])][:3],
+            "expression": str(x.get("expression") or ""),
             "composition": str(x.get("composition") or ""), "lighting": str(x.get("lighting") or ""),
             "camera": _pick(x.get("camera"), CAMERAS, "push_in"), "effects": _pick_list(x.get("effects"), EFFECTS)}
 
@@ -206,6 +207,7 @@ def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True, lang
                 "narration_fa_src": str(sc.get("narration_fa_src") or "").strip(),
                 "visual": visual or spoken[:200],
                 "characters": [str(c).strip() for c in chars if str(c).strip()][:3],
+                "expression": str(sc.get("expression") or "").strip(),
                 "location": str(sc.get("location") or "").strip(),
                 "camera": cam,
                 "effects": _pick_list(sc.get("effects"), EFFECTS),
@@ -225,12 +227,28 @@ def normalize_scenes(scenes: list[dict], reserved=(), variety: bool = True, lang
     return out
 
 
+def auto_mood_lock(scenes: list[dict]) -> str:
+    """No [STYLE] line: make the mood lock from the script (time of day, weather, place, light, genre)."""
+    from . import beats  # noqa: PLC0415
+
+    text = " ".join(" ".join(ln["text"] for ln in sc.get("lines", [])) + " " + sc.get("visual", "") for sc in scenes)
+    moods = [sc.get("mood") for sc in scenes if sc.get("mood")]
+    return beats.auto_mood_lock(text, max(set(moods), key=moods.count) if moods else planner.guess_mood(text))
+
+
+def auto_hook_text(scenes: list[dict], language: str = "en") -> str:
+    from . import beats  # noqa: PLC0415
+
+    first = next((ln["text"] for sc in scenes for ln in sc.get("lines", []) if ln.get("text")), "")
+    return beats.hook_text(first, language)
+
+
 def hero_target(opts: EpisodeOptions) -> int:
     """How many hero scenes: your number, or 'auto' = what your GPU can do in reasonable time."""
     if opts.hero_count >= 0:
         return opts.hero_count
-    if opts.image_source == "mine":
-        return 0  # your own images: no big video-model download unless you ask for hero scenes
+    if opts.image_source == "mine" or opts.length == "short":
+        return 0  # Shorts and your own images: no big video-model download unless you choose hero scenes
     prof = config.gpu_profile()
     return prof.heroes_long if opts.length == "long" else prof.heroes_short
 
@@ -266,6 +284,8 @@ def normalize_script(raw: dict, opts: EpisodeOptions, user_edit: bool = False, r
         "source": raw.get("source") or ("ai" if opts.source == "ai" else "paste"),
         "logline": str(raw.get("logline") or "").strip(),
         "style": str(raw.get("style") or "").strip(),
+        "mood_lock": str(raw.get("mood_lock") or "").strip() or auto_mood_lock(scenes),
+        "hook_text": str(raw.get("hook_text") or "").strip() or auto_hook_text(scenes, language),
         "characters": raw.get("characters") or [],
         "scenes": scenes,
         "cliffhanger": str(raw.get("cliffhanger") or "").strip(),
@@ -574,8 +594,11 @@ def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, tex
     words = " ".join(ln["text"] for sc in scenes for ln in sc["lines"]).split()
     title = parsed["title"] or " ".join(words[:6]).rstrip(".,!?؟") + "…"
     moods = [sc["mood"] for sc in scenes]
+    mood_lock = (parsed.get("style") or "").strip() or auto_mood_lock(scenes)
+    rep.info(f"🎨 Mood lock{' (your [STYLE] line)' if parsed.get('style') else ' (made from your script)'}: {mood_lock}")
     raw = {
         "title": title, "language": lang, "scenes": scenes, "source": "paste", "provider": provider,
+        "mood_lock": mood_lock,
         "music_mood": max(set(moods), key=moods.count) if moods else "mysterious",
         "thumbnail_text": " ".join(title.split()[:4]),
         "summary": " ".join(words[:60]), "cliffhanger": scenes[-1]["lines"][-1]["text"] if scenes else "",
@@ -603,7 +626,8 @@ def script_from_text(series: Series, episode: Episode, opts: EpisodeOptions, tex
 # ---------------------------------------------------------------------------
 
 _FIELD_ORDER = [
-    ("Picture", "visual"), ("Shot", "shot"), ("Characters", "characters"), ("Place", "location"),
+    ("Picture", "visual"), ("Shot", "shot"), ("Characters", "characters"), ("Expression", "expression"),
+    ("Place", "location"),
     ("Camera", "camera"), ("Effects", "effects"), ("Sound", "sfx"), ("Mood", "mood"), ("Hero", "hero"),
     ("Chapter", "chapter"),
 ]
@@ -612,12 +636,14 @@ _KEYS.update({"visual": "visual", "location": "location", "sfx": "sfx", "farsi n
               "persian": "narration_fa", "farsi": "narration_fa", "english": "narration", "image": "visual",
               "real video": "hero", "scene": "visual"})
 _TOP = {"logline": "logline", "music": "music_mood", "thumbnail": "thumbnail_text", "farsi title": "title_fa",
-        "farsi thumbnail": "thumbnail_text_fa", "style": "style", "language": "language"}
+        "farsi thumbnail": "thumbnail_text_fa", "style": "style", "language": "language", "mood lock": "mood_lock",
+        "hook text": "hook_text"}
 
 
 def to_markdown(script: dict) -> str:
     lang = script.get("language", "en")
-    lines = [f"# {script.get('title', 'Untitled')}", "", f"Language: {lang}"]
+    lines = [f"# {script.get('title', 'Untitled')}", "", f"Language: {lang}",
+             f"Mood lock: {script.get('mood_lock', '')}", f"Hook text: {script.get('hook_text', '')}"]
     for label, key in (("Logline", "logline"), ("Farsi title", "title_fa"), ("Music", "music_mood"),
                        ("Thumbnail", "thumbnail_text"), ("Farsi thumbnail", "thumbnail_text_fa")):
         if script.get(key) or key in ("music_mood", "thumbnail_text"):

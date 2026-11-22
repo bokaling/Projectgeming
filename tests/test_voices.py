@@ -76,7 +76,7 @@ def test_two_speakers_in_one_scene(sf_root, tmp_path, monkeypatch):
     assert used == ["Kokoro (am_fenrir)", "Kokoro (af_heart)"]
     assert words[-1]["s"] >= 0.5  # the second speaker starts after the first + a short pause
     x, sr = tts.read_wav(tmp_path / "s.wav")
-    assert abs(len(x) / sr - 1.25) < 0.05
+    assert abs(len(x) / sr - 1.2) < 0.05  # 0.5 + 0.2 pause + 0.5
 
 
 def test_character_voices_are_different_and_remembered(sf_root):

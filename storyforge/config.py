@@ -316,13 +316,20 @@ def video_encoder() -> str:
 
 
 def encoder_args(quality: str = "final") -> list[str]:
-    """FFmpeg video encoder arguments. 'final' = upload quality, 'work' = fast intermediate."""
+    """FFmpeg video encoder arguments. 'final' = upload quality, 'work' = fast intermediate.
+
+    Every scene clip is encoded ONCE at final quality with the same settings, so the clips can be
+    joined without re-encoding (GPU encoder h264_nvenc when it works, else libx264).
+    """
     enc = video_encoder()
+    gop = ["-g", "60", "-bf", "2"]
     if enc == "h264_nvenc":
-        cq = "19" if quality == "final" else "21"
-        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", cq, "-b:v", "0", "-pix_fmt", "yuv420p"]
+        cq = "20" if quality == "final" else "21"
+        return ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", cq, "-b:v", "0", *gop,
+                "-profile:v", "high", "-pix_fmt", "yuv420p"]
     if quality == "final":
-        return ["-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p"]
+        return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", *gop, "-profile:v", "high",
+                "-x264-params", "stitchable=1", "-pix_fmt", "yuv420p"]
     return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "17", "-pix_fmt", "yuv420p"]
 
 

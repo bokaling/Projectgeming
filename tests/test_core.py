@@ -53,7 +53,8 @@ def test_options_clamped():
     o = project.EpisodeOptions.from_dict({"hero_count": 99, "languages": ["xx"], "formats": [], "junk": 1})
     assert o.hero_count == 12 and o.languages == ["en"] and o.formats == ["9x16"]
     d = project.EpisodeOptions()
-    assert d.hero_count == -1 and d.source == "paste" and d.sfx is False  # auto heroes, your script, SFX off
+    assert d.hero_count == -1 and d.source == "paste" and d.sfx is True  # auto heroes, your script, soft editing sounds on
+    assert d.cold_open and d.end_card and not d.final_episode and d.caption_style == "pop"
     assert project.EpisodeOptions.from_dict({"length": "long"}).formats == ["16x9"]
 
 
@@ -153,10 +154,12 @@ def test_gpu_profiles_and_auto_heroes(sf_root, monkeypatch):
     assert t4.heroes_short < l4.heroes_short < a100.heroes_short and t4.cu_per_hour < l4.cu_per_hour < a100.cu_per_hour
     monkeypatch.setattr(config, "gpu_profile", lambda gpu=None: l4)
     auto = project.EpisodeOptions()  # hero_count -1 = auto
-    assert script.hero_target(auto) == 3 and script.hero_target(project.EpisodeOptions(length="long")) == 6
-    assert script.hero_target(project.EpisodeOptions(hero_count=0)) == 0  # you can always turn them off
+    # Shorts: no Wan hero clips by default (speed); long videos: what the GPU can do; you can always choose
+    assert script.hero_target(auto) == 0 and script.hero_target(project.EpisodeOptions(length="long")) == 6
+    assert script.hero_target(project.EpisodeOptions(hero_count=3)) == 3
+    assert script.hero_target(project.EpisodeOptions(hero_count=0, length="long")) == 0
     scenes = script.normalize_scenes([{"narration": f"x{i}"} for i in range(10)])
-    script.apply_hero_count(scenes, script.hero_target(auto))
+    script.apply_hero_count(scenes, 3)
     assert sum(s["hero"] for s in scenes) == 3
 
 

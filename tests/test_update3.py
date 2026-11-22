@@ -149,7 +149,7 @@ def test_zoom_punch_and_stronger_motion():
 
     move = effects.camera_move("push_in")
     assert move.zoom[1] - move.zoom[0] > 0.18  # stronger than before (0.13)
-    move.punch = 0.16
+    move.punch, move.punches = 0.16, (0.12,)
     ov = effects.Overlay((90, 160), [], 1, 1.0, grain=False, vignette=False)
     z_before = effects.camera_state(move, ov, 2, 30, 30)[1]   # t = 0.07 s
     z_punch = effects.camera_state(move, ov, 8, 30, 30)[1]    # t = 0.27 s

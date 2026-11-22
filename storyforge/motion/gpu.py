@@ -28,7 +28,8 @@ def available() -> bool:
 
 def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], duration: float, fps: int = 30,
            camera: str = "push_in", fx=(), seed: int = 0, shake_times=(), strength: float = 1.0,
-           grain: bool = True, vignette: bool = True, device: str = "cuda", punch: float = 0.0):
+           grain: bool = True, vignette: bool = True, device: str = "cuda", punch: float = 0.0, punch_times=(),
+           flash_times=(), crop=None):
     """Yield RGB uint8 frames (numpy), computed on `device`."""
     import torch  # noqa: PLC0415
     import torch.nn.functional as F  # noqa: PLC0415
@@ -36,13 +37,9 @@ def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], dur
     W, H = size
     canvas, dcanvas = effects.prepare_canvas(rgb, depth, size)
     Hw, Ww = canvas.shape[:2]
-    move = effects.camera_move(camera, strength)
-    move.punch = punch
-    if dcanvas is None:
-        move.par = ((0, 0), (0, 0))
-        move.dolly = (0.0, 0.0)
+    move = effects.make_move(camera, strength, rgb.shape, size, punch, punch_times, crop, dcanvas is not None)
     overlay = effects.Overlay(size, fx, seed, duration, grain=False, vignette=False, shake_times=shake_times,
-                              handheld=move.handheld)
+                              handheld=move.handheld, flash_times=flash_times)
     dev = torch.device(device)
     img = torch.from_numpy(np.ascontiguousarray(canvas)).to(dev).permute(2, 0, 1)[None].float()
     dep = torch.from_numpy(dcanvas).to(dev)[None, None] if dcanvas is not None else None
@@ -104,5 +101,8 @@ def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], dur
                 f = f * vig
             if grains:
                 f = f + grains[i % len(grains)]
+            a = effects.flash_amount(overlay.flash_times, t)
+            if a > 0:  # quick white flash on a reveal
+                f = f + (255 - f) * a
             out = f.clamp(0, 255).to(torch.uint8)[0].permute(1, 2, 0).contiguous().cpu().numpy()
             yield out

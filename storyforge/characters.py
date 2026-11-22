@@ -184,11 +184,13 @@ def frame_of(scene: dict, shot_index: int = 0) -> dict:
     return {**scene, **extra[shot_index - 1]} if shot_index - 1 < len(extra) else scene
 
 
-def scene_prompt(series: Series, scene: dict, with_refs: bool, shot_index: int = 0) -> tuple[str, list[Path]]:
+def scene_prompt(series: Series, scene: dict, with_refs: bool, shot_index: int = 0,
+                 mood_lock: str = "") -> tuple[str, list[Path]]:
     """Build the image prompt for one shot of a scene and the reference pictures to send.
 
     Your [SCENE] text is the main prompt and comes first; the shot type is added after it.
-    Characters in the shot get their fixed look (and reference picture on the GPU).
+    The mood lock ([STYLE]) keeps time of day, light and colors the same in every picture.
+    Characters in the shot get their fixed look, a pose and a facial expression that fits the line.
     """
     from .planner import SHOTS  # noqa: PLC0415
 
@@ -201,11 +203,14 @@ def scene_prompt(series: Series, scene: dict, with_refs: bool, shot_index: int =
     parts = [scene.get("visual", "").strip().rstrip(".") + "."]
     if shot in SHOTS:
         parts.append(f"Shot: {SHOT_HINTS[shot] if user else SHOTS[shot][0]}.")
+    if mood_lock:
+        parts.append(f"Setting and look (the same in every shot): {mood_lock.strip().rstrip('.')}.")
     if scene.get("location"):
         parts.append(f"Location: {scene['location']}.")
     for k, c in enumerate(chars):
         pose = POSES[(int(scene.get("id", "s0")[1:] or 0) + k + shot_index) % len(POSES)]
-        parts.append(f"{c['name']} is {c['description']}, {pose}.")
+        expr = fr.get("expression") or ""
+        parts.append(f"{c['name']} is {c['description']}, {pose}" + (f", facial expression: {expr}" if expr else "") + ".")
     if refs:
         mapping = ", ".join(f"image {i + 1} shows {c['name']}" for i, c in enumerate(chars) if has_ref(series, c))
         parts.append(f"Same face and hair as the reference images ({mapping}), new pose and camera angle.")
@@ -214,8 +219,8 @@ def scene_prompt(series: Series, scene: dict, with_refs: bool, shot_index: int =
     if fr.get("composition"):
         parts.append(fr["composition"].capitalize() + ".")
     if fr.get("lighting"):
-        parts.append(f"Lighting and color: {fr['lighting']}.")
-    parts.append(f"Style: {series.data.get('style', '')}. Full natural color (not sepia, not monochrome), "
+        parts.append(f"Lighting: {fr['lighting']}." if mood_lock else f"Lighting and color: {fr['lighting']}.")
+    parts.append(f"Style: {series.data.get('style', '')}. Rich color (not sepia, not monochrome), "
                  f"cinematic, highly detailed, sharp focus. {NO_TEXT}")
     return " ".join(p.strip() for p in parts if p and p.strip() and p.strip() != "."), refs
 

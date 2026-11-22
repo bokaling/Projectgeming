@@ -13,6 +13,8 @@ Format:
 * Optional: [CHAPTER] Chapter name (for long videos / YouTube chapters).
 * Optional: [CHARACTER] NIKOLA: man, 40s, short dark hair, lab coat
   (this look goes into every picture where he appears).
+* Optional: [STYLE] night, rain, dark lab, green radio glow, horror thriller
+  (the "mood lock": added to every picture so time of day, light and colors stay the same).
 * Farsi works the same way (راوی: for the narrator).
 """
 
@@ -23,15 +25,21 @@ import re
 NARRATOR = "NARRATOR"
 NARRATOR_WORDS = {"narrator", "narration", "voiceover", "voice over", "vo", "راوی", "گوینده"}
 SEPARATOR = re.compile(r"^\s*={5,}\s*$", re.M)
-TAG = re.compile(r"^\s*\[(TITLE|SCENE|CHAPTER|CHARACTER)\]\s*:?\s*(.*)$", re.I)
+TAG = re.compile(r"^\s*\[(TITLE|SCENE|CHAPTER|CHARACTER|STYLE)\]\s*:?\s*(.*)$", re.I)
 SPEAKER = re.compile(r"^\s*([^\s:][^:]{0,30}?)\s*[:：]\s*(.+)$")
 PERSIAN = re.compile(r"[؀-ۿ]")
 LATIN = re.compile(r"[A-Za-z]")
-WORDS_PER_SECOND = 2.5
-WORDS_PER_SCENE = {"short": 14, "long": 24}  # a scene = whole sentences, so the voice sounds natural
-SECONDS_PER_IMAGE = {"short": 2.5, "long": 3.0}  # inside a scene: a new picture (shot) every 2-3 seconds
-WORDS_PER_SHOT = {k: round(v * WORDS_PER_SECOND) for k, v in SECONDS_PER_IMAGE.items()}
+NARRATOR_SPEED = 1.1  # the narrator talks a little faster (more energy)
+WORDS_PER_SECOND = 2.5 * NARRATOR_SPEED
+WORDS_PER_SCENE = {"short": 14, "long": 28}  # a scene = whole sentences, so the voice sounds natural
+# One picture per ~5 s (short) / ~10 s (long): about 12 pictures for a Short. The fast cuts in between
+# (every 1.5-2.5 s / 3-5 s) are zooms and crops into different parts of the same picture.
+SECONDS_PER_IMAGE = {"short": 5.0, "long": 10.0}
+WORDS_PER_IMAGE = {k: round(v * WORDS_PER_SECOND) for k, v in SECONDS_PER_IMAGE.items()}
+WORDS_PER_SHOT = WORDS_PER_IMAGE  # old name
+CUT_SECONDS = {"short": (1.5, 2.5), "long": (3.0, 5.0)}  # a new shot (cut) this often
 TARGET_SECONDS = {"short": 60, "long": 600}
+TARGET_WORDS = {"short": 150, "long": 1500}  # at 1.1x speed, with short pauses and the cold open
 
 
 def split_scripts(text: str) -> list[str]:
@@ -62,6 +70,7 @@ def _speaker(name: str, known: set[str]) -> str | None:
 def parse_lines(text: str, known: set[str] = frozenset()) -> dict:
     """Turn script text into {'title', 'language', 'blocks': [{'visual', 'chapter', 'lines', 'para_breaks'}]}."""
     title = ""
+    style = ""
     characters: list[dict] = []
     blocks: list[dict] = []
     cur: dict | None = None
@@ -85,6 +94,8 @@ def parse_lines(text: str, known: set[str] = frozenset()) -> dict:
             kind, value = m.group(1).upper(), m.group(2).strip()
             if kind == "TITLE":
                 title = value
+            elif kind == "STYLE":
+                style = value
             elif kind == "CHARACTER":
                 name, _, desc = value.partition(":")
                 if name.strip():
@@ -116,7 +127,8 @@ def parse_lines(text: str, known: set[str] = frozenset()) -> dict:
         cur["lines"].append({"speaker": speaker, "text": content, "para": para})
     blocks = [b for b in blocks if b["lines"]]
     all_text = " ".join(ln["text"] for b in blocks for ln in b["lines"])
-    return {"title": title, "language": detect_language(all_text), "blocks": blocks, "characters": characters,
+    return {"title": title, "style": style, "language": detect_language(all_text), "blocks": blocks,
+            "characters": characters,
             "speakers": sorted({ln["speaker"] for b in blocks for ln in b["lines"]} - {NARRATOR})}
 
 
@@ -201,10 +213,9 @@ def length_warning(text: str, length: str) -> str:
     """'' if the script is long enough, else a friendly warning."""
     words = len(narration_of([ln for b in parse_lines(text)["blocks"] for ln in b["lines"]]).split())
     seconds = words / WORDS_PER_SECOND
-    target = TARGET_SECONDS.get(length, 60)
-    if seconds >= target * 0.8:
+    need = TARGET_WORDS.get(length, 150)
+    if words >= need * 0.8:
         return ""
-    need = int(target * WORDS_PER_SECOND)
     kind = "Short (~60 s)" if length == "short" else "Long video (~10 min)"
     return (f"Your script has {words} words, about {seconds:.0f} seconds of voice. A {kind} needs about {need} words. "
             "The video will be shorter, or add more story.")

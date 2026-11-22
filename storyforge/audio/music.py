@@ -43,10 +43,11 @@ PRESETS = {
     "playful": dict(root=55, bpm=96, prog=[(0, "M"), (5, "M"), (7, "M"), (0, "M")], layers=["pad", "piano", "sub"], wet=0.35, cutoff=1700),
 }
 SFX_GAIN = {"whoosh": 0.35, "impact": 0.5, "riser": 0.3, "heartbeat": 0.5, "wind": 0.18, "rain": 0.16,
-            "thunder": 0.4, "sting": 0.35}
+            "thunder": 0.4, "sting": 0.35, "low_whoosh": 0.17, "boom": 0.42, "soft_riser": 0.24}
 MUSIC_LOWPASS = 8000  # Hz: nothing sharp above this
 SFX_LOWPASS = 6000
 AMBIENT = {"wind", "rain"}
+DESIGN_SFX = {"low_whoosh", "boom", "soft_riser"}  # sound design: picture changes, reveals, before the cliffhanger
 
 
 def midi_hz(m: float) -> float:
@@ -304,6 +305,31 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         rumble = _lowpass(noise(4.5), 180) * decay(n, 1.3) * 3
         crack = _bandpass(noise(4.5), 600, 4000) * decay(n, 0.12)
         out = _reverb(np.stack([rumble + crack, rumble * 0.9 + crack], 1), 0.3, rng, 2.0)
+    elif name == "low_whoosh":  # soft air movement on a picture change (no hiss)
+        n = int(0.7 * SR)
+        t = np.arange(n) / SR
+        shape = np.exp(-((t - 0.3) / 0.13) ** 2)
+        x = _bandpass(noise(0.7), 120, 1400) * shape
+        pan = np.linspace(-0.6, 0.6, n)
+        out = np.stack([x * np.sqrt(0.5 * (1 - pan)), x * np.sqrt(0.5 * (1 + pan))], 1)
+        out = _lowpass(out, 2500)
+    elif name == "boom":  # low cinematic hit on a reveal: felt more than heard
+        n = int(2.2 * SR)
+        t = np.arange(n) / SR
+        sub = np.sin(2 * np.pi * np.cumsum(42 + 30 * np.exp(-t / 0.06)) / SR) * decay(n, 0.7)
+        body = _lowpass(noise(2.2), 400) * decay(n, 0.12) * 0.5
+        x = np.tanh(1.6 * (sub + body))
+        out = _reverb(np.stack([x, x], 1), 0.3, rng, 2.0)
+        out = _lowpass(out, 2500)
+    elif name == "soft_riser":  # tension before the cliffhanger: rises and stops
+        n = int(2.6 * SR)
+        t = np.arange(n) / SR
+        tone = np.sin(2 * np.pi * np.cumsum(70 * 2 ** (t * 0.75)) / SR) * 0.5
+        air = _bandpass(noise(2.6), 200, 1800) * 0.35
+        x = (tone + air) * (t / t[-1]) ** 2.2
+        x[-int(0.05 * SR):] *= np.linspace(1, 0, int(0.05 * SR))
+        out = np.stack([x, x * 0.96], 1)
+        out = _lowpass(out, 3000)
     else:  # "sting": dark orchestral hit
         n = int(2.4 * SR)
         x = np.zeros((n, 2), np.float32)
@@ -423,7 +449,7 @@ def get_sfx(name: str, seed: int) -> tuple[np.ndarray, str]:
         files = sorted(p for p in own.iterdir() if p.suffix.lower() in AUDIO_EXT)
         if files:
             return load_audio(random.Random(seed).choice(files)), ""
-    fs = freesound_sfx(name)
+    fs = freesound_sfx(name) if name not in DESIGN_SFX else None  # editing sounds: always our soft ones
     if fs is not None:
         return fs
     return make_sfx(name, seed), ""
@@ -445,9 +471,32 @@ def duck_gain(voice: np.ndarray, depth: float = 0.75) -> np.ndarray:
     return (1 - depth * level).astype(np.float32)
 
 
+def tension_envelope(total: float, reveals: list[float], hits: bool = False) -> tuple[np.ndarray, list[float]]:
+    """Music volume over time: builds slowly, drops out right before each reveal, comes back on it.
+
+    Returns (gain per sample, times of the music 'hits' when the music comes back).
+    """
+    n = int(total * SR)
+    t = np.arange(n, dtype=np.float32) / SR
+    env = (0.75 + 0.4 * (t / max(total, 1e-3))).astype(np.float32)  # tension builds over the video
+    for tr in reveals:
+        a, b = tr - 0.9, tr - 0.45
+        fall = (t >= a) & (t < b)
+        env[fall] *= np.clip((b - t[fall]) / (b - a), 0, 1)  # fade out
+        env[(t >= b) & (t < tr)] = 0.0  # silence just before the reveal
+        after = t >= tr
+        env[after] *= 1 + 0.3 * np.exp(-(t[after] - tr) / 1.2)  # back with a lift
+        rise = (t >= tr) & (t < tr + 0.03)
+        env[rise] *= (t[rise] - tr) / 0.03
+    return env, (list(reveals) if hits else [])
+
+
 def mix(voice: np.ndarray, total: float, music: np.ndarray | None, music_volume: float,
-        sfx_events: list[tuple[float, np.ndarray, float, float]]) -> np.ndarray:
-    """voice: mono at SR. sfx_events: (time, audio, gain, max_seconds). Returns stereo float32."""
+        sfx_events: list[tuple[float, np.ndarray, float, float]], music_env: np.ndarray | None = None) -> np.ndarray:
+    """voice: mono at SR. sfx_events: (time, audio, gain, max_seconds). Returns stereo float32.
+
+    music_env: extra music volume curve (tension, drop-outs). Music and sound effects duck under the voice.
+    """
     n = int(total * SR)
     out = np.zeros((n, 2), np.float32)
     v = np.zeros(n, np.float32)
@@ -461,14 +510,21 @@ def mix(voice: np.ndarray, total: float, music: np.ndarray | None, music_volume:
         fade = min(n, int(1.5 * SR))
         m = m.copy()
         m[-fade:] *= np.linspace(1, 0, fade)[:, None]
-        out += _lowpass(m, MUSIC_LOWPASS) * music_volume * 2.0 * duck_gain(v)[:, None]
+        gain = duck_gain(v)
+        if music_env is not None:
+            e = np.ones(n, np.float32)
+            e[: min(n, len(music_env))] = music_env[:n]
+            gain = gain * e
+        out += _lowpass(m, MUSIC_LOWPASS) * music_volume * 2.0 * gain[:, None]
+    fx = np.zeros((n, 2), np.float32)
     for t, audio, gain, max_sec in sfx_events:
         seg = audio[: int(max_sec * SR)] if max_sec else audio
         if max_sec and len(seg) > SR:  # fade out long ambience
             f = min(len(seg), int(0.6 * SR))
             seg = seg.copy()
             seg[-f:] *= np.linspace(1, 0, f)[:, None]
-        _add(out, t, seg, gain)
+        _add(fx, t, seg, gain)
+    out += _lowpass(fx, MUSIC_LOWPASS) * duck_gain(v, 0.45)[:, None]  # quiet under the voice
     peak = np.abs(out).max()
     if peak > 0.98:
         out *= 0.98 / peak

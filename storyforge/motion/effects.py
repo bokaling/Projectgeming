@@ -18,7 +18,8 @@ import numpy as np
 
 OVERSCAN = 1.3  # extra picture around the frame so the camera can move
 MOTION_BOOST = 1.5  # stronger parallax and camera moves (it felt like a slideshow)
-MOTION_VERSION = 2  # bump when motion changes, so old scene clips are made again
+MOTION_VERSION = 3  # bump when motion changes, so old scene clips are made again
+PUNCH = 0.14  # punch-in zoom on hook words (+14%)
 
 
 def ease(t: float) -> float:
@@ -32,7 +33,11 @@ class Move:
     par: tuple[tuple[float, float], tuple[float, float]] = ((0, 0), (0, 0))  # parallax, fraction of width
     dolly: tuple[float, float] = (0.0, 0.0)  # extra zoom difference between near and far
     handheld: float = 0.0  # continuous shake (fraction of frame)
-    punch: float = 0.0  # fast zoom-in right when the hook line starts (e.g. 0.16 = +16%)
+    punch: float = 0.0  # fast zoom-in amount (e.g. 0.16 = +16%) at each time in `punches`
+    punches: tuple = ()  # seconds (from the start of the shot)
+    base_zoom: float = 1.0  # crop into the picture (1.4 = punch in on the subject)
+    center: tuple[float, float] = (0.0, 0.0)  # where the crop looks (offset from the middle, fraction of frame)
+    curve: str = "ease"  # ease = smooth in and out, out = fast start (quick push-in)
 
 
 def camera_move(name: str, strength: float = 1.0) -> Move:
@@ -40,6 +45,8 @@ def camera_move(name: str, strength: float = 1.0) -> Move:
     a, q = 0.055 * s, 0.05 * s
     moves = {
         "push_in": Move(zoom=(1.0, 1.0 + 0.13 * s), dolly=(0.0, 0.09 * s)),
+        "push_fast": Move(zoom=(1.0, 1.0 + 0.2 * s), dolly=(0.0, 0.1 * s), curve="out"),
+        "pull_fast": Move(zoom=(1.0 + 0.2 * s, 1.0), dolly=(0.1 * s, 0.0), curve="out"),
         "pull_out": Move(zoom=(1.0 + 0.14 * s, 1.0), dolly=(0.09 * s, 0.0)),
         "pan_left": Move(zoom=(1.07, 1.07), pan=((a, 0), (-a, 0)), par=((q, 0), (-q, 0))),
         "pan_right": Move(zoom=(1.07, 1.07), pan=((-a, 0), (a, 0)), par=((-q, 0), (q, 0))),
@@ -75,6 +82,27 @@ def _cover(img: np.ndarray, w: int, h: int, focus_y: float = 0.45) -> np.ndarray
     x0 = (nw - w) // 2
     y0 = int((nh - h) * focus_y)  # slightly above center: faces are usually in the upper half
     return big[y0:y0 + h, x0:x0 + w]
+
+
+def focus_offset(img_shape: tuple[int, int], size: tuple[int, int], fx: float, fy: float) -> tuple[float, float]:
+    """Where a point of the picture (fx, fy in 0..1) lands, as an offset from the canvas middle (fraction of frame).
+
+    Mirrors prepare_canvas, so a crop can look at the face / subject of the picture.
+    """
+    W, H = size
+    Ww, Hw = int(round(W * OVERSCAN)), int(round(H * OVERSCAN))
+    ih, iw = img_shape[:2]
+    if abs(math.log((iw / ih) / (W / H))) < 0.35:
+        scale = max(Ww / iw, Hw / ih)
+        nw, nh = max(Ww, round(iw * scale)), max(Hw, round(ih * scale))
+        x = fx * nw - (nw - Ww) // 2
+        y = fy * nh - int((nh - Hw) * 0.45)
+    else:
+        scale = min(Ww / iw, Hw / ih) * 0.96
+        fw, fh = int(iw * scale), int(ih * scale)
+        x = (Ww - fw) // 2 + fx * fw
+        y = (Hw - fh) // 2 + fy * fh
+    return (x - Ww / 2) / W, (y - Hw / 2) / H
 
 
 def prepare_canvas(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int]):
@@ -185,7 +213,7 @@ class Overlay:
     """All per-frame extras for one scene."""
 
     def __init__(self, size: tuple[int, int], effects, seed: int, duration: float, grain=True, vignette=True,
-                 shake_times=(), handheld=0.0):
+                 shake_times=(), handheld=0.0, flash_times=()):
         import cv2  # noqa: PLC0415
 
         self.W, self.H = size
@@ -219,6 +247,7 @@ class Overlay:
             self.rays = (rays * fall).astype(np.float32)[..., None] * np.array([255, 235, 190], np.float32)
         self.flashes = sorted(self.rng.uniform(0.15, 0.85, 2) * duration) if "flicker" in self.effects else []
         self.shake_times = list(shake_times)
+        self.flash_times = list(flash_times)
         self.handheld = handheld
         self.shake_phase = self.rng.random(6) * 6.28
 
@@ -258,6 +287,9 @@ class Overlay:
             f = cv2.multiply(f, self.vignette)
         if self.grain is not None:
             f = cv2.add(f, self.grain[index % len(self.grain)])
+        a = flash_amount(self.flash_times, t)
+        if a > 0:  # quick white flash on a reveal
+            f = f + (255 - f) * a
         np.clip(f, 0, 255, out=f)
         return f.astype(np.uint8)
 
@@ -267,21 +299,44 @@ class Overlay:
 # ---------------------------------------------------------------------------
 
 
+def flash_amount(times, t: float) -> float:
+    """White flash strength at time t (0..0.8): snaps on, fades in ~0.2 s."""
+    a = 0.0
+    for tf in times:
+        if 0 <= t - tf < 0.4:
+            a += 0.75 * math.exp(-(t - tf) / 0.07)
+    return min(0.8, a)
+
+
+def punch_amount(move: Move, t: float) -> float:
+    """Zoom punch: snaps in over 0.08 s on a word, then settles at half (stays until the cut)."""
+    total = 0.0
+    for tp in move.punches:
+        if t >= tp:
+            rise = min(1.0, (t - tp) / 0.08)
+            settle = 0.5 + 0.5 * math.exp(-max(0.0, t - tp - 0.08) / 0.35)
+            total += move.punch * rise * settle
+    return min(0.35, total)
+
+
 def camera_state(move: Move, overlay: "Overlay", i: int, n: int, fps: int):
     """Zoom, dolly, pan and parallax for frame i (shared by the CPU and GPU renderers)."""
     t = i / fps
-    e = ease(i / max(1, n - 1))
+    u = i / max(1, n - 1)
+    e = 1 - (1 - u) ** 3 if move.curve == "out" else ease(u)
     z = move.zoom[0] + (move.zoom[1] - move.zoom[0]) * e
     k = move.dolly[0] + (move.dolly[1] - move.dolly[0]) * e
     px = move.pan[0][0] + (move.pan[1][0] - move.pan[0][0]) * e
     py = move.pan[0][1] + (move.pan[1][1] - move.pan[0][1]) * e
     qx = move.par[0][0] + (move.par[1][0] - move.par[0][0]) * e
     qy = move.par[0][1] + (move.par[1][1] - move.par[0][1]) * e
-    if move.punch:  # zoom punch: snaps in over ~0.12 s as the line starts, then settles
-        start = 0.12
-        rise = min(1.0, max(0.0, (t - start) / 0.12))
-        settle = 0.45 + 0.55 * math.exp(-max(0.0, t - start - 0.12) / 0.5)
-        z *= 1 + move.punch * rise * settle
+    if move.punch and move.punches:
+        z *= 1 + punch_amount(move, t)
+    z *= move.base_zoom
+    # the crop looks at the subject, but never past the edge of the picture
+    mx, my = max(0.0, (OVERSCAN - 1 / z) / 2), max(0.0, (OVERSCAN - 1 / z) / 2)
+    px = min(mx, max(-mx, px + move.center[0]))
+    py = min(my, max(-my, py + move.center[1]))
     sx, sy = overlay.shake(t)
     return t, z, k, px + sx, py + sy, qx, qy
 
@@ -303,21 +358,34 @@ def flicker_gain(overlay: "Overlay", t: float) -> float:
     return k
 
 
+def make_move(camera: str, strength: float, rgb_shape, size, punch: float = 0.0, punch_times=(), crop=None,
+              has_depth: bool = True) -> Move:
+    """The camera for one shot: a move, an optional crop (zoom, fx, fy) and punch-ins at word times."""
+    move = camera_move(camera, strength)
+    move.punch = punch or (PUNCH if punch_times else 0.0)
+    move.punches = tuple(punch_times) if punch_times else ((0.12,) if punch else ())
+    if crop:
+        zoom, fx, fy = crop
+        move.base_zoom = max(1.0, float(zoom))
+        if move.base_zoom > 1.001:
+            move.center = focus_offset(rgb_shape, size, fx, fy)
+    if not has_depth:  # no depth: plain Ken Burns, keep the same camera path
+        move.par = ((0, 0), (0, 0))
+        move.dolly = (0.0, 0.0)
+    return move
+
+
 def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], duration: float, fps: int = 30,
            camera: str = "push_in", effects=(), seed: int = 0, shake_times=(), strength: float = 1.0,
-           grain: bool = True, vignette: bool = True, punch: float = 0.0):
-    """Yield RGB uint8 frames for one scene."""
+           grain: bool = True, vignette: bool = True, punch: float = 0.0, punch_times=(), flash_times=(), crop=None):
+    """Yield RGB uint8 frames for one shot. crop = (zoom, fx, fy): look closer at a part of the picture."""
     import cv2  # noqa: PLC0415
 
     W, H = size
     canvas, dcanvas = prepare_canvas(rgb, depth, size)
     Hw, Ww = canvas.shape[:2]
-    move = camera_move(camera, strength)
-    move.punch = punch
-    if dcanvas is None:  # no depth: plain Ken Burns, keep the same camera path
-        move.par = ((0, 0), (0, 0))
-        move.dolly = (0.0, 0.0)
-    overlay = Overlay(size, effects, seed, duration, grain, vignette, shake_times, move.handheld)
+    move = make_move(camera, strength, rgb.shape, size, punch, punch_times, crop, dcanvas is not None)
+    overlay = Overlay(size, effects, seed, duration, grain, vignette, shake_times, move.handheld, flash_times)
     # The warp map is smooth, so we compute it at half size and scale it up (4x less math).
     h2, w2 = (H + 1) // 2, (W + 1) // 2
     X = (np.arange(w2, dtype=np.float32) * (W / w2) - W / 2 + 0.5)[None, :]
@@ -341,8 +409,9 @@ def frames(rgb: np.ndarray, depth: np.ndarray | None, size: tuple[int, int], dur
         yield overlay.apply(frame, t, i)
 
 
-def write_video(frame_iter, out: Path, size: tuple[int, int], fps: int = 30, quality: str = "work") -> None:
-    """Pipe raw frames into FFmpeg."""
+def write_video(frame_iter, out: Path, size: tuple[int, int], fps: int = 30, quality: str = "work",
+                vf: str = "") -> None:
+    """Pipe raw frames into FFmpeg. vf = extra filter (e.g. burn the captions of this scene)."""
     from .. import config  # noqa: PLC0415
 
     W, H = size
@@ -350,7 +419,8 @@ def write_video(frame_iter, out: Path, size: tuple[int, int], fps: int = 30, qua
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.stem + ".part.mp4")
     cmd = [config.ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-           "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", *config.encoder_args(quality), "-r", str(fps),
+           "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", *(["-vf", vf] if vf else []), *config.encoder_args(quality),
+           "-r", str(fps),
            "-movflags", "+faststart", str(tmp)]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     try:

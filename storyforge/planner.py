@@ -13,7 +13,7 @@ import json
 import re
 import zlib
 
-from . import llm
+from . import beats, llm
 from .paste import NARRATOR, PERSIAN
 
 # (prompt text, shows the character?)
@@ -62,6 +62,10 @@ LIGHTING = {
     "romantic": ["warm candlelight", "pink and gold sunset", "soft fairy lights bokeh", "moonlight on water"],
     "playful": ["bright colorful daylight", "candy colored neon", "sunny summer light", "vivid saturated colors"],
 }
+# With the mood lock, every picture keeps the same time of day and colors: only the light DIRECTION changes.
+LIGHT_DIRECTIONS = ["soft key light from the side", "rim light from behind the subject", "light from a window or doorway",
+                    "pool of light in the darkness", "low light from below", "soft top light", "backlit, glowing edges",
+                    "light falling across the face in stripes"]
 CAMERA_FOR_SHOT = {
     "wide": ["pan_right", "pull_out", "pan_left"], "medium": ["orbit_left", "push_in", "orbit_right"],
     "detail": ["push_in", "dolly_zoom"], "close_up": ["push_in", "static", "handheld"],
@@ -79,7 +83,7 @@ MOOD_WORDS = {
     "tense": ["run", "scream", "afraid", "fear", "danger", "knock", "heart", "suddenly", "ترس", "فریاد", "ناگهان", "خطر"],
     "mysterious": ["secret", "strange", "mystery", "whisper", "unknown", "fog", "راز", "عجیب", "زمزمه", "مه"],
     "sad": ["cry", "tears", "lost", "alone", "goodbye", "sorry", "گریه", "اشک", "تنها", "خداحافظ"],
-    "hopeful": ["hope", "smile", "light", "sun", "home", "found", "امید", "لبخند", "خورشید", "نور"],
+    "hopeful": ["hope", "smile", "sunlight", "sun", "home", "safe", "امید", "لبخند", "خورشید"],
     "action": ["fight", "explosion", "chase", "fire", "attack", "crash", "جنگ", "انفجار", "تعقیب", "آتش"],
     "romantic": ["love", "kiss", "heart beat", "together", "عشق", "بوسه"],
     "epic": ["army", "kingdom", "battle", "legend", "mountain", "ارتش", "پادشاه", "نبرد", "افسانه"],
@@ -171,7 +175,7 @@ def assign_variety(scenes: list[dict], character_names: list[str], protagonist: 
                 chars = chars if show else []
             given = sc if k == 0 else {}
             comps = [c for c in COMPOSITIONS if c != prev["composition"]]
-            lights = [x for x in LIGHTING.get(mood, LIGHTING["mysterious"]) if x != prev["lighting"]]
+            lights = [x for x in LIGHT_DIRECTIONS if x != prev["lighting"]]  # colors come from the mood lock
             cams = [c for c in CAMERA_FOR_SHOT[shot] if c != prev["camera"]] or CAMERA_FOR_SHOT[shot]
             fr = {
                 "shot": shot, "show_character": show, "characters": chars[:3],
@@ -179,6 +183,8 @@ def assign_variety(scenes: list[dict], character_names: list[str], protagonist: 
                 "lighting": given.get("lighting") or lights[(n_frames + seed) % len(lights)],
                 "camera": given.get("camera") or cams[(n_frames + seed) % len(cams)],
             }
+            if chars:  # matches the words of this moment; never smiling unless the script says so
+                fr["expression"] = given.get("expression") or beats.expression(text + " " + visual, mood)
             if "effects" in given:
                 fr["effects"] = given["effects"]
             else:

@@ -27,6 +27,9 @@ def fresh_services():
     images._down_until.clear()
     images._last_pollinations[0] = 0.0
     images.KleinEngine.failed_reason = ""
+    from storyforge.audio import tts
+
+    tts._resolved.clear()  # voices remembered in a session must not leak between tests
     yield
 
 

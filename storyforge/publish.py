@@ -130,6 +130,60 @@ def make_thumbnail(image: Path, text: str, lang: str, size: tuple[int, int], out
     return out
 
 
+def end_card_text(number: int, lang: str, final: bool) -> str:
+    """'PART 3' (next episode) or 'THE END'. Farsi: قسمت ۳ / پایان."""
+    if lang == "fa":
+        digits = str(number + 1).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+        return "پایان" if final else f"قسمت {digits}"
+    return "THE END" if final else f"PART {number + 1}"
+
+
+def _eyes(draw, cx: int, cy: int, w: int) -> None:
+    """Two cartoon eyes looking to the side (our own 👀: emoji fonts aren't available everywhere)."""
+    ew, eh = int(w * 0.42), int(w * 0.6)
+    for k in (-1, 1):
+        x = cx + k * int(w * 0.25)
+        box = [x - ew // 2, cy - eh // 2, x + ew // 2, cy + eh // 2]
+        draw.ellipse(box, fill=(255, 255, 255, 255), outline=(20, 16, 30, 255), width=max(3, w // 40))
+        pr = int(ew * 0.27)
+        px, py = x - int(ew * 0.18), cy - int(eh * 0.05)
+        draw.ellipse([px - pr, py - pr, px + pr, py + pr], fill=(25, 18, 40, 255))
+        hr = max(2, pr // 3)
+        draw.ellipse([px - pr // 2 - hr, py - pr // 2 - hr, px - pr // 2 + hr, py - pr // 2 + hr],
+                     fill=(255, 255, 255, 255))
+
+
+def end_card_png(text: str, lang: str, size: tuple[int, int], out: Path, eyes: bool = True,
+                 accent: tuple[int, int, int] = (255, 46, 151)) -> Path:
+    """Transparent PNG with the end card text (big, glowing) and 👀 eyes under it."""
+    from PIL import Image, ImageDraw, ImageFilter  # noqa: PLC0415
+
+    W, H = size
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    fsize = int(min(W, H) * (0.2 if W < H else 0.17))
+    font = _font(lang, fsize)
+    shaped, kw = shape_text(text, lang)
+    while draw.textlength(shaped, font=font, **kw) > W * 0.86 and fsize > 30:
+        fsize = int(fsize * 0.9)
+        font = _font(lang, fsize)
+    tw = draw.textlength(shaped, font=font, **kw)
+    eye_w = int(min(W, H) * 0.36) if eyes else 0
+    block = fsize * 1.2 + (eye_w * 0.75 if eyes else 0)
+    y = int(H / 2 - block / 2)
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).text(((W - tw) / 2, y), shaped, font=font, fill=accent + (255,), **kw)
+    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(fsize * 0.15)))
+    draw = ImageDraw.Draw(img)
+    draw.text(((W - tw) / 2, y), shaped, font=font, fill=(255, 255, 255, 255), stroke_width=max(3, fsize // 16),
+              stroke_fill=(0, 0, 0, 255), **kw)
+    if eyes:
+        _eyes(draw, W // 2, int(y + fsize * 1.25 + eye_w * 0.35), eye_w)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Titles, description, hashtags
 # ---------------------------------------------------------------------------

@@ -236,7 +236,16 @@ def piper(text: str, voice: str, lang: str, speed: float = 1.0):
     out = config.get().temp_dir / "piper.wav"
     with wave.open(str(out), "wb") as wf:
         if hasattr(v, "synthesize_wav"):
-            v.synthesize_wav(text, wf)
+            try:
+                from piper import SynthesisConfig  # noqa: PLC0415
+
+                cfg = SynthesisConfig(length_scale=1.0 / max(speed, 0.5))
+            except Exception:  # noqa: BLE001
+                cfg = None
+            if cfg is not None:
+                v.synthesize_wav(text, wf, syn_config=cfg)
+            else:
+                v.synthesize_wav(text, wf)
         else:  # piper-tts < 1.3
             v.synthesize(text, wf, length_scale=1.0 / max(speed, 0.5))
     x, sr = read_wav(out)
@@ -289,8 +298,10 @@ _resolved: dict = {}
 
 
 def reset_resolved() -> None:
-    """Forget engine choices (at the start of each voice step, a voice that is back online is used again)."""
-    _resolved.clear()
+    """Forget engine BACKUP choices (a voice that is back online is used again). A voice that worked as chosen
+    is kept for the whole session, so the next video starts faster."""
+    for key in [k for k, v in _resolved.items() if (k[1], k[2]) != v]:
+        _resolved.pop(key, None)
 
 
 def resolve(lang: str, choice: dict, rep=None) -> tuple[str, str]:
@@ -337,6 +348,8 @@ def _speak_samples(text: str, lang: str, eng: str, voice: str, speed: float, ret
             last = exc
             time.sleep(2 + attempt * 4)
     else:
+        for key in [k for k, v in _resolved.items() if v == (eng, voice)]:  # next time: look for a working voice again
+            _resolved.pop(key, None)
         raise FriendlyError(f"The voice ({ENGINE_NAMES[eng]}) stopped working in the middle.",
                             "Press Generate again in a minute: finished scenes are kept and the same voice continues.") from last
     x, cut = trim_silence(x, SR)
@@ -363,18 +376,24 @@ def speak(text: str, lang: str, choice: dict, out_wav: Path, rep=None) -> tuple[
     return label(eng, voice), words
 
 
-def speak_lines(lines: list[tuple[str, dict]], lang: str, out_wav: Path, rep=None, gap: float = 0.25) -> tuple[list[str], list[dict]]:
-    """A scene with several speakers: [(text, voice_choice), ...] → one WAV. Returns (engine labels, words)."""
+def speak_lines(lines: list[tuple], lang: str, out_wav: Path, rep=None, gap: float = 0.2) -> tuple[list[str], list[dict]]:
+    """A scene with several parts: [(text, voice_choice) or (text, voice_choice, pause_before), ...] → one WAV.
+
+    pause_before: a short dramatic pause (e.g. before a reveal). Word times include every pause, so the
+    captions stay in sync. Returns (engine labels, words).
+    """
     parts, words, engines, t = [], [], [], 0.0
-    for text, choice in lines:
+    for item in lines:
+        text, choice = item[0], item[1]
+        pause = float(item[2]) if len(item) > 2 and item[2] is not None else gap
         text = align.normalize_fa(text).strip()
         if not text:
             continue
         eng, voice = resolve(lang, choice, rep)
         x, w = _speak_samples(text, lang, eng, voice, float(choice.get("speed") or 1.0))
         if parts:
-            parts.append(np.zeros(int(SR * gap), np.float32))
-            t += gap
+            parts.append(np.zeros(int(SR * pause), np.float32))
+            t += int(SR * pause) / SR
         words += [{"w": d["w"], "s": round(d["s"] + t, 3), "e": round(d["e"] + t, 3)} for d in w]
         parts.append(x)
         t += len(x) / SR

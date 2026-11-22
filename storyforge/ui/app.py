@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import html
+import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
 
-from .. import captions, characters, config, pipeline, planner, publish
+from .. import captions, characters, config, doctor, pipeline, planner, publish
 from .. import script as script_mod
 from ..audio import music, tts
 from ..messages import FriendlyError, explain
@@ -164,23 +165,43 @@ def series_choices():
 
 
 def opts_from(text, idea, note, langs, length, scenes, heroes, res, cap_on, cap_style, mood, vol, sfx, fx,
-              second, source="paste") -> EpisodeOptions:
+              second, cold=True, end_card=True, final=False, source="paste") -> EpisodeOptions:
     return EpisodeOptions.from_dict({
         "script_text": text or "", "idea": idea or "", "creator_note": note or "", "languages": langs or ["en"],
         "length": length, "scene_count": int(scenes), "hero_count": int(heroes), "resolution": res,
         "captions": bool(cap_on), "caption_style": cap_style, "music_mood": mood, "music_volume": float(vol),
         "sfx": bool(sfx), "effects": bool(fx), "second_format_images": second, "source": source,
+        "cold_open": bool(cold), "end_card": bool(end_card), "final_episode": bool(final),
     })
 
 
 def opts_to_values(o: EpisodeOptions):
     return [o.script_text, o.idea, o.creator_note, o.languages, o.length, o.scene_count, o.hero_count, o.resolution,
-            o.captions, o.caption_style, o.music_mood, o.music_volume, o.sfx, o.effects, o.second_format_images]
+            o.captions, o.caption_style, o.music_mood, o.music_volume, o.sfx, o.effects, o.second_format_images,
+            o.cold_open, o.end_card, o.final_episode]
+
+
+def add_style_line(text: str, style: str) -> str:
+    """Put a [STYLE] line in the first script, after its [TITLE] / [CHARACTER] lines."""
+    lines = (text or "").split("\n")
+    at = 0
+    for i, ln in enumerate(lines):
+        if re.match(r"\s*\[(TITLE|CHARACTER)\]", ln, re.I):
+            at = i + 1
+        elif ln.strip() and not ln.strip().startswith("["):
+            break
+    return "\n".join(lines[:at] + [f"[STYLE] {style}"] + lines[at:])
+
+
+def pipeline_paste_split(text: str) -> list[str]:
+    from .. import paste  # noqa: PLC0415
+
+    return paste.split_scripts(text or "")
 
 
 def hero_choices():
     prof = config.gpu_profile()
-    auto = f"Auto ({prof.heroes_short} short / {prof.heroes_long} long on {prof.name})"
+    auto = f"Auto (0 for Shorts / {prof.heroes_long} long on {prof.name})"
     return [(auto, -1), ("0 · motion effects only", 0)] + [(str(n), n) for n in (1, 2, 3, 5, 8, 10)]
 
 
@@ -238,6 +259,26 @@ def build_app():
                             length = gr.Radio([("⚡ Short · ~60 s · 9:16 · 1080×1920", "short"),
                                                ("🎬 Long · ~10 min · 16:9 · 1920×1080 · chapters", "long")],
                                               value=default_opts.length, show_label=False)
+                        with gr.Group(elem_classes="sf-card"):
+                            doctor_box = gr.HTML(doctor.report_html(doctor.Report()))
+                            with gr.Row(elem_classes="sf-row-stack"):
+                                improve_btn = gr.Button("✨ Improve script (for retention)", variant="secondary")
+                                style_btn = gr.Button("🎨 Add this mood lock as a [STYLE] line", variant="secondary",
+                                                      visible=False)
+                        with gr.Group(visible=False, elem_classes=["sf-card", "sf-hero-card"]) as cmp_box:
+                            gr.HTML('<div class="sf-card-title">Your script or the improved one?</div>'
+                                    '<div class="sf-card-sub">Nothing changes until you choose. The one you pick is '
+                                    'what the Gemini prompts and the video use. You can edit the improved one.</div>')
+                            cmp_scores = gr.HTML()
+                            with gr.Row(elem_classes="sf-row-stack", equal_height=False):
+                                old_txt = gr.Textbox(label="Your script", lines=14, max_lines=40, interactive=False,
+                                                     elem_classes="sf-script")
+                                new_txt = gr.Textbox(label="✨ Improved (you can edit it)", lines=14, max_lines=40,
+                                                     elem_classes="sf-script")
+                            cmp_notes = gr.HTML()
+                            with gr.Row(elem_classes="sf-row-stack"):
+                                use_new = gr.Button("✅ Use the improved script", variant="primary")
+                                keep_old = gr.Button("↩️ Keep my original", variant="secondary")
                         with gr.Row(elem_classes="sf-row-stack"):
                             gen_btn = gr.Button("🚀 Generate video", variant="primary", size="lg", scale=2)
                             quick_btn = gr.Button("⚡ Quick test", variant="secondary", size="lg", scale=1)
@@ -273,6 +314,12 @@ def build_app():
                                                         "2.5D motion effects.")
                             res = gr.Radio([("1080p (best)", "1080p"), ("720p (faster)", "720p")],
                                            value=default_opts.resolution, label="Quality")
+                        with gr.Group(elem_classes="sf-card"):
+                            gr.HTML('<div class="sf-card-title">Start and end</div>')
+                            cold_cb = gr.Checkbox(value=True, label="⚡ Cold open: a 1 s flash of the most dramatic "
+                                                                    "picture, then the story starts")
+                            end_cb = gr.Checkbox(value=True, label="👀 End card: “Part X 👀” (X = the next episode)")
+                            final_cb = gr.Checkbox(value=False, label="🏁 Final episode: the end card says “The End”")
 
             # ------------------------------------------------------------ 2 Script
             # ------------------------------------------------------------ 🍌 Gemini images mode
@@ -284,9 +331,10 @@ def build_app():
                     gr.HTML('<div class="sf-card-title">1 · Prompts for the Gemini app</div>'
                             '<div class="sf-card-sub">Make each picture in the Gemini app (Nano Banana): copy a prompt, '
                             'paste it in Gemini, download the picture. <b>C1, C2…</b> are character sheets (make them '
-                            'first and give them to Gemini with the scene prompts for the same faces). Name your '
-                            'files with their number (<b>1.png</b>, <b>scene_02.jpg</b>, <b>C1.png</b>) or just '
-                            'upload them in order.</div>')
+                            'first and give them to Gemini with the scene prompts for the same faces). '
+                            '<b>No renaming needed:</b> pictures go in the order you made them (oldest first: '
+                            'C1, C2… then 1, 2, 3…). A number in the file name (<b>1.png</b>, <b>C1.png</b>) '
+                            'always wins.</div>')
                     all_prompts = gr.Textbox(label="All prompts (Copy all with the button in the corner)", lines=10,
                                              max_lines=18, buttons=["copy"], interactive=False)
                     prompts_dl = gr.DownloadButton("⬇️ Download prompts.txt", variant="secondary", visible=False)
@@ -295,6 +343,7 @@ def build_app():
                             '<div class="sf-card-sub">Drop all your pictures at once. They are cropped to fill the '
                             'frame (no black bars). From your phone: put them in the Google Drive folder shown below '
                             'and press "Check my Drive folder".</div>')
+                    gem_times = gr.Textbox(visible=False)  # file times from your browser (File.lastModified)
                     gem_upload = gr.File(label="Drop your images here", file_count="multiple", file_types=gemini_types,
                                          type="filepath", height=140)
                     with gr.Row(elem_classes="sf-row-stack"):
@@ -315,14 +364,40 @@ def build_app():
                     sl = gemini.slots(series, sc, o.length)
                     total = len(sl)
                     chars = gemini.characters_in(series, sc)
+                    nc = len(chars)
+
+                    def _step(key, d, r, t=total, n=nc):
+                        _, e = need_project()
+                        gemini.step(e, key, d, t, n)
+                        return r + 1
+
                     if chars:
                         with gr.Row(elem_classes="sf-grid"):
                             for k, c in enumerate(chars, 1):
+                                cimg = gemini.character_image(ep, k)
                                 with gr.Column(elem_classes="sf-scene", min_width=240):
+                                    state = ('<span class="sf-badge mine">✅ image</span>' if cimg
+                                             else '<span class="sf-badge">optional</span>')
                                     gr.HTML(f'<div class="sf-badges"><span class="sf-badge hero">C{k}</span>'
-                                            f'<span class="sf-badge">Character sheet · {html.escape(c["name"])}</span></div>')
+                                            f'<span class="sf-badge">Character sheet · {html.escape(c["name"])}</span>'
+                                            f'{state}</div>')
+                                    gr.Image(value=str(cimg) if cimg else None, show_label=False, height=200,
+                                             interactive=False, buttons=["fullscreen"], placeholder="No sheet yet")
                                     gr.Textbox(value=gemini.character_prompt(series, c, o.length), show_label=False,
                                                lines=4, buttons=["copy"], interactive=False)
+                                    with gr.Row():
+                                        cup = gr.UploadButton("📤 Replace", file_types=gemini_types, size="sm")
+                                        cl = gr.Button("⬆️", size="sm", min_width=50)
+                                        cr = gr.Button("⬇️", size="sm", min_width=50)
+
+                                    def _cset(f, k=k, r=_b):
+                                        _, e = need_project()
+                                        gemini.set_character_image(e, k, f)
+                                        return r + 1
+
+                                    cup.upload(_cset, cup, r_gem)
+                                    cl.click(lambda key=f"C{k}", r=_b: _step(key, -1, r), None, r_gem)
+                                    cr.click(lambda key=f"C{k}", r=_b: _step(key, 1, r), None, r_gem)
                     with gr.Row(elem_classes="sf-grid"):
                         for s_ in sl:
                             img = gemini.image_for(ep, s_.number)
@@ -347,14 +422,9 @@ def build_app():
                                     gemini.set_image(e, n, f)
                                     return r + 1
 
-                                def _mv(d, n=s_.number, r=_b, t=total):
-                                    _, e = need_project()
-                                    gemini.move(e, n, n + d, t)
-                                    return r + 1
-
                                 up.upload(_set, up, r_gem)
-                                left.click(lambda n=s_.number, r=_b, t=total: _mv(-1, n, r, t), None, r_gem)
-                                right.click(lambda n=s_.number, r=_b, t=total: _mv(1, n, r, t), None, r_gem)
+                                left.click(lambda key=str(s_.number), r=_b: _step(key, -1, r), None, r_gem)
+                                right.click(lambda key=str(s_.number), r=_b: _step(key, 1, r), None, r_gem)
 
                 with gr.Group(elem_classes=["sf-card", "sf-hero-card"]):
                     gr.HTML('<div class="sf-card-title">3 · Make the video</div>'
@@ -623,7 +693,7 @@ def build_app():
                         with gr.Group(elem_classes="sf-card"):
                             gr.HTML('<div class="sf-card-title">Captions</div>')
                             cap_on = gr.Checkbox(value=True, label="Burn word-by-word captions into the video")
-                            cap_style = gr.Radio([(v, k) for k, v in captions.STYLES.items()], value="highlight", label="Style")
+                            cap_style = gr.Radio([(v, k) for k, v in captions.STYLES.items()], value="pop", label="Style")
                             accent = gr.Radio([(k.title(), k) for k in captions.ACCENTS], value="yellow", label="Highlight color")
                             cap_prev_btn = gr.Button("👀 Preview captions", variant="secondary")
                             cap_prev = gr.Image(show_label=False, interactive=False, height=360, buttons=["fullscreen"])
@@ -634,7 +704,8 @@ def build_app():
                             mood = gr.Dropdown(MOOD_CHOICES, value="auto", label="Music mood")
                             vol = gr.Slider(0, 0.4, value=default_opts.music_volume, step=0.01,
                                             label="Music volume (it also ducks under the voice automatically)")
-                            sfx = gr.Checkbox(value=False, label="Sound effects (soft whoosh, impact, rain…) · off = calmer")
+                            sfx = gr.Checkbox(value=True, label="Soft editing sounds (low whoosh on picture changes, "
+                                                                "low boom on reveals, riser before the cliffhanger)")
                             fx = gr.Checkbox(value=True, label="Visual effects (particles, light, grain)")
                             second = gr.Radio([("Auto", "auto"), ("Separate 16:9 pictures (better)", "generate"),
                                                ("Reuse 9:16 pictures (faster)", "reuse")], value="auto",
@@ -684,7 +755,7 @@ def build_app():
 
         # ------------------------------------------------------------ wiring
         settings = [paste_box, idea, note, langs, length, scenes_n, heroes_n, res, cap_on, cap_style, mood, vol, sfx,
-                    fx, second]
+                    fx, second, cold_cb, end_cb, final_cb]
         refreshers = [r_script, r_chars, r_scenes, r_export]
 
         def start_job(name, fn, goto=None, refresh=ALL):
@@ -788,6 +859,50 @@ def build_app():
                 _toast(exc)
                 return gr.skip(), gr.skip(), gr.skip(), gr.skip()
 
+        # ---- 🩺 Script doctor (scores your script; never changes it unless you choose the improved one)
+        def on_score(text, length_):
+            r = doctor.score(text or "", length_)
+            return doctor.report_html(r), gr.update(visible=bool(r.words) and not r.has_style)
+
+        paste_box.change(on_score, [paste_box, length], [doctor_box, style_btn], trigger_mode="always_last",
+                         show_progress="hidden")
+        length.change(on_score, [paste_box, length], [doctor_box, style_btn], show_progress="hidden")
+
+        def on_style(text, length_):
+            r = doctor.score(text or "", length_)
+            gr.Info("🎨 Added the [STYLE] line: every picture keeps this time of day, light and colors.")
+            return add_style_line(text, r.style_line)
+
+        style_btn.click(on_style, [paste_box, length], paste_box)
+
+        def on_improve(text, length_):
+            if not (text or "").strip():
+                gr.Warning("Paste your script first.")
+                return [gr.skip()] * 5
+            gr.Info("✨ Improving your script for retention (10-60 s)…")
+            try:
+                res_ = doctor.improve(text, length_)
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return [gr.skip()] * 5
+            first = (pipeline_paste_split(text) or [text])[0]
+            old_r, new_r = doctor.score(first, length_), doctor.score(res_["script"], length_)
+            notes = "".join(f"<li>{html.escape(c)}</li>" for c in res_["changes"])
+            note_html = (f'<div class="sf-note">Rewritten by <b>{html.escape(res_["provider"])}</b>'
+                         + (f'<ul style="margin:4px 0 0 18px">{notes}</ul>' if notes else "") + "</div>")
+            return gr.update(visible=True), first, res_["script"], doctor.compare_html(old_r, new_r), note_html
+
+        improve_btn.click(on_improve, [paste_box, length], [cmp_box, old_txt, new_txt, cmp_scores, cmp_notes])
+
+        def on_use_new(new_text, text):
+            parts = pipeline_paste_split(text)
+            rest = ("\n=====\n" + "\n=====\n".join(parts[1:])) if len(parts) > 1 else ""
+            gr.Info("✅ Using the improved script. Generate / Make Gemini prompts now use this one.")
+            return new_text.strip() + "\n" + rest, gr.update(visible=False)
+
+        use_new.click(on_use_new, [new_txt, paste_box], [paste_box, cmp_box])
+        keep_old.click(lambda: gr.update(visible=False), None, cmp_box)
+
         # ---- 🍌 Gemini images mode
         def gem_info():
             """Prompts text, download file and the 'what is missing' line for the current episode."""
@@ -826,29 +941,40 @@ def build_app():
         r_scenes.change(lambda _: gem_info(), r_scenes, [all_prompts, prompts_dl, gem_status])
         r_gem.change(lambda _: gem_info(), r_gem, [all_prompts, prompts_dl, gem_status])
 
-        def on_gem_upload(files, r):
+        def on_gem_upload(files, r, times_json):
             from .. import gemini  # noqa: PLC0415
 
             try:
                 series, ep = need_project()
                 sc = ep.load_script()
                 total = len(gemini.slots(series, sc, ep.load_options().length))
-                for m in gemini.add_images(ep, files or [], total):
+                try:
+                    import json  # noqa: PLC0415
+
+                    times = {str(k): float(v) for k, v in (json.loads(times_json or "{}") or {}).items()}
+                except Exception:  # noqa: BLE001
+                    times = {}
+                names = [Path(f).name for f in (files or [])]
+                times = {n: times[n] for n in names if n in times} if all(n in times for n in names) else {}
+                for m in gemini.add_images(ep, files or [], total, times, len(gemini.characters_in(series, sc))):
                     gr.Info(m)
                 return None, r + 1
             except Exception as exc:  # noqa: BLE001
                 _toast(exc)
                 return None, r
 
-        gem_upload.upload(on_gem_upload, [gem_upload, r_gem], [gem_upload, r_gem])
+        # the browser knows when each file was made (File.lastModified): send it along with the files
+        gem_upload.upload(on_gem_upload, [gem_upload, r_gem, gem_times], [gem_upload, r_gem],
+                          js="(files, r, t) => [files, r, JSON.stringify(window.sfFileTimes || {})]")
 
         def on_gem_scan(r):
             from .. import gemini  # noqa: PLC0415
 
             try:
                 series, ep = need_project()
-                total = len(gemini.slots(series, ep.load_script(), ep.load_options().length))
-                msgs = gemini.scan_folder(ep, total)
+                sc = ep.load_script()
+                total = len(gemini.slots(series, sc, ep.load_options().length))
+                msgs = gemini.scan_folder(ep, total, len(gemini.characters_in(series, sc)))
                 gr.Info(" ".join(msgs) or "No new pictures in your Drive folder.")
                 return r + 1
             except Exception as exc:  # noqa: BLE001
@@ -867,7 +993,7 @@ def build_app():
                     raise FriendlyError("No prompts yet.", "Press 📝 Make Gemini prompts on step 1 first.")
                 o = ep.load_options()
                 total = len(gemini.slots(series, sc, o.length))
-                gemini.scan_folder(ep, total)
+                gemini.scan_folder(ep, total, len(gemini.characters_in(series, sc)))
                 miss = gemini.missing(ep, total)
                 if miss and policy == "ask":  # ask first: FLUX for the missing ones, or reuse the nearest image
                     gr.Warning(f"{len(miss)} picture(s) are missing (#{', #'.join(map(str, miss[:15]))}). "

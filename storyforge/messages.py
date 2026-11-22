@@ -6,6 +6,7 @@ bar and log; the forms mode just prints it.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import threading
 import time
@@ -84,6 +85,7 @@ class Reporter:
         self.failed = False
         self.result = None
         self.summary: list[tuple[str, str, str]] = []  # (status, part, detail) for Quick test checklist
+        self.timings: list[tuple[str, float]] = []  # (step, seconds) for the timing report
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self.version = 0
@@ -130,6 +132,31 @@ class Reporter:
             self.summary = [s for s in self.summary if s[1] != part] + [(status, part, detail)]
             self.version += 1
 
+    @contextlib.contextmanager
+    def timed(self, name: str):
+        """`with rep.timed("🖼️ Pictures"):` adds the step's time to the timing report."""
+        t0 = time.time()
+        try:
+            yield
+        finally:
+            with self._lock:
+                self.timings.append((name, time.time() - t0))
+
+    def timed_lock(self):
+        return self._lock
+
+    def timing_report(self, total: float | None = None) -> list[str]:
+        """Lines like '🖼️ Pictures ........ 2:10'."""
+        with self._lock:
+            items = list(self.timings)
+        if not items:
+            return []
+        width = max(len(n) for n, _ in items) + 2
+        lines = [f"{n.ljust(width, '.')} {_mmss(sec)}" for n, sec in items]
+        if total is not None:
+            lines.append(f"{'⏱ Total'.ljust(width, '.')} {_mmss(total)}")
+        return lines
+
     # -- control ------------------------------------------------------------
     def request_stop(self) -> None:
         self._stop.set()
@@ -171,6 +198,11 @@ class Reporter:
     def elapsed(self) -> str:
         sec = int(time.time() - self.started)
         return f"{sec // 60}:{sec % 60:02d}"
+
+
+def _mmss(sec: float) -> str:
+    sec = max(0.0, float(sec))
+    return f"{sec:.1f} s" if sec < 10 else (f"{sec:.0f} s" if sec < 60 else f"{int(sec // 60)}:{int(sec % 60):02d}")
 
 
 class Timer:

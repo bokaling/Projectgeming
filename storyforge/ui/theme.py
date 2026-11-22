@@ -89,6 +89,20 @@ HEAD = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet">
 <script>document.documentElement.classList.add('dark');</script>
+<script>
+// 🍌 My images: remember when each picked/dropped file was made (File.lastModified), so pictures
+// without a number in the name can be put in order oldest first. Nothing leaves your browser but the times.
+window.sfFileTimes = window.sfFileTimes || {};
+(function () {
+  function remember(files) { for (const f of (files || [])) { window.sfFileTimes[f.name] = f.lastModified; } }
+  document.addEventListener('change', function (e) {
+    const t = e.target; if (t && t.type === 'file' && t.files) remember(t.files);
+  }, true);
+  document.addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files) remember(e.dataTransfer.files);
+  }, true);
+})();
+</script>
 """
 
 CSS = f"""
@@ -215,6 +229,9 @@ button.secondary {{ backdrop-filter: blur(8px); }}
 
 /* ---------- misc ---------- */
 .sf-note {{ font-size: 13px; color: var(--sf-muted); padding: 2px 4px; }}
+.sf-doctor {{ font-size: 14px; line-height: 1.45; padding: 4px 6px; }}
+.sf-doctor code {{ background: #ffffff12; border-radius: 6px; padding: 1px 6px; white-space: normal; }}
+.sf-doctor td, .sf-doctor th {{ padding: 3px 6px; border-bottom: 1px solid #ffffff12; }}
 .sf-warn {{ font-size: 13px; color: #ffe08a; background: rgba(255,196,0,0.08); border:1px solid rgba(255,196,0,0.25);
   padding: 10px 12px; border-radius: 14px; }}
 .sf-check {{ list-style:none; padding:0; margin:0; }}

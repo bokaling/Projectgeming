@@ -49,7 +49,7 @@ def test_edit_one_line_redoes_only_that_voice(offline):
     rep = Reporter(echo=False)
     pipeline.Pipeline(series, ep, rep, opts).make_video()
     text = rep.text(200)
-    assert "Voiceover (English, 1 scenes, 1 voice)" in text  # only the edited scene
+    assert "Voiceover (English, 1 scenes, 1 voice," in text  # only the edited scene
     assert "Scene pictures" not in text  # pictures kept
 
 

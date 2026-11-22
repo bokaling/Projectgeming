@@ -16,21 +16,36 @@ A100, High-RAM) or **Kaggle** (free backup) and shows a dark, neon, mobile-frien
 * After **Generate** everything is automatic: read script, plan scenes, pictures, motion, voices,
   captions, music, export, thumbnail, title, description, hashtags. The AI script writer is an
   option (off by default).
-* **Short** = ~60 s, 9:16, 1080×1920. **Long** = ~10 min, 16:9, 1920×1080, YouTube chapters in
-  the description. The final render is done in parts of 10 scenes, each saved to Drive and resumed.
+* **Short** = ~60 s (~150 words), 9:16, 1080×1920. **Long** = ~10 min (~1500 words), 16:9, 1920×1080,
+  YouTube chapters in the description. Every scene clip is encoded ONCE (final quality, captions burned in,
+  NVENC if it works) and saved to Drive; the video = clips joined without re-encoding + audio.
+* **Script doctor** (`doctor.py`, `beats.py`): instant offline score (hook 2 s, stakes, new every 5 s,
+  curiosity, payoff, cliffhanger) + weak lines; "✨ Improve" via the LLM chain keeps [TITLE]/[CHARACTER]/
+  [STYLE]/[SCENE] and speaker names (light polish if no AI); old vs new side by side, the user picks.
+* **Editing** (`motion/cuts.py`): 1 s cold open (most dramatic picture, flash), hard cuts every 1.5-2.5 s
+  (short) / 3-5 s (long) made from crops of ONE picture per ~5 s / ~10 s, cuts on word starts, punch-in on
+  hook words, shake on scary words, white flash + low boom on reveals; pop captions 1-3 words with the key
+  word highlighted; hook text at the top for 3 s; end card "Part X 👀" / "The End" (checkboxes).
+* **Mood lock**: `[STYLE]` line (or made from the script) goes into every FLUX/Gemini prompt; per-shot lighting
+  only changes direction, never colors; faces get an expression from the line, never smiling unless written.
 * **Pictures:** 8 rotating shot types (wide, medium, detail insert, close-up, empty environment,
   over-the-shoulder, top-down, low angle); the main character appears in about half; composition,
   lighting and color change every scene (never all sepia); face from the reference picture, new
   pose/angle/setting.
 * **Audio:** gentle cinematic music only (no bells, hats, ticks, arpeggios), lowpassed at 8 kHz,
-  quiet and ducked under the voice; SFX OFF by default (soft, lowpassed at 6 kHz when on);
-  −14 LUFS, true peak ≤ −1.5 dB.
-* **Voices:** ONE male narrator by default (Kokoro am_fenrir; Farsi: Edge Farid). Each voice's
+  quiet and ducked under the voice; it builds tension, drops out right before reveals and comes back
+  with a soft hit. Editing sounds ON by default (toggle): low whoosh on picture changes, low boom on
+  reveals, soft riser before the cliffhanger, all lowpassed and ducked; −14 LUFS, true peak ≤ −1.5 dB.
+* **Voices:** ONE male narrator by default (Kokoro am_fenrir; Farsi: Edge Farid) at 1.1x speed with a
+  0.4 s pause before reveal sentences (word times include it). Each voice's
   engine is chosen once per video; backups keep the same gender; a voice never switches mid-video.
   Characters who speak get their own voice (dropdown + preview on the Characters step).
 * **GPU profiles** (`config.gpu_profile`): T4 fp16 / L4 bf16 / A100 bf16; picture size, prompt
-  reader kept loaded on L4/A100, Wan 2.2 size/steps, auto hero scenes (short/long: T4 1/2,
-  L4 3/6, A100 5/10), compute-unit rate. Motion renders on the GPU (PyTorch) when free.
+  reader kept loaded on L4/A100, Wan 2.2 size/steps, auto hero scenes (Shorts 0 unless chosen; long: T4 2,
+  L4 6, A100 10), compute-unit rate. Motion renders on the GPU (PyTorch), 2-3 clips at a time.
+* **Speed:** voice is made in a thread while the pictures are made; Gemini mode loads no image model at all
+  (no FLUX, no depth); FLUX/depth stay loaded for the next video unless Wan needs the GPU; a working voice
+  engine is remembered for the session (forgotten if it fails); every video ends with a ⏱ timing report.
 * Session timer + compute-unit estimate in the app; every video logs minutes and units in
   `StoryForge/usage_videos.json`. Big models are kept on Drive automatically when it has 45+ GB free.
 
@@ -181,6 +196,10 @@ tests/             CPU-only tests, network calls mocked
 - [x] Gemini images mode (`gemini.py`, tab "🍌 My images"): numbered standalone prompts (character sheets C1.. first),
       upload/Drive folder `episodes/epNN/my_images/`, match by number or order, crop to fill, replace/swap,
       missing → ask (FLUX or nearest). `EpisodeOptions.image_source = "mine"` skips FLUX; Generate sets it back to "flux".
+- [x] Update 4 (viral): script doctor, mood lock + expressions, cold open, fast cuts from crops, pop captions,
+      hook text, end card, tension music + editing sounds, 1.1x narrator + reveal pauses, parallel voice,
+      single encode + copy join, timing report; uploads ordered by File.lastModified (JS) / Drive mtime,
+      C sheets first, .jfif/.heic/.avif → PNG.
 
 ### Verified only on CPU (needs a real Colab GPU run)
 FLUX.2 klein loading/generation, Depth Anything download, Wan 2.2 hero clips, Kokoro, Edge TTS,
@@ -211,3 +230,9 @@ wav2vec2 forced alignment, Pollinations/AI Horde/Gemini/Groq calls, the Colab po
 * Default arguments are bound at definition time (`size=CHUNK_SCENES` ignored later changes).
 * Dataclass fields that depend on others need `__post_init__` (formats follow length).
 * The old offline English backup voice (Piper lessac) was female: backups must keep the gender.
+* Joining clips with `-c copy` needs every clip encoded with the SAME settings (`config.encoder_args("final")`,
+  x264 `stitchable=1`), including your own videos and the end card.
+* The browser is the only place that knows a file's real time: `theme.HEAD` stores `File.lastModified` on
+  change/drop, and the upload event's `js=` passes it to Python as an extra input.
+* Remembered things (voice engines, focus points, end card PNG) must be keyed so they can't go stale:
+  a failing voice is forgotten; the end card PNG name contains a hash of its text.

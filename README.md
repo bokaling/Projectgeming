@@ -8,13 +8,18 @@ captions, music, thumbnail, title, description and hashtags. All software and AP
 It runs on Google Colab's GPUs (free T4, or L4/A100 with your Google AI Plus compute units).
 
 - 📝 **Your script, your story.** The AI writer is optional.
+- 🩺 **Script doctor:** scores your script for retention (hook, stakes, twists, cliffhanger) and can rewrite it.
+  You pick your version or the improved one, side by side.
+- ✂️ **Edited like a real Short:** a 1 s cold open, a hard cut every ~2 s, punch-in zooms, white flashes on
+  reveals, big pop-up captions, hook text at the top, and "Part 2 👀" at the end
 - 🎞️ **Short** (~60 s, 9:16, 1080×1920) or **Long** (~10 min, 16:9, 1920×1080, with YouTube chapters)
 - 📚 **Batch:** paste several scripts separated by `=====`, and they're made one after another
 - 🧑‍🎨 Characters keep the same face in every scene and episode, with varied shots (close-ups, wide
   shots, details, empty places…), lighting and colors
 - 🎬 Real image-to-video for "hero" scenes (more on stronger GPUs); 2.5D motion for all other scenes
-- 🗣️ One natural male narrator (Kokoro). Characters who speak get their own voice
-- 🎵 Gentle cinematic music (no sharp sounds), quietly ducked under the voice; sound effects optional
+- 🗣️ One natural male narrator (Kokoro, 1.1× speed, a short pause before each reveal). Characters who speak
+  get their own voice
+- 🎵 Gentle music that builds tension and drops out right before a reveal; soft, low editing sounds
 
 ---
 
@@ -37,6 +42,7 @@ When you're done: **Runtime → Disconnect and delete runtime**. A connected GPU
 ```text
 [TITLE] The Night Radio
 [CHARACTER] MIRA: woman, 30s, short silver hair, yellow raincoat
+[STYLE] night, heavy rain, yellow taxi, green radio glow, horror thriller
 [SCENE] a yellow taxi parked in the rain at 3 a.m., neon signs
 NARRATOR: The radio crackled at exactly three in the morning.
 MIRA: Who's there?
@@ -46,14 +52,35 @@ NARRATOR: A voice answered with her own name.
 
 - `[CHARACTER] NIKOLA: man, 40s, short dark hair, lab coat` fixes how a character looks. That description goes
   into every picture where he appears (and decides his voice: man or woman).
+- `[STYLE] night, rain, dark lab, green glow, horror` is the **mood lock**: it goes into every picture prompt, so
+  every scene keeps the same time of day, light and colors. No `[STYLE]` line? The app makes one from your
+  script and shows it to you (the Script doctor has a button to add it to your script).
 - `[SCENE]` is optional. Your `[SCENE]` text is the main picture prompt; the shot type is only added after it.
   Without it, the text is split into scenes and the picture prompts are written for you.
-- A new picture every ~2.5 s (short) or ~3 s (long): each scene gets several shots of the same moment.
-  You get a warning if the script is shorter than the target length (~150 words for a Short).
+- **One picture every ~5 s** (short, about 12 pictures) or ~10 s (long). The fast cuts in between (every
+  1.5-2.5 s, or 3-5 s in long videos) are zooms and crops into different parts of the same picture.
+- Faces show the feeling of the line (scared, shocked, angry, sad…), never smiling unless your script says so.
+- About **150 words** for a Short, **1500** for a long video. You get a warning if it's much shorter.
 - `NARRATOR:` (or plain text without a name) is the narrator. `MIRA:` is a character speaking.
 - `[CHAPTER] The road` (optional) sets YouTube chapters for long videos. Without it, there's one about every 90 seconds.
 - Farsi works the same way (`راوی:` for the narrator). The language is detected automatically.
 - **Batch:** put a line of `=====` between scripts. Each one becomes the next episode of the series.
+
+---
+
+## 🩺 Script doctor (step 1, right under your script)
+
+As soon as you paste, you see a score out of 100 and six bars:
+🪝 hook in the first 2 seconds · ⚠️ stakes · ⚡ something new every 5 seconds · ❓ curiosity gaps ·
+🎁 payoff and twists · 🧗 cliffhanger. Weak lines are listed with the line number, the reason and what to do.
+**Your script is never changed by itself.**
+
+Press **✨ Improve script** and the free AI rewrites it for retention: a shocking first line (max 10 words),
+no slow intro, short punchy sentences, a twist about every 15 seconds, specific details, a cliffhanger
+(long videos: a mini cliffhanger every ~2 minutes). It keeps your `[TITLE]`, `[CHARACTER]`, `[STYLE]` and
+`[SCENE]` lines and your speaker names. You see **yours and the improved one side by side** with both scores.
+Press **✅ Use the improved script** or **↩️ Keep my original**. The one you pick is the one Generate and the
+Gemini prompts use. (No AI available? You get a light polish only and a note saying so.)
 
 ---
 
@@ -71,17 +98,23 @@ so there is no big download and the video is made much faster.
    - Use the 📋 button on each prompt, the copy button on the big box ("copy all"), or **⬇️ Download prompts.txt**.
      `prompts.txt` is also saved on Drive in the episode folder.
 3. **Upload your pictures:** drop them all at once into **Drop your images here**.
-   - Name them with their number (`1.png`, `scene_02.jpg`, `C1.png`). Without numbers, they are used in upload order.
+   - **No renaming needed.** Pictures are put in the order you made them (the oldest first): character sheets
+     C1, C2… first, then scenes 1, 2, 3… The app reads each file's time from your browser. If your browser
+     doesn't share it, it uses the order you selected them in and tells you.
+   - A number in the name always wins: `1.png`, `03_taxi.jpg`, `scene_02.jpg`, `C1.png`.
    - Any picture type works: PNG, JPG, **JFIF** (what Gemini downloads), WEBP, HEIC (iPhone) and AVIF.
      They are turned into PNG automatically.
    - From your phone: put them in Google Drive in `StoryForge/series/<series>/episodes/ep01/my_images/`,
      then press **🔄 Check my Drive folder**.
    - Every picture is cropped to fill the frame (no black bars). Each card shows ✅ or **missing**.
-   - Wrong picture? **📤 Replace** on its card. Wrong order? ⬆️ / ⬇️ swap it with its neighbour.
+   - After the upload the grid shows every picture with its number. Wrong picture? **📤 Replace** on its card.
+     Wrong order? ⬆️ / ⬇️ swap it with its neighbour (C1 comes right before scene 1).
+   - The Drive folder follows the same rules, using the files' times in Google Drive.
 4. **Press 🚀 Make video with my images.** If pictures are missing, the app asks you:
    **🎨 Make the missing ones with FLUX**, or **🔁 Reuse the nearest image**.
 
-The normal **🚀 Generate video** button still uses FLUX, as before.
+The normal **🚀 Generate video** button still uses FLUX, as before. In Gemini mode no image model is loaded at
+all (no FLUX, no depth model), so it is the fastest way to make a video.
 
 ---
 
@@ -107,31 +140,32 @@ The app shows a live **⏱ session timer and compute-unit estimate** at the top,
 it shows how long that video took and about how many units it used. Rates are unofficial
 user measurements: T4 ≈ 1.2 units/hour, L4 ≈ 1.7, A100 40 GB ≈ 5.4, A100 80 GB ≈ 7-9.
 
-Estimated units per video. These are **my estimates** and haven't been measured on a real GPU yet;
-the app logs the real numbers, so check them after your first week:
+Estimated time and units per video (after the first video of a session). These are **my estimates**, not
+measured on a real GPU yet. Every video now ends with a **⏱ timing report** (each step's time), and
+`StoryForge/usage_videos.json` keeps the real numbers, so check them after a few videos:
 
-| Video | T4 (fp16) | L4 (bf16, ~2× faster) |
+| Video | T4 (fp16) | L4 (bf16) |
 |---|---|---|
-| Short, no hero clips | ~8 min · **0.15** | ~5 min · **0.15** |
-| Short, 1 hero clip | ~23 min · **0.45** | ~12 min · **0.35** |
-| Short, auto heroes (T4 1 / L4 3) | ~23 min · **0.45** | ~22 min · **0.6** |
-| Long (10 min), no hero clips | ~40 min · **0.8** | ~21 min · **0.6** |
-| Long, 2 hero clips | ~67 min · **1.35** | ~33 min · **0.95** |
-| Long, auto heroes (T4 2 / L4 6) | ~67 min · **1.35** | ~53 min · **1.5** |
+| Short, 🍌 your Gemini pictures | ~1.5-2.5 min · **0.04** | ~1-1.5 min · **0.04** |
+| Short, FLUX pictures (no hero clips, the default) | ~4-6 min · **0.1** | ~2.5-3.5 min · **0.09** |
+| Long (10 min), 🍌 your Gemini pictures | ~7-10 min · **0.18** | ~5-7 min · **0.17** |
+| Long, FLUX pictures, no hero clips | ~15-20 min · **0.35** | ~8-11 min · **0.3** |
+| Long, FLUX + auto hero clips (T4 2 / L4 6) | ~30-35 min · **0.65** | ~35-45 min · **1.15** |
 
-Plus ~5 minutes per session for setup and loading the models (less with big models kept on Drive).
+Plus ~3-5 minutes per session for setup and the first model download (FLUX is ~16 GB; Gemini mode skips it).
+
+Why it is faster now: one picture per ~5 s instead of per ~2.5 s (the fast cuts are crops), the voice is
+made while the pictures are made, every scene clip is encoded only once on the GPU encoder (NVENC) with the
+captions already in it, the clips are joined without re-encoding, Shorts have no hero clips unless you pick
+them, and models stay loaded for the next video in the same session (on L4/A100).
 
 **Your goal: 30 shorts + 4-5 long videos a month, within 50 units**
 
-- **Cheapest:** **L4**, hero scenes set to **1** for shorts and **2** for long videos, and **batches**
-  of 5-10 shorts per session so the models load only once. That's ≈ 30 × 0.35 + 5 × 0.95 + ~2
-  (setup) ≈ **17 units**.
-- **Best looking within budget:** L4 with **Auto** heroes (3 per short, 6 per long) ≈ 30 × 0.6 + 5 × 1.5
-  + ~2 ≈ **28 units**, leaving ~20 for re-dos.
+- **Cheapest:** your own Gemini pictures on a **T4** or **L4**: ≈ 30 × 0.04 + 5 × 0.18 + ~2 (setup) ≈ **4 units**.
+- **All automatic (FLUX) on an L4**, batches of 5-10 shorts per session: ≈ 30 × 0.09 + 5 × 0.3 + ~2 ≈ **6 units**.
+- **Best looking:** L4 with FLUX and a few hero clips (pick 1-3 per short) ≈ 15-25 units, still well under 50.
 - **Free extra:** long videos on **Kaggle** (free T4 x2, ~30 GPU hours a week) cost 0 units.
 - **Avoid the A100** for this: it uses 3-4× the units for a small speed gain.
-- **L4 is usually cheaper per video than T4**, because it finishes GPU work about twice as fast for
-  only ~1.4× the rate.
 
 ---
 
@@ -157,14 +191,14 @@ This update is on the branch `claude/nice-noether-0u7lld` and is **not on `main`
    `https://github.com/bokaling/Projectgeming`, choose the branch `claude/nice-noether-0u7lld`,
    and open `notebooks/StoryForge_Colab.ipynb`.
 2. Runtime → **T4 GPU**. In cell 1️⃣ set **BRANCH** to `claude/nice-noether-0u7lld`, then run 1️⃣ and 2️⃣.
-3. Press **⚡ Quick test** (leave the script box empty, which uses a sample with a narrator and a character).
-   In the checklist you want ✅ for: Script, Pictures (`FLUX.2 klein (GPU)`), Depth (`Depth Anything`),
-   Voice (`Kokoro`), Final video. Listen: one male narrator, a different voice for MIRA, soft music.
-4. Paste one real short script → **🚀 Generate**. Check that scenes look different (close-ups, wide shots,
-   empty places), that captions are in sync, and look at the units shown on the Export step.
-5. Optional: one **Long** script, then disconnect halfway, reconnect and press Generate again.
-   Only the missing parts should be made.
-6. All good? Tell Claude, and the update is merged into `main`.
+3. Paste a short script. Look at the **🩺 Script doctor** score, press **✨ Improve script**, compare, and pick one.
+4. **🍌 Gemini mode first (fastest):** Make Gemini prompts → make the pictures in Gemini → drop all the
+   downloaded `.jfif` files at once (no renaming) → check the order in the grid → Make video with my images.
+5. Watch the video: 1 s cold open with a flash, hook text at the top for 3 s, a cut every ~2 s, big pop-up
+   captions in sync, a white flash and a low boom on the reveal, music dropping out just before it,
+   "PART 2 👀" at the end. Then read the **⏱ timing report** at the end of the log.
+6. Try **🚀 Generate** (FLUX) with the same script and compare the timing report.
+7. All good? Tell Claude, and the update is merged into `main`.
 
 ---
 
@@ -189,8 +223,9 @@ MyDrive/StoryForge/
   series/<series>/characters/<name>/     reference pictures
   series/<series>/episodes/ep01/
       script.json, script.md             the planned script (scenes, shots, prompts)
-      scenes/s01/                        picture, depth, hero clip, your uploads, scene clips
-      render/                            finished video parts (for resume)
+      scenes/s01/                        picture, depth, hero clip, your uploads, scene clip (final quality)
+      render/                            cold open, end card, editing plan (edit_*.json)
+      my_images/                         🍌 your Gemini pictures (+ originals/)
       export/                            ⭐ final video, thumbnails, metadata.md
   library/music/<mood>/                  your own music (+ licenses.csv for automatic credits)
   usage_videos.json                      minutes and compute units per video

@@ -13,29 +13,31 @@ def small_chunks(monkeypatch):
 
 
 def test_snap_and_ranges():
-    assert render.snap(1.234) == 37 / 30 and render.TRANSITION == 10 / 30
+    assert render.snap(1.234) == 37 / 30 and render.TRANSITION == 0.0  # hard cuts
     assert render.chunk_ranges(10, 4) == [(0, 4), (4, 8), (8, 10)]
 
 
-def test_paste_video_in_chunks_with_resume(offline, small_chunks):
+def test_paste_video_joined_without_reencoding_and_resumed_per_clip(offline):
     series = project.Series.create("Chunks")
     opts = project.EpisodeOptions(length="short", resolution="480p", hero_count=0)
     rep = Reporter(echo=False)
     res = pipeline.generate(series, opts, STORY, rep)
     ep = series.episode(1)
     n = len(ep.load_script()["scenes"])
-    parts = sorted((ep.dir / "render").glob("en_9x16_*.mp4"))
-    assert n > 8 and len(parts) == len(render.chunk_ranges(n, 4)) >= 3
+    clips = [ep.clip_path(sc["id"], "9x16", "en") for sc in ep.load_script()["scenes"]]
+    assert n > 8 and all(c.exists() for c in clips)
+    assert (ep.dir / "render" / "cold_9x16_en.mp4").exists() and (ep.dir / "render" / "end_9x16_en.mp4").exists()
     video = res["videos"][0]
     tl = project.read_json(ep.audio_dir("en") / "timeline.json")
     assert abs(media.duration(video) - tl["total"]) < 0.1  # picture and sound line up
     assert media.video_size(video) == (480, 854)
-    # "disconnect": one finished part is lost; only that part is made again
-    parts[1].unlink()
+    assert "joined without re-encoding" in rep.text(400) and "Timing report" in rep.text(400)
+    # "disconnect": one finished scene clip is lost; only that clip is made again
+    clips[1].unlink()
     rep2 = Reporter(echo=False)
     pipeline.Pipeline(series, ep, rep2, ep.load_options()).make_video()
     text = rep2.text(300)
-    assert "Part 2/" in text and "Part 1/" not in text and "Scene pictures" not in text
+    assert "1 clips" in text and "Scene pictures" not in text and "Voiceover" not in text
 
 
 def test_long_format_has_chapters(offline, small_chunks, monkeypatch):

@@ -126,16 +126,19 @@ class EpisodeOptions:
     hero_count: int = -1  # real image-to-video scenes; -1 = auto (depends on your GPU)
     hero_minutes: float = 0.0  # time limit per hero clip; 0 = auto (T4 15, L4 12, A100 10 minutes)
     captions: bool = True
-    caption_style: str = "highlight"  # highlight | karaoke | plain
+    caption_style: str = "pop"  # pop (big 1-3 words) | highlight | karaoke | plain
     music_mood: str = "auto"
     music_volume: float = 0.10  # quiet: music sits well under the voice
-    sfx: bool = False  # sound effects are OFF unless you turn them on
+    sfx: bool = True  # soft editing sounds: low whoosh on picture changes, low boom on reveals, riser before the end
     effects: bool = True  # particles, light leaks, grain
     second_format_images: str = "auto"  # auto | generate | reuse
     creator_note: str = ""
     quick_test: bool = False
     image_source: str = "flux"  # flux = AI pictures on the GPU, mine = your own images (Gemini mode)
     missing_policy: str = "ask"  # mine mode, missing pictures: ask | flux | nearest
+    cold_open: bool = True  # 1 s flash of the most dramatic picture before scene 1
+    end_card: bool = True  # last frame "Part X 👀" (X = next episode)
+    final_episode: bool = False  # end card says "The End" instead
 
     def __post_init__(self):
         self.length = "long" if self.length == "long" else "short"
@@ -379,7 +382,7 @@ class Episode:
     def cleanup_work_files(self) -> int:
         """Delete re-creatable scene clips to save Drive space. Returns MB freed."""
         freed = 0
-        for p in (self.dir / "scenes").glob("*/clip_*.mp4"):
+        for p in list((self.dir / "scenes").glob("*/clip_*.mp4")) + list((self.dir / "render").glob("*.mp4")):
             freed += p.stat().st_size
             p.unlink(missing_ok=True)
         self.state.forget("clip")

@@ -68,8 +68,8 @@ def _show_videos(paths) -> None:
 
 def run(action: str, script_text: str = "", series_name: str = "My Series", episode: int = 0, length: str = "Short",
         languages: str = "English", hero_scenes="Auto", quality: str = "1080p",
-        narrator_en: str = "kokoro:am_fenrir", narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = False,
-        idea: str = "", regenerate: str = "") -> None:
+        narrator_en: str = "kokoro:am_fenrir", narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True,
+        idea: str = "", regenerate: str = "", end_card: bool = True, final_episode: bool = False) -> None:
     s = config.init(root=None) if config._SETTINGS is None else config.get()
     config.load_secrets()
     prof = config.gpu_profile()
@@ -80,6 +80,7 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
             "script_text": script_text, "idea": idea, "languages": _langs(languages),
             "length": "long" if str(length).lower().startswith("long") else "short", "hero_count": _heroes(hero_scenes),
             "resolution": quality, "sfx": bool(sound_effects), "source": "ai" if action.startswith("✨") else "paste",
+            "end_card": bool(end_card), "final_episode": bool(final_episode),
         })
         if action.startswith("⚡"):
             res = pipeline.quick_test(rep, script_text, opts.languages, opts.length)

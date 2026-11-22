@@ -9,11 +9,12 @@ thumbnail + title/description/hashtags.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 from pathlib import Path
 
-from . import captions, characters, config, images, publish, render, script
+from . import beats, captions, characters, config, images, paste, publish, render, script
 from .audio import music, tts
 from .messages import FriendlyError, Reporter, Timer
 from .paste import NARRATOR
@@ -23,7 +24,24 @@ from .motion import i2v
 from .project import (UPLOAD_VIDEO_EXT, Episode, EpisodeOptions, Series, dims, fingerprint, read_json,
                       write_json)
 
-LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.15, 0.3, 1.4, 1.6
+LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.08, 0.18, 0.5, 1.2  # tight: only short gaps between scenes
+COLD_OPEN, END_CARD, END_HOLD = 1.0, 1.6, 1.0  # seconds
+SPEAKER_GAP, REVEAL_PAUSE = 0.2, 0.4  # pause between speakers / before a reveal
+CHARACTER_SPEED = 1.05
+
+
+def split_for_pauses(text: str) -> list[str]:
+    """Split before sentences with a reveal, so a short dramatic pause can go there."""
+    sents = [x for x in re.split(r"(?<=[.!?؟…])\s+", (text or "").strip()) if x.strip()]
+    out: list[str] = []
+    for k, s in enumerate(sents):
+        if out and k > 0 and beats.has_any(s, beats.STRONG_REVEAL):
+            out.append(s)
+        elif out:
+            out[-1] += " " + s
+        else:
+            out.append(s)
+    return out or [text]
 
 
 def effects_version() -> str:
@@ -67,7 +85,10 @@ class Pipeline:
         return fmts
 
     def voice_choice(self, lang: str) -> dict:
-        return tts.parse_voice(self.series.data.get("voices", {}).get(lang), lang)
+        """The narrator: about 1.1x speed (more energy). Word times come from the engine, so captions stay in sync."""
+        c = tts.parse_voice(self.series.data.get("voices", {}).get(lang), lang)
+        c["speed"] = paste.NARRATOR_SPEED if c.get("engine") != "own" else 1.0
+        return c
 
     def upload_video(self, sid: str) -> Path | None:
         up = self.ep.upload_path(sid)
@@ -111,7 +132,8 @@ class Pipeline:
             for k in range(n_shots):  # a new picture every 2-3 seconds: one per shot
                 if only_shots is not None and (sc["id"], k) not in only_shots:
                     continue
-                prompt, refs = characters.scene_prompt(self.series, sc, with_refs=use_refs, shot_index=k)
+                prompt, refs = characters.scene_prompt(self.series, sc, with_refs=use_refs, shot_index=k,
+                                                       mood_lock=self.script.get("mood_lock", ""))
                 seed = self.scene_seed(sc) + 7 * k
                 for fmt in self.image_formats():
                     out = self.ep.image_path(sc["id"], fmt, k)
@@ -135,7 +157,7 @@ class Pipeline:
 
         with Timer() as t:
             counts = images.generate_batch(jobs, self.rep, on_done=saved, span=(0.08, 0.35))
-        if not keep_loaded:
+        if not keep_loaded and self.hero_scenes():  # Wan needs the GPU; otherwise keep FLUX for the next video
             images.unload()
         summary = ", ".join(f"{n} × {k}" for k, n in counts.items())
         status = "warn" if "Placeholder" in counts else "ok"
@@ -153,7 +175,7 @@ class Pipeline:
         fmt = self.opts.primary_format
         self.rep.step("🍌 Your images (the image model is skipped)")
         total = len(gemini.slots(self.series, sc, self.opts.length))
-        gemini.scan_folder(self.ep, total)
+        gemini.scan_folder(self.ep, total, len(gemini.characters_in(self.series, sc)))
         policy = self.opts.missing_policy
         missing = gemini.apply_images(self.series, self.ep, sc, self.opts.length, fmt,
                                       "nearest" if policy == "nearest" else "flux", self.rep)
@@ -188,6 +210,8 @@ class Pipeline:
             self.rep.info(f"🎬 Real-motion hero clips skipped ({why}). Those scenes get 2.5D motion instead.")
             self.rep.record("warn" if config.get().gpu.available else "ok", "Hero clips", "motion effects instead")
             return
+        images.unload()  # one big model on the GPU at a time
+        depth_mod.unload()
         self.rep.step(f"🎬 Real-motion hero clips with Wan 2.2 ({len(heroes)}, up to {self.hero_minutes():.0f} min each)")
         made = 0
         for k, sc in enumerate(heroes, 1):
@@ -214,6 +238,8 @@ class Pipeline:
         self.rep.record("ok" if made == len(heroes) else "warn", "Hero clips", f"{made}/{len(heroes)} made")
 
     def depth_maps(self) -> None:
+        if self.opts.image_source == "mine":  # your own images: no image models at all (Ken Burns + crops)
+            return
         todo = []
         for sc in self.script["scenes"]:
             if self.upload_video(sc["id"]):
@@ -237,7 +263,8 @@ class Pipeline:
             self.rep.check_stop()
             method = depth_mod.make_depth(src, out)
             self.ep.state.done(f"depth:{sid}:{src.stem}", file_sig(src), method=method)
-        depth_mod.unload()
+        if self.hero_scenes():  # the video model needs the GPU; otherwise keep it for the next video
+            depth_mod.unload()
         self.rep.ok(f"Depth maps ready ({method})")
         self.rep.record("ok" if "Anything" in method else "warn", "Depth (2.5D)", method)
 
@@ -251,10 +278,15 @@ class Pipeline:
     def voice_for(self, speaker: str, lang: str) -> dict:
         if speaker in (None, "", NARRATOR):
             return self.voice_choice(lang)
-        return characters.voice_for(self.series, speaker, lang, self.narrator_value(lang))
+        c = dict(characters.voice_for(self.series, speaker, lang, self.narrator_value(lang)))
+        c["speed"] = CHARACTER_SPEED
+        return c
 
-    def scene_speech(self, sc: dict, lang: str) -> list[tuple[str, dict]]:
-        """What is said in a scene, and by which voice: [(text, voice), ...]."""
+    def scene_speech(self, sc: dict, lang: str) -> list[tuple[str, dict, float]]:
+        """What is said in a scene, by which voice, and the pause before it: [(text, voice, pause), ...].
+
+        A short dramatic pause comes before a sentence with a reveal ("that's when…", "it was never…").
+        """
         if lang == self.script.get("language", "en") and sc.get("lines"):
             groups: list[list[str]] = []
             for ln in sc["lines"]:  # consecutive lines by the same speaker are spoken in one go
@@ -262,9 +294,15 @@ class Pipeline:
                     groups[-1][1] += " " + ln["text"]
                 else:
                     groups.append([ln["speaker"], ln["text"]])
-            return [(text, self.voice_for(speaker, lang)) for speaker, text in groups if text.strip()]
-        text = sc["narration"] if lang == "en" else sc.get("narration_fa", "")
-        return [(text, self.voice_choice(lang))] if text.strip() else []
+            items = [(text, self.voice_for(speaker, lang)) for speaker, text in groups if text.strip()]
+        else:
+            text = sc["narration"] if lang == "en" else sc.get("narration_fa", "")
+            items = [(text, self.voice_choice(lang))] if text.strip() else []
+        out = []
+        for text, voice in items:
+            for k, piece in enumerate(split_for_pauses(text)):
+                out.append((piece, voice, REVEAL_PAUSE if k else SPEAKER_GAP))
+        return out
 
     def voices(self, lang: str) -> None:
         sc_all = self.script["scenes"]
@@ -277,7 +315,7 @@ class Pipeline:
                                     f"Add it on the Script step (line '{'Farsi' if lang == 'fa' else 'English'}:'), "
                                     "or turn that language off.")
             speech.append(parts)
-        texts = [" ".join(t for t, _ in parts) for parts in speech]
+        texts = [" ".join(t for t, _, _ in parts) for parts in speech]
         adir = self.ep.audio_dir(lang)
         if choice["engine"] == "own":
             rec = self.ep.own_voice_path(lang)
@@ -301,13 +339,14 @@ class Pipeline:
         tts.reset_resolved()
         resolved = {}
         for parts in speech:
-            for _, ch in parts:
+            for _, ch, _ in parts:
                 key = (ch.get("engine"), ch.get("voice"))
                 if key not in resolved:
                     resolved[key] = tts.resolve(lang, ch, self.rep)
 
         def fp_of(parts):
-            return fingerprint([(t, resolved[(c.get("engine"), c.get("voice"))]) for t, c in parts])
+            return fingerprint([(t, resolved[(c.get("engine"), c.get("voice"))], c.get("speed"), round(g, 2))
+                                for t, c, g in parts])
 
         todo = [(i, sc, parts) for i, (sc, parts) in enumerate(zip(sc_all, speech), 1)
                 if not self.ep.state.fresh(f"voice:{lang}:{sc['id']}", fp_of(parts), [adir / f"{sc['id']}.wav"])]
@@ -315,7 +354,8 @@ class Pipeline:
             return
         voices_used = sorted({tts.label(*v) for v in resolved.values()})
         self.rep.step(f"🗣️ Voiceover ({'Farsi' if lang == 'fa' else 'English'}, {len(todo)} scenes, "
-                      f"{len(voices_used)} voice{'s' if len(voices_used) > 1 else ''})")
+                      f"{len(voices_used)} voice{'s' if len(voices_used) > 1 else ''}, narrator "
+                      f"{paste.NARRATOR_SPEED:g}x speed)")
         if any(v[0] == "edge" for v in resolved.values()) and lang == "fa":
             self.rep.info("ℹ️ " + tts.EDGE_WARNING)
         engines = set()
@@ -334,121 +374,246 @@ class Pipeline:
             self.rep.warn("The emergency robot voice was used. Check the internet and press Generate again later.")
 
     def timeline(self, lang: str) -> dict:
+        """When everything happens: cold open, scenes (voice + short gaps), end card, word times, story beats."""
         adir = self.ep.audio_dir(lang)
-        scenes, words, t = [], [], 0.0
+        scenes, words = [], []
+        cold = render.snap(COLD_OPEN) if self.opts.cold_open else 0.0
+        t = cold
         sc_all = self.script["scenes"]
         for i, sc in enumerate(sc_all):
             wav = adir / f"{sc['id']}.wav"
             x, sr = tts.read_wav(wav)
             vlen = len(x) / sr
-            dur = render.snap(max(MIN_SCENE, LEAD + vlen + (LAST_TAIL if i == len(sc_all) - 1 else TAIL)))
+            tail = LAST_TAIL if i == len(sc_all) - 1 else TAIL
+            dur = render.snap(max(MIN_SCENE, LEAD + vlen + tail))
             scenes.append({"id": sc["id"], "start": round(t, 3), "dur": round(dur, 3), "voice": round(vlen, 3)})
             for w in (read_json(adir / f"{sc['id']}.json", {}) or {}).get("words", []):
                 words.append({"w": w["w"], "s": round(t + LEAD + w["s"], 3), "e": round(t + LEAD + w["e"], 3)})
             t += dur
-        tl = {"scenes": scenes, "words": words, "total": round(t + render.TRANSITION, 3)}
+        end = render.snap(END_CARD if self.opts.end_card else END_HOLD)
+        total = round(t + end, 3)
+        found = beats.find_beats(words, total, self.opts.length)
+        first = scenes[0]
+        found["punch"] = beats.hook_word_times(words, first["start"], first["start"] + first["dur"])
+        tl = {"cold": cold, "scenes": scenes, "end": {"start": round(t, 3), "dur": end}, "words": words,
+              "total": total, "beats": found}
         write_json(adir / "timeline.json", tl)
         return tl
 
-    def scene_clips(self, lang: str, fmt: str, tl: dict, progress=(0.0, 1.0)) -> list[Path]:
-        size = self.out_size(fmt)
-        out_paths, jobs = [], []
+    def dramatic_scene(self) -> dict:
+        """The most dramatic moment (for the cold open): a reveal or danger near the climax, not the hook itself."""
         sc_all = self.script["scenes"]
+        best, score = sc_all[-1], -1.0
+        for i, sc in enumerate(sc_all):
+            if i == 0 and len(sc_all) > 1:
+                continue
+            text = " ".join(ln["text"] for ln in sc.get("lines", [])) + " " + sc.get("visual", "")
+            s = (3 * len(beats.has_any(text, beats.STRONG_REVEAL)) + 2 * len(beats.has_any(text, beats.SCARY))
+                 + len(beats.has_any(text, beats.SHOCK)) + (2 if sc.get("mood") in ("dark", "action", "tense") else 0)
+                 + (1 if sc.get("hero") else 0) + i / len(sc_all))
+            if s > score:
+                best, score = sc, s
+        return best
+
+    def _picture(self, sc: dict, fmt: str, shot: int = 0) -> Path | None:
+        return (self.ep.scene_source_image(sc["id"], fmt, self.opts.formats, shot)
+                or self.ep.scene_source_image(sc["id"], fmt, self.opts.formats))
+
+    def plan_edit(self, lang: str, fmt: str, tl: dict) -> dict:
+        """The editing plan: cold open, fast cuts in every scene (crops of its pictures), end card."""
+        from .motion import cuts  # noqa: PLC0415
+
+        sc_all = self.script["scenes"]
+        fps = render.FPS
+        b = tl.get("beats", {})
+        events = {"punch": b.get("punch", []), "shake": sorted(set(b.get("scary", []) + b.get("reveal", []))),
+                  "flash": b.get("reveal", [])}
+        plans, changes = [], []
+        use_depth = self.opts.image_source != "mine"
         for i, (sc, info) in enumerate(zip(sc_all, tl["scenes"])):
             sid = sc["id"]
-            seconds = info["dur"] + render.TRANSITION
-            out = self.ep.clip_path(sid, fmt, lang)
+            n = render.frames(info["dur"])
+            t0 = info["start"]
             video = self.upload_video(sid) or self.hero_clip(sid, fmt)
-            src = None if video else self.ep.scene_source_image(sid, fmt, self.opts.formats)
-            if video is None and src is None:
-                raise FriendlyError(f"Scene {i + 1} has no picture.", "Make the pictures on the Scenes step first.")
-            hook = sc.get("kind") == "hook"
-            shake = [0.12] if set(sc.get("sfx", [])) & {"impact", "thunder"} else []
-            if hook:
-                shake = sorted(set(shake + [LEAD + 0.05]))  # a small jolt with the zoom punch
-            shots = []
-            if video is None:
-                for k in range(1 + len(sc.get("shots") or [])):
-                    img = self.ep.scene_source_image(sid, fmt, self.opts.formats, k) or src
-                    fr = characters.frame_of(sc, k)
-                    dpath = self.depth_for(img)
-                    shots.append({"image": str(img), "depth": str(dpath) if dpath.exists() else "",
-                                  "camera": fr["camera"], "fx": fr.get("effects") or [], "seed": self.scene_seed(sc) + k,
-                                  "punch": 0.16 if (hook and k == 0) else 0.0, "shake": shake if k == 0 else [],
-                                  "strength": 1.25 if hook else 1.0})
-            fp = fingerprint(file_sig(video), [(file_sig(Path(x["image"])), file_sig(Path(x["depth"])) if x["depth"] else "",
-                                                x["camera"], x["fx"], x["punch"], x["shake"]) for x in shots],
-                             round(seconds, 3), size, self.opts.effects, render.FPS, effects_version())
-            out_paths.append(out)
-            if self.ep.state.fresh(f"clip:{sid}:{fmt}:{lang}", fp, [out]):
+            if video:
+                plans.append({"id": sid, "video": str(video), "frames": n, "cuts": []})
+                changes.append(t0)
                 continue
-            jobs.append({"i": i, "key": f"clip:{sid}:{fmt}:{lang}", "fp": fp, "out": str(out), "size": list(size),
-                         "seconds": seconds, "fps": render.FPS, "video": str(video) if video else "",
-                         "shots": shots, "extras": self.opts.effects, "camera": sc["camera"]})
+            imgs = []
+            for k in range(1 + len(sc.get("shots") or [])):
+                img = self.ep.scene_source_image(sid, fmt, self.opts.formats, k)
+                if img is None:
+                    continue
+                fr = characters.frame_of(sc, k)
+                dpath = self.depth_for(img)
+                dep = str(dpath) if use_depth and dpath.exists() else ""
+                imgs.append({"image": str(img), "depth": dep, "camera": fr.get("camera"),
+                             "fx": fr.get("effects") or [], "focus": cuts.cached_focus(img, dep or None)})
+            if not imgs:
+                raise FriendlyError(f"Scene {i + 1} has no picture.", "Make the pictures on the Scenes step first.")
+            starts = [w["s"] - t0 for w in tl["words"] if t0 <= w["s"] < t0 + info["dur"]]
+            ev = {k: [round(x - t0, 3) for x in v if t0 <= x < t0 + info["dur"]] for k, v in events.items()}
+            shots = cuts.plan(imgs, n, fps, self.opts.length, starts, self.scene_seed(sc), sc.get("mood", ""),
+                              hook=(i == 0), events=ev)
+            plans.append({"id": sid, "video": "", "frames": n, "cuts": shots})
+            changes += [t0] + cuts.picture_changes(shots, fps, t0)
+        cold = None
+        if tl.get("cold"):
+            sc = self.dramatic_scene()
+            img = self._picture(sc, fmt, len(sc.get("shots") or [])) or self._picture(sc_all[-1], fmt)
+            if img is not None:
+                focus = cuts.cached_focus(img)
+                zoom, where = cuts.FRAMINGS["subject"]
+                fx, fy = focus.get(where, (0.5, 0.45))
+                cold = {"image": str(img), "depth": "", "frames": render.frames(tl["cold"]), "start": 0,
+                        "crop": [zoom, fx, fy], "camera": "push_fast", "fx": [], "seed": self.scene_seed(sc) + 99,
+                        "punch": [], "shake": [0.04], "flash": [0.0], "picture": 0, "framing": "cold open"}
+        last = sc_all[-1]
+        end_img = self._picture(last, fmt, len(last.get("shots") or []))
+        end = {"image": str(end_img) if end_img else "", "frames": render.frames(tl["end"]["dur"]),
+               "card": bool(self.opts.end_card),
+               "text": publish.end_card_text(self.ep.number, lang, self.opts.final_episode)}
+        plan = {"scenes": plans, "cold": cold, "end": end,
+                "changes": sorted({round(c, 3) for c in changes if c > 0.05})}
+        write_json(self.ep.dir / "render" / f"edit_{lang}_{fmt}.json", plan)
+        return plan
+
+    def caption_events(self, lang: str, fmt: str, tl: dict) -> list:
+        if not self.opts.captions:
+            return []
+        size = self.out_size(fmt)
+        accent = self.series.data.get("caption_accent", "yellow")
+        events = captions.caption_events(tl["words"], size, fmt, lang, self.opts.caption_style, accent,
+                                         total=tl["end"]["start"])
+        sc = self.script
+        if lang == sc.get("language", "en"):
+            hook = sc.get("hook_text", "")
+        else:  # the translated version: hook text from its first line
+            key = "narration_fa" if lang == "fa" else "narration"
+            hook = beats.hook_text(next((x[key] for x in sc["scenes"] if x.get(key)), ""), lang)
+        if hook.strip():
+            events = [captions.hook_event(hook, lang)] + events
+        return events
+
+    def scene_clips(self, lang: str, fmt: str, tl: dict, edit: dict, progress=(0.0, 1.0)) -> list[Path]:
+        """Every clip (cold open, scenes, end card) encoded once, captions burned in. Several at the same time."""
+        size = self.out_size(fmt)
+        fps = render.FPS
+        sc_all = self.script["scenes"]
+        events = self.caption_events(lang, fmt, tl)
+        head = captions.header(size, fmt, lang, self.opts.caption_style, self.series.data.get("caption_accent", "yellow"))
+        enc = config.video_encoder()
+        rdir = self.ep.dir / "render"
+        items = []  # (clip id, start s, frames, job, label, out)
+        if edit.get("cold"):
+            items.append(("cold", 0.0, edit["cold"]["frames"], {"cuts": [edit["cold"]]}, "Cold open",
+                          rdir / f"cold_{fmt}_{lang}.mp4"))
+        for i, (sc, info, p) in enumerate(zip(sc_all, tl["scenes"], edit["scenes"])):
+            job = {"video": p["video"]} if p["video"] else {"cuts": p["cuts"]}
+            items.append((sc["id"], info["start"], p["frames"], job, f"Scene {i + 1}", self.ep.clip_path(sc["id"], fmt, lang)))
+        end = edit["end"]
+        if end["card"] and end["image"]:
+            card = rdir / f"endcard_{fmt}_{lang}_{fingerprint(end['text'], size, 'card-1')[:10]}.png"
+            if not card.exists():  # made once (the clip is only redone when the text changes)
+                publish.end_card_png(end["text"], lang, size, card)
+            job = {"kind": "end", "image": end["image"], "card": str(card)}
+        else:
+            hold = {"image": end["image"], "depth": "", "frames": end["frames"], "start": 0, "crop": [1.0, 0.5, 0.45],
+                    "camera": "push_in", "fx": [], "seed": 5, "punch": [], "shake": [], "flash": [], "picture": 0}
+            job = {"cuts": [hold]} if end["image"] else {"video": ""}
+        items.append(("end", tl["end"]["start"], end["frames"], job, "End card" if end["card"] else "Last frame",
+                      rdir / f"end_{fmt}_{lang}.mp4"))
+        jobs, outs = [], []
+        for cid, start, n, job, label, out in items:
+            t0, t1 = start, start + n / fps
+            ev = captions.slice_events(events, t0, t1) if events and job.get("kind") != "end" else []
+            vf, ass_text = "", ""
+            if ev:
+                ass_text = captions.to_text(head, ev)
+                ass_path = self.ep.captions_dir() / f"{lang}_{fmt}_{cid}.ass"
+                ass_path.write_text(ass_text, encoding="utf-8")
+                vf = captions.ass_filter(ass_path)
+            pics = [file_sig(Path(c["image"])) for c in job.get("cuts", [])] + [file_sig(Path(job["card"])) if job.get("card") else ""]
+            fp = fingerprint(json.dumps(job, sort_keys=True, default=str), pics, file_sig(Path(job["video"])) if job.get("video") else "",
+                             ass_text, n, size, self.opts.effects, fps, enc, effects_version())
+            key = f"clip:{cid}:{fmt}:{lang}"
+            outs.append(out)
+            if self.ep.state.fresh(key, fp, [out]):
+                continue
+            jobs.append({"label": label, "key": key, "fp": fp, "out": str(out), "size": list(size), "seconds": n / fps,
+                         "fps": fps, "video": job.get("video", ""), "cuts": job.get("cuts", []), "kind": job.get("kind", ""),
+                         "image": job.get("image", ""), "card": job.get("card", ""), "extras": self.opts.effects,
+                         "vf": vf})
         if not jobs:
-            return out_paths
+            return outs
         from .motion import gpu  # noqa: PLC0415
 
         prof = config.gpu_profile()
-        workers = 1 if gpu.available() else prof.workers
-        how_label = "GPU" if gpu.available() else (f"{workers} CPU cores" if workers > 1 else "CPU")
-        self.rep.step(f"🎞️ Scene motion ({fmt.replace('x', ':')}, {'Farsi' if lang == 'fa' else 'English'}, "
-                      f"{len(jobs)} scenes, {how_label})")
+        on_gpu = gpu.available()
+        workers = (2 if prof.name == "T4" else 3) if on_gpu else prof.workers
+        workers = max(1, min(workers, len(jobs)))
+        how_label = (f"GPU, {workers} at a time" if on_gpu else (f"{workers} CPU cores" if workers > 1 else "CPU"))
+        n_cuts = sum(len(j["cuts"]) for j in jobs)
+        self.rep.step(f"🎞️ Scene clips ({fmt.replace('x', ':')}, {'Farsi' if lang == 'fa' else 'English'}, "
+                      f"{len(jobs)} clips, {n_cuts} hard cuts, {how_label}, encoder {enc})")
         a, b = progress
 
-        def finished(k, job, how, secs):
-            self.ep.state.done(job["key"], job["fp"], method=how)
-            sc = sc_all[job["i"]]
-            if k == 1 or k % 10 == 0 or k == len(jobs):
-                self.rep.ok(f"Scene {job['i'] + 1}/{len(sc_all)}: "
-                            f"{script.CAMERA_LABELS.get(sc['camera'], sc['camera'])}, {how} ({secs})")
-            self.rep.progress(a + (b - a) * k / len(jobs), f"Scene motion {k}/{len(jobs)}")
+        def run(job):
+            if not on_gpu and workers > 1:  # each in its own small Python process
+                return clip_mod.run_in_subprocess(job)
+            return clip_mod.render_job(job)
 
-        if workers > 1 and len(jobs) > 1:  # several scenes at once, each in its own small Python process
-            import concurrent.futures  # noqa: PLC0415
+        import concurrent.futures  # noqa: PLC0415
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {pool.submit(clip_mod.run_in_subprocess, job): job for job in jobs}
-                for k, fut in enumerate(concurrent.futures.as_completed(futures), 1):
-                    if self.rep.stop_requested:
-                        for f in futures:
-                            f.cancel()
-                        self.rep.check_stop()
-                    finished(k, futures[fut], fut.result(), "parallel")
-        else:
-            for k, job in enumerate(jobs, 1):
-                self.rep.check_stop()
-                with Timer() as t:
-                    how = clip_mod.render_job(job)
-                finished(k, job, how, t.label)
-        return out_paths
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(run, job): job for job in jobs}
+            for k, fut in enumerate(concurrent.futures.as_completed(futures), 1):
+                if self.rep.stop_requested:
+                    for f in futures:
+                        f.cancel()
+                    self.rep.check_stop()
+                job = futures[fut]
+                how = fut.result()
+                self.ep.state.done(job["key"], job["fp"], method=how)
+                if k == 1 or k % 10 == 0 or k == len(jobs):
+                    self.rep.ok(f"{job['label']}: {how} ({k}/{len(jobs)})")
+                self.rep.progress(a + (b - a) * k / len(jobs), f"Scene clips {k}/{len(jobs)}")
+        return outs
 
-    def audio_mix(self, lang: str, tl: dict) -> tuple[Path, list[str], str]:
+    def audio_mix(self, lang: str, tl: dict, edit: dict | None = None) -> tuple[Path, list[str], str]:
+        """Voice + music that builds tension and drops out before reveals + soft editing sounds. -14 LUFS."""
         sc = self.script
+        edit = edit or {}
         mood = self.opts.music_mood if self.opts.music_mood != "auto" else sc.get("music_mood", "tense")
         seed = characters.stable_seed(f"{self.series.slug}/{self.ep.number}/music")
         prev = [p.get("music", "") for p in self.series.previous_summaries(self.ep.number, 3)]
         pick = music.choose_music(mood, seed, avoid=prev)
+        reveals = list(tl.get("beats", {}).get("reveal", []))
         sfx_on = self.opts.sfx
         events_spec = []
         if sfx_on:
-            for s, info in zip(sc["scenes"], tl["scenes"]):
-                for name in s.get("sfx", []):
-                    t0 = info["start"]
-                    at = {"whoosh": t0 - 0.3, "impact": t0 + 0.05, "riser": t0 - 2.4, "thunder": t0 + 0.25}.get(name, t0 + 0.1)
-                    max_sec = info["dur"] if name in music.AMBIENT else 0
-                    events_spec.append((round(max(0.0, at), 3), name, max_sec))
+            for t in edit.get("changes", []):  # low whoosh on picture changes (not right on a boom)
+                if all(abs(t - r) > 0.6 for r in reveals):
+                    events_spec.append((round(max(0.0, t - 0.28), 3), "low_whoosh", 0))
+            for r in reveals:  # low boom on reveals
+                events_spec.append((round(max(0.0, r - 0.02), 3), "boom", 0))
+            if edit.get("cold"):
+                events_spec.append((0.0, "boom", 0))
             last = tl["scenes"][-1]
-            if not any(n == "sting" for _, n, _ in events_spec):  # end on a sting for the cliffhanger
-                events_spec.append((round(last["start"] + LEAD + last["voice"] + 0.05, 3), "sting", 0))
+            if len(tl["scenes"]) > 1:  # soft riser into the cliffhanger
+                events_spec.append((round(max(0.0, last["start"] - 2.55), 3), "soft_riser", 0))
+            for s, info in zip(sc["scenes"], tl["scenes"]):  # rain / wind from the script
+                for name in s.get("sfx", []):
+                    if name in music.AMBIENT:
+                        events_spec.append((info["start"], name, info["dur"]))
         mix_path = self.ep.audio_dir(lang) / "mix.wav"
-        fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, sfx_on,
+        fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, sfx_on, reveals, "sound-2",
                          [file_sig(self.ep.audio_dir(lang) / f"{s['id']}.wav") for s in sc["scenes"]])
         credits = [pick["credit"]] if pick.get("credit") else []
         if self.ep.state.fresh(f"mix:{lang}", fp, [mix_path]):
             info = self.ep.state.info(f"mix:{lang}")
             return mix_path, info.get("credits", credits), pick["name"]
-        self.rep.step("🎵 Music and sound effects")
+        self.rep.step("🎵 Music and sound design")
         n = int(tl["total"] * tts.SR)
         import numpy as np  # noqa: PLC0415
 
@@ -463,19 +628,23 @@ class Pipeline:
         else:
             bed = music.generate_music(mood, tl["total"], seed)
             self.rep.ok(f"Music: generated '{mood}' track (yours to use, no license needed)")
+        env, hits = music.tension_envelope(tl["total"], reveals, hits=not sfx_on)
         events = []
         for at, name, max_sec in events_spec:
             audio, credit = music.get_sfx(name, seed)
             if credit and credit not in credits:
                 credits.append(credit)
             events.append((at, audio, music.SFX_GAIN.get(name, 0.5), max_sec))
-        mixed = music.mix(voice, tl["total"], bed, self.opts.music_volume, events)
+        for h in hits:  # sound effects off: the music still comes back with a soft hit
+            events.append((h, music.make_sfx("boom", seed), 0.22, 0))
+        mixed = music.mix(voice, tl["total"], bed, self.opts.music_volume, events, music_env=env)
         raw = self.ep.audio_dir(lang) / "mix_raw.wav"
         music.write_stereo(raw, mixed)
         music.loudnorm(raw, mix_path)
         raw.unlink(missing_ok=True)
         self.ep.state.done(f"mix:{lang}", fp, credits=credits, music=pick["name"])
-        self.rep.ok(f"Mixed: voice + music + {len(events)} sound effects, loudness -14 LUFS")
+        drops = f", music drops before {len(reveals)} reveal(s)" if reveals else ""
+        self.rep.ok(f"Mixed: voice + music{drops} + {len(events)} sound(s), loudness -14 LUFS")
         self.rep.record("ok", "Music & SFX", pick["name"])
         return mix_path, credits, pick["name"]
 
@@ -489,47 +658,21 @@ class Pipeline:
             span = 0.4 / len(jobs)
             self.rep.check_stop()
             tl = self.timeline(lang)
-            clips = self.scene_clips(lang, fmt, tl, progress=(base, base + span * 0.7))
-            mix_path, credits, music_name = self.audio_mix(lang, tl)
-            size = self.out_size(fmt)
-            ass = None
-            if self.opts.captions:
-                ass = captions.write_ass(self.ep.captions_dir() / f"{lang}_{fmt}.ass", tl["words"], size, fmt, lang,
-                                         self.opts.caption_style, self.series.data.get("caption_accent", "yellow"),
-                                         total=tl["total"])
-            ass_text = ass.read_text(encoding="utf-8") if ass else ""
-            out = self.ep.video_path(lang, fmt)
-            n = len(sc["scenes"])
-            trans = [render.transition_for(s, i, n) for i, s in enumerate(sc["scenes"])]
-            durs = [s["dur"] for s in tl["scenes"]]
-            ranges = render.chunk_ranges(n)
-            chunk_paths, start, made = [], 0.0, 0
+            edit = self.plan_edit(lang, fmt, tl)
             label = f"{fmt.replace('x', ':')}, {'Farsi' if lang == 'fa' else 'English'}"
-            for k, (a, b) in enumerate(ranges):
-                self.rep.check_stop()
-                path = self.ep.dir / "render" / f"{lang}_{fmt}_{k:03d}.mp4"
-                last = k == len(ranges) - 1
-                fp = fingerprint([file_sig(c) for c in clips[a:b]], durs[a:b], trans[a:b], ass_text, round(start, 4),
-                                 size, last)
-                key = f"chunk:{lang}:{fmt}:{k:03d}"
-                if not self.ep.state.fresh(key, fp, [path]):
-                    if made == 0:
-                        self.rep.step(f"🎬 Final video {label}: {len(ranges)} part{'s' if len(ranges) > 1 else ''}")
-                    with Timer() as t:
-                        render.render_chunk(clips[a:b], durs[a:b], trans[a:b], ass, start, path, size, last)
-                    self.ep.state.done(key, fp)
-                    made += 1
-                    self.rep.ok(f"Part {k + 1}/{len(ranges)} saved to Drive ({t.label})")
-                chunk_paths.append(path)
-                start += sum(durs[a:b])
-                self.rep.progress(base + span * (0.7 + 0.25 * (k + 1) / len(ranges)))
-            fp = fingerprint([file_sig(c) for c in chunk_paths], file_sig(mix_path))
+            with self.rep.timed(f"🎞️ Scene clips ({label})"):
+                clips = self.scene_clips(lang, fmt, tl, edit, progress=(base, base + span * 0.85))
+            with self.rep.timed(f"🎵 Music & sound ({'Farsi' if lang == 'fa' else 'English'})"):
+                mix_path, credits, music_name = self.audio_mix(lang, tl, edit)
+            out = self.ep.video_path(lang, fmt)
+            fp = fingerprint([file_sig(c) for c in clips], file_sig(mix_path))
             key = f"video:{lang}:{fmt}"
             if not self.ep.state.fresh(key, fp, [out]):
                 title = sc.get("title_fa") if lang == "fa" and sc.get("title_fa") else sc.get("title", "")
-                render.mux(chunk_paths, mix_path, out, tl["total"], title)
+                with self.rep.timed(f"🔗 Join, no re-encoding ({label})"):
+                    render.mux(clips, mix_path, out, tl["total"], title)
                 self.ep.state.done(key, fp, credits=credits, music=music_name)
-                self.rep.ok(f"{out.name} ({_mmss(tl['total'])} video)")
+                self.rep.ok(f"{out.name} ({_mmss(tl['total'])} video, {len(clips)} clips joined without re-encoding)")
             outs.append(out)
             self.rep.progress(base + span)
         self.rep.record("ok", "Final video", f"{len(outs)} file(s)")
@@ -574,31 +717,53 @@ class Pipeline:
         return {"thumbnails": thumbs, "metadata": meta}
 
     # ------------------------------------------------------------------ all together
+    def all_voices(self) -> None:
+        for lang in self.opts.languages:
+            self.voices(lang)
+
     def make_video(self, final: bool = True) -> dict:
+        """Everything after the script. The voiceover is made at the same time as the pictures."""
+        import concurrent.futures  # noqa: PLC0415
+
         rep = self.rep
+        rep.timings.clear()
         with Timer() as total:
-            rep.progress(0.02, "Characters")
-            if self.opts.image_source == "mine":
-                self.my_images()
-            else:
-                self.character_pictures()
-                rep.progress(0.08, "Pictures")
-                self.scene_pictures()
-            rep.progress(0.35, "Hero clips")
-            self.hero_clips()
-            rep.progress(0.45, "Depth")
-            self.depth_maps()
-            rep.progress(0.5, "Voices")
-            for lang in self.opts.languages:
-                self.voices(lang)
+            rep.progress(0.02, "Pictures + voice")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                t_voice = time.time()
+                voice_job = pool.submit(self.all_voices)  # in parallel with the pictures
+                try:
+                    with rep.timed("🖼️ Pictures" + (" (your images)" if self.opts.image_source == "mine" else "")):
+                        if self.opts.image_source == "mine":
+                            self.my_images()
+                        else:
+                            self.character_pictures()
+                            rep.progress(0.08, "Pictures")
+                            self.scene_pictures()
+                    rep.progress(0.4, "Depth")
+                    with rep.timed("🌄 Depth maps"):
+                        self.depth_maps()
+                finally:
+                    voice_job.result()  # wait for the voice (and show its error, if any)
+                with rep.timed_lock():
+                    rep.timings.append(("🗣️ Voice (made at the same time)", time.time() - t_voice))
+            rep.progress(0.45, "Hero clips")
+            with rep.timed("🎬 Hero clips"):
+                self.hero_clips()
             videos = self.final_videos()
             rep.progress(0.96, "Thumbnail")
-            extra = self.thumbnails_and_text()
+            with rep.timed("🖼️ Thumbnail & text"):
+                extra = self.thumbnails_and_text()
         prof = config.gpu_profile()
         units = round(total.seconds / 3600 * prof.cu_per_hour, 2)
+        report = [(n, round(sec, 1)) for n, sec in rep.timings if sec >= 0.05]
+        rep.info("")
+        rep.info("⏱ Timing report:")
+        for line in rep.timing_report(total.seconds):
+            rep.info("   " + line)
         result = {"videos": [str(v) for v in videos], "thumbnails": [str(t) for t in extra["thumbnails"]],
                   "metadata": str(self.ep.export_dir / "metadata.md"), "minutes": round(total.seconds / 60, 1),
-                  "gpu": prof.name, "units": units, "length": self.opts.length}
+                  "gpu": prof.name, "units": units, "length": self.opts.length, "timings": report}
         write_json(self.ep.export_dir / "result.json", result)
         log_video_usage(self.series.name, self.ep.number, self.opts.length, prof.name, total.seconds, units)
         msg = (f"Done in {total.label} on {prof.name} (≈{units} compute units). "

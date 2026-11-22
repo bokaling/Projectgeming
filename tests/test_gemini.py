@@ -13,10 +13,14 @@ NIKOLA: It is alive. I can hear it thinking.
 NARRATOR: At midnight the speaker began to hum, and then it spoke in a voice nobody recognised."""
 
 
-def make(series_name="Gem", length="short"):
+LONGER = SCRIPT + "".join(f"\n[SCENE] a dark hallway number {k}\nNARRATOR: Something moved in the dark hallway {k}, "
+                          f"and the machine answered with a sound nobody had heard before." for k in range(3))
+
+
+def make(series_name="Gem", length="short", text=SCRIPT):
     series = project.Series.create(series_name)
     opts = project.EpisodeOptions(length=length, resolution="480p")
-    res = pipeline.gemini_prompts(series, opts, SCRIPT, Reporter(echo=False))
+    res = pipeline.gemini_prompts(series, opts, text, Reporter(echo=False))
     ep = series.episode(res["episode"])
     return series, ep, opts, res
 
@@ -109,7 +113,7 @@ def test_other_picture_types_become_png(offline, tmp_path):
     """Gemini saves .jfif; phones save .heic; .webp/.avif too. All are stored as PNG."""
     from PIL import features
 
-    _, ep, _, res = make()
+    _, ep, _, res = make(text=LONGER)
     total = res["pictures"]
     assert total >= 4
     src = tmp_path / "in"

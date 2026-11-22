@@ -47,8 +47,8 @@ def _people(series: Series, names: list[str]) -> list[dict]:
     return out
 
 
-def scene_prompt(series: Series, scene: dict, shot_index: int, length: str) -> str:
-    """A standalone Gemini prompt: scene, shot, lighting, mood, FULL character looks, aspect ratio."""
+def scene_prompt(series: Series, scene: dict, shot_index: int, length: str, mood_lock: str = "") -> str:
+    """A standalone Gemini prompt: scene, shot, mood lock, lighting, mood, FULL character looks + expression, aspect ratio."""
     from .planner import SHOTS  # noqa: PLC0415
 
     fr = frame_of(scene, shot_index)
@@ -59,10 +59,14 @@ def scene_prompt(series: Series, scene: dict, shot_index: int, length: str) -> s
     shot = fr.get("shot")
     if shot in SHOTS:
         parts.append(f"Shot: {SHOT_HINTS[shot] if user else SHOTS[shot][0]}.")
+    if mood_lock:
+        parts.append(f"Setting and look (keep the same in every picture): {mood_lock.strip().rstrip('.')}.")
     if scene.get("location"):
         parts.append(f"Place: {scene['location']}.")
     for c in people:  # the full look EVERY time, so the face stays the same in every picture
         parts.append(f"{c['name']}: {c['description']}.")
+    if people and fr.get("expression"):
+        parts.append(f"Facial expression: {fr['expression']}.")
     if not people and not user and not fr.get("show_character", True):
         parts.append("No people in the picture.")
     if fr.get("composition"):
@@ -91,7 +95,7 @@ def slots(series: Series, script: dict, length: str) -> list[Slot]:
                         for ln in sc.get("lines", [])) or sc.get("narration", "")
         for k in range(1 + len(sc.get("shots") or [])):
             n += 1
-            out.append(Slot(n, sc["id"], k, i, line, scene_prompt(series, sc, k, length)))
+            out.append(Slot(n, sc["id"], k, i, line, scene_prompt(series, sc, k, length, script.get("mood_lock", ""))))
     return out
 
 
@@ -148,16 +152,42 @@ def _mapping(ep: Episode) -> dict:
     return data
 
 
+NUMBERED = re.compile(r"^(?:scene|shot|image|img|pic|picture|frame|s|p|no|nr)?[ _\-#.]*0*(\d{1,3})(?:[ _\-.].*)?$")
+
+
 def _number(name: str) -> tuple[str, int] | None:
-    """('C', 1) for C1.png / character_1.jpg, ('', 3) for 3.png / scene_03.jpg, else None."""
-    stem = Path(name).stem.lower()
-    m = re.search(r"(?:^|[^a-z])c(?:har(?:acter)?)?[ _-]?(\d+)$", stem) or re.fullmatch(r"c(\d+)", stem)
+    """('C', 1) for C1.png / character_1.jpg, ('', 3) for 3.png / 03_taxi.jpg / scene_03.jpg, else None.
+
+    Names you didn't choose (Gemini_Generated_Image_…, IMG_20261122…, "download (2)") have no number:
+    those pictures are put in order by the time they were made.
+    """
+    stem = Path(name).stem.lower().strip()
+    if re.search(r"gemini|generated|\(\d+\)$|^(img|dsc|pxl|screenshot|photo)[_\- ]?\d{4,}", stem):
+        return None
+    m = re.fullmatch(r"c(?:har(?:acter)?)?[ _\-#]*0*(\d{1,2})(?:[ _\-].*)?", stem)
     if m:
         return "C", int(m.group(1))
-    nums = re.findall(r"\d+", stem)
-    if nums and not re.search(r"gemini|generated|image_[0-9a-f]{6,}", stem):
-        return "", int(nums[-1])
+    m = NUMBERED.fullmatch(stem)
+    if m:
+        return "", int(m.group(1))
     return None
+
+
+def order_keys(total: int, n_chars: int = 0) -> list[str]:
+    """The order of all pictures: character sheets first (C1, C2…), then scenes 1, 2, 3…"""
+    return [f"C{k}" for k in range(1, n_chars + 1)] + [str(n) for n in range(1, total + 1)]
+
+
+def _get(data: dict, key: str) -> str | None:
+    return (data["characters"] if key.startswith("C") else data["slots"]).get(key)
+
+
+def _put(data: dict, key: str, value: str | None) -> None:
+    box = data["characters"] if key.startswith("C") else data["slots"]
+    if value:
+        box[key] = value
+    else:
+        box.pop(key, None)
 
 
 def _open_any(src: Path):
@@ -237,15 +267,22 @@ def _is_png(p: Path) -> bool:
         return fh.read(8) == b"\x89PNG\r\n\x1a\n"
 
 
-def add_images(ep: Episode, files: list[str | Path], total: int) -> list[str]:
-    """Copy your files into my_images/ and match them to picture numbers. Returns messages."""
+def add_images(ep: Episode, files: list[str | Path], total: int, times: dict | None = None,
+               n_chars: int = 0) -> list[str]:
+    """Copy your files into my_images/ (as PNG) and match them to pictures. Returns messages.
+
+    A number in the file name decides (1.png, C1.png). No number: oldest first by `times`
+    (file name → when the file was made, from your browser or Google Drive), filling the
+    character sheets C1, C2… first and then scenes 1, 2, 3… Without times: the order you picked them in.
+    """
     d = folder(ep)
     data = _mapping(ep)
     used = set(data["slots"].values())
     msgs = []
-    unnumbered = []
+    unnumbered = []  # (time or None, position, stored name)
     converted = []
-    for f in files:
+    times = {str(k): v for k, v in (times or {}).items()}
+    for pos, f in enumerate(files):
         f = Path(f)
         if f.suffix.lower() not in IMAGE_EXT:
             msgs.append(f"Skipped {f.name} (not a picture).")
@@ -263,13 +300,23 @@ def add_images(ep: Episode, files: list[str | Path], total: int) -> list[str]:
         elif num and 1 <= num[1] <= total:
             data["slots"][str(num[1])] = dst.name
         else:
-            unnumbered.append(dst.name)
+            t = times.get(f.name, times.get(Path(f).name))
+            unnumbered.append((float(t) if t is not None else None, pos, dst.name))
         used.add(dst.name)
-    free = [n for n in range(1, total + 1) if str(n) not in data["slots"]]
-    for name, n in zip(unnumbered, free):  # no number in the name: next free pictures, in order
-        data["slots"][str(n)] = name
-    if len(unnumbered) > len(free):
-        msgs.append(f"{len(unnumbered) - len(free)} picture(s) had no free number left.")
+    if unnumbered:
+        timed = all(t is not None for t, _, _ in unnumbered)
+        unnumbered.sort(key=lambda x: (x[0], x[1]) if timed else x[1])  # oldest first
+        free = [k for k in order_keys(total, n_chars) if not _get(data, k)]
+        for (_, _, name), key in zip(unnumbered, free):  # character sheets first, then scenes
+            _put(data, key, name)
+        if len(unnumbered) > len(free):
+            msgs.append(f"{len(unnumbered) - len(free)} picture(s) had no free place left.")
+        if len(unnumbered) > 1:
+            msgs.append(f"🕒 {len(unnumbered)} pictures put in order by the time they were made (oldest first"
+                        + (", character sheets first" if n_chars else "") + "). Check the order below."
+                        if timed else
+                        f"📋 {len(unnumbered)} pictures put in the order you selected them (your browser didn't "
+                        "share the file times). Check the order below and fix it with ⬆️ ⬇️.")
     write_json(ep.dir / "my_images.json", data)
     if converted:
         names = ", ".join(converted[:3]) + (f" and {len(converted) - 3} more" if len(converted) > 3 else "")
@@ -277,13 +324,18 @@ def add_images(ep: Episode, files: list[str | Path], total: int) -> list[str]:
     return msgs
 
 
-def scan_folder(ep: Episode, total: int) -> list[str]:
-    """Pictures you put into the Drive folder (e.g. from your phone) that aren't matched yet."""
+def scan_folder(ep: Episode, total: int, n_chars: int = 0) -> list[str]:
+    """Pictures you put into the Drive folder (e.g. from your phone) that aren't matched yet.
+
+    Same rules as uploading; the order comes from the files' times in Google Drive (oldest first).
+    """
     data = _mapping(ep)
     known = set(data["slots"].values()) | set(data["characters"].values())
-    new = sorted((p for p in folder(ep).iterdir() if p.suffix.lower() in IMAGE_EXT and p.name not in known),
-                 key=lambda p: p.name.lower())
-    return add_images(ep, new, total) + ([f"Found {len(new)} new picture(s) in your Drive folder."] if new else [])
+    new = [p for p in folder(ep).iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXT and p.name not in known]
+    new.sort(key=lambda p: (p.stat().st_mtime, p.name.lower()))
+    times = {p.name: p.stat().st_mtime for p in new}
+    return add_images(ep, new, total, times, n_chars) + ([f"Found {len(new)} new picture(s) in your Drive folder."]
+                                                         if new else [])
 
 
 def set_image(ep: Episode, number: int, file: str | Path) -> None:
@@ -298,17 +350,42 @@ def set_image(ep: Episode, number: int, file: str | Path) -> None:
     write_json(ep.dir / "my_images.json", data)
 
 
-def move(ep: Episode, number: int, to: int, total: int) -> None:
-    """Move a picture to another number (the two swap places)."""
-    if not (1 <= to <= total) or to == number:
+def move(ep: Episode, number: int | str, to: int | str, total: int, n_chars: int = 0) -> None:
+    """Move a picture to another place (the two swap). Places: scene numbers 1, 2… or character sheets "C1"…"""
+    keys = order_keys(total, n_chars)
+    a_key, b_key = str(number), str(to)
+    if a_key not in keys or b_key not in keys or a_key == b_key:
         return
     data = _mapping(ep)
-    a, b = data["slots"].get(str(number)), data["slots"].get(str(to))
-    for key, val in ((str(to), a), (str(number), b)):
-        if val:
-            data["slots"][key] = val
-        else:
-            data["slots"].pop(key, None)
+    a, b = _get(data, a_key), _get(data, b_key)
+    _put(data, b_key, a)
+    _put(data, a_key, b)
+    write_json(ep.dir / "my_images.json", data)
+
+
+def step(ep: Episode, key: int | str, delta: int, total: int, n_chars: int = 0) -> None:
+    """⬆️ / ⬇️: swap with the picture before / after (character sheets come before scene 1)."""
+    keys = order_keys(total, n_chars)
+    if str(key) in keys:
+        i = keys.index(str(key)) + delta
+        if 0 <= i < len(keys):
+            move(ep, key, keys[i], total, n_chars)
+
+
+def character_image(ep: Episode, k: int) -> Path | None:
+    name = _mapping(ep)["characters"].get(f"C{k}")
+    p = folder(ep) / name if name else None
+    return p if p and p.exists() else None
+
+
+def set_character_image(ep: Episode, k: int, file: str | Path) -> None:
+    f = Path(file)
+    if f.suffix.lower() not in IMAGE_EXT:
+        raise ValueError(f"{f.name} is not a picture (use PNG, JPG, JFIF, WEBP, HEIC or AVIF).")
+    dst = folder(ep) / f"C{k}_{f.stem}.png"
+    _store(f, dst)
+    data = _mapping(ep)
+    data["characters"][f"C{k}"] = dst.name
     write_json(ep.dir / "my_images.json", data)
 
 
