@@ -16,7 +16,7 @@ from . import config
 
 RLE, PDF = "‫", "‬"
 ACCENTS = {"yellow": (255, 230, 0), "pink": (255, 46, 151), "green": (57, 255, 136), "cyan": (0, 229, 255),
-           "purple": (176, 92, 255)}
+           "purple": (176, 92, 255), "red": (255, 59, 48)}
 STYLES = {"pop": "Big pop words (1-3 at a time, key word highlighted)", "highlight": "Word highlight (TikTok)",
           "karaoke": "Karaoke fill", "plain": "Simple lines"}
 HOOK_SECONDS = 3.0  # on-screen hook text at the top
@@ -141,8 +141,9 @@ def hook_event(text: str, lang: str, seconds: float = HOOK_SECONDS) -> tuple[flo
 
 
 def caption_events(words: list[dict], size: tuple[int, int], fmt: str, lang: str, style: str = "highlight",
-                   accent: str = "yellow", uppercase: bool = True, total: float | None = None) -> list[tuple]:
-    """Caption events: (start, end, style name, text)."""
+                   accent: str = "yellow", uppercase: bool = True, total: float | None = None,
+                   single: bool = False) -> list[tuple]:
+    """Caption events: (start, end, style name, text). single = one big word at a time (story format)."""
     rtl = is_rtl(lang)
     acc = ACCENTS.get(accent, ACCENTS["yellow"])
     hl = ass_color(acc)
@@ -151,7 +152,7 @@ def caption_events(words: list[dict], size: tuple[int, int], fmt: str, lang: str
     if style == "pop":
         from .beats import is_key, key_word_index  # noqa: PLC0415
 
-        groups = group_pop(words, fmt, lang)
+        groups = [[w] for w in words] if single else group_pop(words, fmt, lang)
         for gi, g in enumerate(groups):
             start = g[0]["s"]
             nxt = groups[gi + 1][0]["s"] if gi + 1 < len(groups) else (total or g[-1]["e"] + 0.5)

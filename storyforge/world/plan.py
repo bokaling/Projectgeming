@@ -18,6 +18,7 @@ sensible one, numbers clamped, scene count = script scene count) and lists every
 from __future__ import annotations
 
 import copy
+import functools
 import re
 
 from . import assets
@@ -91,11 +92,26 @@ def _short(text: str, words: int) -> str:
     return " ".join(w[:words]) if len(w) > words else t
 
 
+@functools.lru_cache(maxsize=256)
+def _has_path(asset: str) -> bool:
+    """Things that carry a flow along themselves (pipes, wires, a blood vessel, the intestine)."""
+    if assets.REGISTRY[asset].name in ("pipe", "wire"):
+        return True
+    try:
+        return bool(assets.build(asset).paths.get("flow"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, list[str]]:
     """Clean and repair a plan. Returns (plan, fixes). Never raises for bad content."""
     fixes: list[str] = []
     p = copy.deepcopy(plan) if isinstance(plan, dict) else {}
     out = {"title": str(p.get("title") or "").strip(), "style": p.get("style") if isinstance(p.get("style"), dict) else {}}
+    from . import presets  # noqa: PLC0415
+
+    out["preset"] = presets.resolve(p.get("preset")) or presets.guess([out["title"]] + list(scenes_text or []) + [
+        str(s.get("text", "")) for s in (p.get("scenes") or []) if isinstance(s, dict)])
     # areas
     areas, seen = [], set()
     for a in p.get("areas") or []:
@@ -221,7 +237,7 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
             act = {"do": do, "target": tg}
             if a.get("at") is not None:
                 act["at"] = a["at"] if isinstance(a["at"], NUM) else str(a["at"])
-            for k in ("dur", "from", "to_value", "speed", "stagger"):
+            for k in ("dur", "from", "to_value", "speed", "stagger", "y"):
                 if isinstance(a.get(k), NUM):
                     act[k] = float(a[k])
             if do in ("flow", "sparks", "move"):
@@ -232,8 +248,8 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
                     tt = target(to, "")
                     if tt:
                         act["to"] = tt
-                if do in ("flow", "sparks") and "to" not in act and assets.REGISTRY[next(
-                        o["asset"] for o in objects if o["id"] == tg.split(".")[0])].name not in ("pipe", "wire"):
+                if do in ("flow", "sparks") and "to" not in act and not _has_path(next(
+                        o["asset"] for o in objects if o["id"] == tg.split(".")[0])):
                     fixes.append(f"scene {i + 1}: '{do}' from {tg} has no 'to': it flows upward instead")
             elif isinstance(a.get("to"), NUM):
                 act["to_value"] = float(a["to"])

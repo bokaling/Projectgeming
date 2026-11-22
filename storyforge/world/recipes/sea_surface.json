@@ -1,0 +1,37 @@
+{
+ "name": "sea_surface",
+ "about": "the sea surface seen from below/above: a big see-through sheet of water (use y for its height)",
+ "tags": [
+  "water",
+  "nature"
+ ],
+ "aliases": [
+  "waves",
+  "ocean_surface",
+  "water_surface"
+ ],
+ "parts": [
+  {
+   "shape": "box",
+   "size": [
+    70,
+    0.3,
+    50
+   ],
+   "pos": [
+    0,
+    0.15,
+    0
+   ],
+   "color": "#5fc4e8",
+   "opacity": 0.32,
+   "name": "surface",
+   "shell": true
+  }
+ ],
+ "label": [
+  0,
+  1.0,
+  0
+ ]
+}

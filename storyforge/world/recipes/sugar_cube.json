@@ -1,0 +1,49 @@
+{
+ "name": "sugar_cube",
+ "about": "a white sugar cube",
+ "tags": [
+  "food",
+  "body"
+ ],
+ "aliases": [
+  "sugar",
+  "sugar_cubes",
+  "cube_of_sugar"
+ ],
+ "parts": [
+  {
+   "shape": "box",
+   "size": [
+    0.8,
+    0.8,
+    0.8
+   ],
+   "pos": [
+    0,
+    0.4,
+    0
+   ],
+   "color": "#f7f5ef"
+  },
+  {
+   "shape": "box",
+   "size": [
+    0.82,
+    0.05,
+    0.82
+   ],
+   "pos": [
+    0,
+    0.79,
+    0
+   ],
+   "color": "#ffffff",
+   "emissive": 0.2
+  }
+ ],
+ "label": [
+  0,
+  1.4,
+  0
+ ]
+}

@@ -12,7 +12,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import beats, captions, characters, config, paste, publish, render, script
+from . import beats, captions, characters, config, formats, paste, publish, render, script
 from .audio import music, tts
 from .messages import FriendlyError, Reporter, Timer
 from .paste import NARRATOR
@@ -247,10 +247,11 @@ class Pipeline:
 
         # explainers end on an overview of the whole system that flies back to shot 1 (the video loops);
         # "Part X" end cards are only for story series (option)
-        end = render.snap(END_CARD if self.opts.end_card else END_OVERVIEW)
+        card = self.opts.end_card or formats.get(self.video_format())["ending"] == "card"  # story series: "Part X"
+        end = render.snap(END_CARD if card else END_OVERVIEW)
         total = round(t + end, 3)
         tl = {"scenes": scenes, "words": words, "total": total,
-              "end": {"start": round(t, 3), "dur": end, "kind": "card" if self.opts.end_card else "overview"},
+              "end": {"start": round(t, 3), "dur": end, "kind": "card" if card else "overview"},
               "beats": beats.find_beats(words, total, self.opts.length)}
         write_json(adir / "timeline.json", tl)
         return tl
@@ -303,9 +304,14 @@ class Pipeline:
         items = [("end", tl["end"]["start"], tl["end"]["start"] + tl["end"]["dur"])]
         items = [(s["id"], world.scenes[k]["start"], world.scenes[k]["end"]) for k, s in enumerate(self.script["scenes"])] + items
         events = []
-        if self.opts.captions:
+        words_mode = formats.get(self.video_format())["captions"] == "words"
+        if self.opts.captions and words_mode:  # story: single big words, red key words
+            events = captions.caption_events(tl["words"], size, fmt, lang, style="pop", accent="red", total=tl["total"],
+                                             single=True)
+        elif self.opts.captions:
             events = captions.keyword_events(self.keyword_items(world), lang, tl["total"])
-        head = captions.keyword_header(size, fmt, lang)
+        head = captions.header(size, fmt, lang, style="pop", accent="red") if words_mode else \
+            captions.keyword_header(size, fmt, lang)
         outs, todo = [], []
         for k, (cid, t0, t1) in enumerate(items):
             out = self.ep.clip_path(cid, fmt, lang)
@@ -354,7 +360,14 @@ class Pipeline:
         return outs
 
     def end_card_text(self, lang: str) -> str:
-        return publish.end_card_text(self.ep.number, lang, self.opts.final_episode) if self.opts.end_card else ""
+        card = self.opts.end_card or formats.get(self.video_format())["ending"] == "card"
+        return publish.end_card_text(self.ep.number, lang, self.opts.final_episode) if card else ""
+
+    def video_format(self) -> str:
+        """The format of this video (the user's choice, or guessed from the title and the first lines)."""
+        sc = self.script or {}
+        text = " ".join([sc.get("title", "")] + [s.get("narration", "") for s in sc.get("scenes", [])[:2]])
+        return formats.resolve(self.opts.video_format, text)
 
     def stills(self, fmt: str, lang: str, tl: dict, plan: dict, at: float = 0.6, only=None) -> list[Path]:
         """One still frame per scene (for the app, the quality check and the thumbnail). only = these shots."""
@@ -384,7 +397,9 @@ class Pipeline:
         machine hums, bubbling, sparks, booms on reveals). Nothing above 8 kHz, -14 LUFS."""
         sc = self.script
         plan = plan or {"scenes": []}
-        mood = self.opts.music_mood if self.opts.music_mood != "auto" else sc.get("music_mood", "explainer")
+        fmood = formats.get(self.video_format())["mood"]
+        mood = self.opts.music_mood if self.opts.music_mood != "auto" else (
+            fmood if fmood != "auto" and sc.get("music_mood", "explainer") == "explainer" else sc.get("music_mood", "explainer"))
         seed = characters.stable_seed(f"{self.series.slug}/{self.ep.number}/music")
         prev = [p.get("music", "") for p in self.series.previous_summaries(self.ep.number, 3)]
         pick = music.choose_music(mood, seed, avoid=prev)
@@ -794,7 +809,8 @@ def generate(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, num
         texts = []
         for tp in topics:
             rep.step(f"✍️ Writing the script: {tp}")
-            txt, provider = script.write_from_topic(tp, opts.length, (opts.languages or ["en"])[0], opts.creator_note, rep)
+            txt, provider = script.write_from_topic(tp, opts.length, (opts.languages or ["en"])[0], opts.creator_note, rep,
+                                                    opts.video_format)
             rep.ok(f"Script written by {provider}")
             texts.append(txt)
         opts.source = "paste"
@@ -817,7 +833,8 @@ def prepare(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, numb
     if opts.source == "ai" or not (text or "").strip():
         topic = (opts.idea or "").split("=====")[0].strip()
         rep.step(f"✍️ Writing the script: {topic}")
-        text, provider = script.write_from_topic(topic, opts.length, (opts.languages or ["en"])[0], opts.creator_note, rep)
+        text, provider = script.write_from_topic(topic, opts.length, (opts.languages or ["en"])[0], opts.creator_note, rep,
+                                                 opts.video_format)
         rep.ok(f"Script written by {provider}")
         opts.source = "paste"
     first = (paste.split_scripts(text) or [""])[0]

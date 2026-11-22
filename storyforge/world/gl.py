@@ -385,8 +385,9 @@ class Renderer:
                 "u_bg_bottom": hex_rgb(st["horizon"]), "u_res": (float(self.W), float(self.H)),
                 "u_nl": len(fr.lights[:4])}
         dist = float(np.linalg.norm(np.asarray(fr.eye) - np.asarray(fr.target)))
-        vals["u_fog_near"] = max(20.0, dist * 1.6)
-        vals["u_fog_far"] = max(60.0, dist * 4.5)
+        fog = float(st.get("fog", 1.0))  # < 1 = thicker air (under water, inside the body)
+        vals["u_fog_near"] = max(20.0, dist * 1.6) * fog
+        vals["u_fog_far"] = max(60.0, dist * 4.5) * fog
         for k, v in vals.items():
             if k in prog:
                 prog[k].value = v

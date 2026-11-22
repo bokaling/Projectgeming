@@ -11,13 +11,17 @@ import json
 import re
 
 from .. import beats, llm
-from . import assets, examples
+from . import assets, examples, presets
 from . import plan as P
 
 PLAN_SYSTEM = """You are the 3D director of a viral low poly "how it works" explainer channel (think clean low poly 3D, dark teal studio, glowing grid floor).
 You turn a narrated script into ONE continuous 3D world and a shot plan. The camera flies smoothly from area to area.
 Rules:
-- Use ONLY assets from the catalog (exact names). Compose new things from simple ones (crate, cylinder_block, ball, pipe, arrow…) with params, color and scale.
+- Set "preset" (the place): one of PRESETS. It picks the ground, props, light, background and air (ocean = under water, body = inside the body).
+- Use assets from the catalog (exact names). If the story's main object is missing (a submarine, a pyramid), use a short new
+  snake_case name and add "about": "what it looks like"; it will be designed as a new low poly object. Smaller things:
+  compose from simple ones (crate, cylinder_block, ball, pipe, arrow…) with params, color and scale.
+- Things in water, air or space can have "y" (height). A "move" can have "y" too: dive, rise, climb a ramp.
 - Put the story's places in areas, in story order. Objects stay in their area. Reuse objects in later scenes instead of making copies.
 - pos is [x, z] in meters inside the area (x to the right, z toward the viewer), ground is y = 0. Keep objects within 12 m of the area centre and don't overlap them. Use count + layout + spacing for groups (5 cows in a row).
 - Tiny things (bacteria, cells, molecules, atoms) go in their own area with "micro": true; reach it with camera "zoom_into" on the container in the scene before.
@@ -28,7 +32,7 @@ Rules:
 - The camera frames its target automatically (it fills the picture); add the things the line talks about as actions or
   labels in the same area so they are framed together. Use close_up for details, wide moves only for overviews.
 - Exactly one plan scene per script scene, same order.
-Reply with JSON only."""
+Reply with JSON only.""".replace("PRESETS", ", ".join(presets.PRESETS))
 
 
 def _scene_texts(script: dict) -> list[str]:
@@ -40,14 +44,18 @@ def _fingerprint(texts: list[str]) -> str:
 
 
 def example_for(script: dict) -> dict | None:
-    """The built-in demo plan when the script is the built-in demo script."""
+    """A built-in demo plan when the script is one of the built-in demo scripts (or its first scenes)."""
     from .. import paste  # noqa: PLC0415
 
-    parsed = paste.parse_lines(examples.COW_POOP_SCRIPT)
-    demo = [" ".join(ln["text"] for ln in s["lines"]) for s in paste.to_scenes(parsed, "short")]
     mine = _scene_texts(script)
-    same = bool(mine) and [_fingerprint([t]) for t in demo[: len(mine)]] == [_fingerprint([t]) for t in mine]
-    return examples.COW_POOP_PLAN if same else None  # the whole demo, or its first scenes (Quick test)
+    if not mine:
+        return None
+    for demo_script, demo_plan in examples.EXAMPLES:
+        parsed = paste.parse_lines(demo_script)
+        demo = [" ".join(ln["text"] for ln in s["lines"]) for s in paste.to_scenes(parsed, "short")]
+        if [_fingerprint([t]) for t in demo[: len(mine)]] == [_fingerprint([t]) for t in mine]:
+            return demo_plan
+    return None
 
 
 CHUNK = 14  # long videos are planned in parts of this many shots (one request each)
@@ -195,11 +203,15 @@ def merge_part(world: dict, part: dict, n: int) -> None:
 
 def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str, list[str]]:
     """→ (validated plan, who made it, fixes)."""
+    from . import builder  # noqa: PLC0415
+
+    builder.load_all()  # objects designed before (Drive library)
     texts = _scene_texts(script)
     raw, provider = example_for(script), "Built-in example plan"
     if raw is None:
         try:
             provider, raw = ai_plan(script, length, rep)
+            builder.ensure_objects(raw, rep)  # objects the library doesn't have: designed by the AI as recipes
         except Exception as exc:  # noqa: BLE001
             from ..messages import StopRequested  # noqa: PLC0415
 

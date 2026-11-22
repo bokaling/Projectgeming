@@ -10,6 +10,19 @@ Plus the thumbnail, title, description, hashtags and YouTube chapters. **Everyth
 
 - 🎬 **Short** (~60 s, 9:16, 1080×1920) or **Long** (~10 min, 16:9, 1920×1080, with chapters)
 - 🧊 **The look:** simple shapes, flat colors, soft shadows, a dark teal background and a glowing grid floor
+- 🌍 **19 world presets**, picked from your words (or set `"preset"` in the plan): studio, farm, city, house
+  interior, factory, lab, hospital, space, planet surface, ocean / underwater, inside the body, desert, forest, snow,
+  ancient city, battlefield, highway, school, office. Each has its own ground, props, people, light, background and
+  things in the air (bubbles under water, dust in the desert, snow, stars, blood cells). No grid where it doesn't fit.
+- 🎞️ **6 video formats** (Settings → *Video format*, or "auto" from the title): **How it works**, **What happens
+  if**, **How it's made**, **History of**, **Top 5/10** and **Story**. Each has its own script rules, pacing, music
+  mood and ending. Story uses original blocky characters with faces (happy, sad, angry, surprised, scared), one
+  big word at a time as captions with the key words in red, and a "Part X" end card.
+- 🧱 **New objects on demand:** if your topic needs something the library doesn't have (a submarine, a pyramid),
+  the free Gemini key designs it as a low poly recipe of simple shapes. The app checks it, builds it and saves it
+  to `StoryForge/library/objects/` on Drive, so next time it is already there. Without a key the closest object is
+  used. 16 recipes come built in (submarine, pyramid, stone block, sled, ramp, reed boat, palm tree, sea surface,
+  sugar cube, glucose, stomach, intestine, blood vessel, pancreas, insulin, fat cell).
 - 🎥 **Camera:** every shot is framed automatically: the thing the line talks about fills the picture, fully
   visible, between the captions (top 15 %) and the app buttons (bottom 20 %). Orbit, push in, follow, low angle,
   close up, cutaway (cut open a tank), x-ray (see through walls), zoom into tiny things like bacteria
@@ -23,7 +36,7 @@ Plus the thumbnail, title, description, hashtags and YouTube chapters. **Everyth
   ("the agitator **spins**" → it spins on "spins")
 - 🔑 **Keyword captions** at the top, colored by meaning: 🔴 red = problem, 🟠 orange = part name,
   ⚪ white = number
-- 🧱 **126 low poly objects** built in code: animals, people, buildings, factories, vehicles, pumps, gears,
+- 🧱 **150+ low poly objects** built in code: animals, people, buildings, factories, vehicles, pumps, gears,
   engines, turbines, tanks, pipes, fire, smoke, electricity, cells, bacteria, viruses, molecules, atoms, DNA,
   planets, tools, money, charts, arrows, glass containers and cross sections. Size, color and count can change.
 - 🔧 **Fix a shot by typing** ("make the tank bigger", "show the gas flowing"): only that shot is rendered again
@@ -76,6 +89,12 @@ something new every 5 seconds, real numbers, a satisfying payoff and a cliffhang
 simple starter script to edit.
 
 ---
+
+### 🎥 The 4 built-in demos
+
+Paste one of these scripts (they are in `storyforge/world/examples.py`) to get a hand-made plan without any key:
+*How Cow Poop Becomes Electricity* (farm), *How a Submarine Dives* (ocean), *What Happens Inside Your Body When
+You Eat Sugar* (inside the body) and *How the Pyramids Were Built* (ancient).
 
 ## 🎬 The 4 steps in the app
 
@@ -215,7 +234,7 @@ MyDrive/StoryForge/
 | Part | Tool | License |
 |---|---|---|
 | 3D renderer | moderngl (OpenGL 3.3, EGL on the GPU, Mesa on the CPU) | MIT |
-| 3D objects | Built-in procedural low poly library, 126 objects (`storyforge/world/assets.py`, `assets_more.py`) | Yours |
+| 3D objects | Built-in procedural low poly library, 150+ objects (`storyforge/world/assets.py`, `assets_more.py`, `recipes/`) | Yours |
 | Voices | Kokoro 82M (+ Kokoro ONNX backup), Edge TTS / Piper (Farsi), your voice | Apache 2.0 / see above |
 | Captions | FFmpeg + libass, Vazirmatn / Montserrat / Anton | LGPL / SIL OFL |
 | Music & SFX | Generated in code | Yours |

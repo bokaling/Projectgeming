@@ -18,7 +18,8 @@ from . import assets
 FARM = {"cow", "pig", "sheep", "chicken", "horse", "barn", "manure", "tractor", "scraper", "hay_bale", "crops", "silo"}
 TOWN = {"house", "skyscraper", "tree", "car", "bus"}
 NO_PAD = {"pad", "ground", "terrain", "water", "platform", "wire", "power_line", "cloud", "sun", "planet", "pipe",
-          "cable", "chain", "belt"}
+          "cable", "chain", "belt", "sea_surface"}
+FLOATERS = {"fish", "blood_cell", "cell", "glucose", "insulin", "smoke_cloud"}  # props that hang in the water/air
 PROPS = {
     "farm": [("hay_bale", {}), ("bucket", {}), ("hay_bale", {}), ("bucket", {"color": "#d9534f"}), ("crate", {})],
     "industry": [("barrel", {}), ("crate", {}), ("barrel", {"color": "#f28c28"}), ("bucket", {"color": "#f4c430"})],
@@ -85,10 +86,16 @@ def dress(world) -> list[dict]:
         margin = 2.6
         cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
         w, d = hi[0] - lo[0] + 2 * margin, hi[2] - lo[2] + 2 * margin
+        look = getattr(world, "look", {}) or {}
+        if look.get("base", "x") is None:
+            continue  # space: no ground, things float in the void
         pad_color = {"farm": "dirt", "town": "grass", "industry": "concrete"}[kind]
-        out.append({"asset": "pad", "area": aid, "at": (cx, 0.0, cz), "params": {"w": round(w, 2), "d": round(d, 2),
-                                                                                 "color": pad_color}})
-        rects.append((cx, cz, w, d, kind))
+        if getattr(world, "preset", "studio") not in ("studio", "farm") and look.get("pad"):
+            pad_color = look["pad"]
+        if not look.get("natural"):  # open ground (sand, sea floor…) needs no pad, plate or roads
+            out.append({"asset": "pad", "area": aid, "at": (cx, 0.0, cz),
+                        "params": {"w": round(w, 2), "d": round(d, 2), "color": pad_color}})
+            rects.append((cx, cz, w, d, kind))
         rng = _rng(aid, kind)
 
         def free(x, z, r=0.7):
@@ -110,22 +117,29 @@ def dress(world) -> list[dict]:
             if free(x, z) and all(math.hypot(x - a, z - b) > 1.6 for a, b in spots):
                 spots.append((x, z))
         props = PROPS[kind]
+        if getattr(world, "preset", "studio") not in ("studio", "farm") and look.get("props"):
+            props = [(a, {}) for a in look["props"]]
         for k, (x, z) in enumerate(spots[:5]):
             asset, params = props[k % len(props)]
-            out.append({"asset": asset, "area": aid, "at": (x, 0.0, z), "rot": float(rng.uniform(0, 360)),
+            y = float(rng.uniform(1.2, 4.5)) if asset in FLOATERS else 0.0
+            out.append({"asset": asset, "area": aid, "at": (x, y, z), "rot": float(rng.uniform(0, 360)),
                         "params": params})
-        for k, (x, z) in enumerate(spots[5:5 + len(PEOPLE[kind])]):
+        themed = getattr(world, "preset", "studio") not in ("studio", "farm")
+        people = look["people"] if themed and "people" in look else PEOPLE[kind]
+        for k, (x, z) in enumerate(spots[5:5 + len(people)]):
             yaw = math.degrees(math.atan2(-(cz - z), cx - x))  # look toward the middle of the area
             out.append({"asset": "person", "area": aid, "at": (x, 0.0, z), "rot": yaw,
-                        "params": {**PEOPLE[kind][k], "seed": k + 1}})
-        if kind != "town":  # a fence or railing along the back, lamps at the back corners
-            fence = "fence" if kind == "farm" else "railing"
+                        "params": {**people[k], "seed": k + 1}})
+        fence = "fence" if kind == "farm" else "railing"
+        if themed and "fence" in look:
+            fence = look["fence"]
+        if kind != "town" and fence:  # a fence or railing along the back, lamps at the back corners
             n = max(1, int(w // 6))
             for k in range(n):
                 x = cx - w / 2 + 3 + k * 6
                 if free(x, cz - d / 2 + 0.3, 0.2):
                     out.append({"asset": fence, "area": aid, "at": (x, 0.0, cz - d / 2 + 0.3), "params": {"length": 6.0}})
-        for x in (cx - w / 2 + 0.6, cx + w / 2 - 0.6):
+        for x in ((cx - w / 2 + 0.6, cx + w / 2 - 0.6) if not (themed and look.get("lamps") is False) else ()):
             if free(x, cz - d / 2 + 0.6, 0.3):
                 out.append({"asset": "lamp_post", "area": aid, "at": (x, 0.0, cz - d / 2 + 0.6), "rot": -90.0,
                             "params": {}})
@@ -136,6 +150,8 @@ def dress(world) -> list[dict]:
         z1 = max(r[1] + r[3] / 2 for r in rects) + 10
         kinds = [r[4] for r in rects]
         base = "#5f7a4c" if ("farm" in kinds or "town" in kinds) else "#6d7377"
+        if getattr(world, "preset", "studio") not in ("studio", "farm") and (getattr(world, "look", {}) or {}).get("base"):
+            base = world.look["base"]
         out.append({"asset": "ground_plate", "area": world.plan["areas"][0]["id"], "at": ((x0 + x1) / 2, 0.0, (z0 + z1) / 2),
                     "params": {"w": round(x1 - x0, 1), "d": round(z1 - z0, 1), "color": base}})
         order = sorted(rects, key=lambda r: r[0])
@@ -146,6 +162,8 @@ def dress(world) -> list[dict]:
                             "at": ((xa + xb) / 2, 0.0, (a[1] + b[1]) / 2),
                             "params": {"w": round(xb - xa + 0.4, 2), "d": 3.2, "color": "gravel"}})
     for inst in world.insts:  # stands under pipes that run low over the ground
+        if (getattr(world, "look", {}) or {}).get("natural"):
+            break
         path = inst.model.paths.get("flow") if inst.asset == "pipe" and inst.model.parts and \
             inst.model.parts[0].name == "pipe" else None
         if not path:

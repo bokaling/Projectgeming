@@ -15,6 +15,7 @@ from ..messages import FriendlyError, explain
 from ..project import EpisodeOptions, Series, list_series, read_json, slugify, write_json
 from .jobs import JOBS
 from . import status
+from .. import formats
 from .theme import CSS, HEAD, build_theme
 
 NEW = "__new__"
@@ -142,19 +143,19 @@ def series_choices():
     return items + [("➕ New series", NEW)]
 
 
-def opts_from(text, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_card, final, qc,
+def opts_from(text, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_card, final, qc, fmt="auto",
               source="paste") -> EpisodeOptions:
     return EpisodeOptions.from_dict({
         "script_text": text or "", "idea": idea or "", "creator_note": note or "", "languages": langs or ["en"],
         "length": length, "resolution": res, "captions": bool(cap_on), "music_mood": mood, "music_volume": float(vol),
         "sfx": bool(sfx), "end_card": bool(end_card), "final_episode": bool(final), "quality_check": bool(qc),
-        "source": source,
+        "source": source, "video_format": fmt or "auto",
     })
 
 
 def opts_to_values(o: EpisodeOptions):
     return [o.script_text, o.idea, o.creator_note, o.languages, o.length, o.resolution, o.captions, o.music_mood,
-            o.music_volume, o.sfx, o.end_card, o.final_episode, o.quality_check]
+            o.music_volume, o.sfx, o.end_card, o.final_episode, o.quality_check, o.video_format]
 
 
 def add_style_line(text: str, style: str) -> str:
@@ -246,6 +247,8 @@ def build_app():
                             length = gr.Radio([("⚡ Short · ~60 s · 9:16 · 1080×1920", "short"),
                                                ("🎬 Long · ~10 min · 16:9 · 1920×1080 · chapters", "long")],
                                               value=default_opts.length, show_label=False)
+                            fmt_dd = gr.Dropdown(formats.CHOICES, value=default_opts.video_format,
+                                                 label="🎞️ Video format (how it works, what happens if, story…)")
                         with gr.Group(elem_classes="sf-card"):
                             doctor_box = gr.HTML(doctor.report_html(doctor.Report()))
                             with gr.Row(elem_classes="sf-row-stack"):
@@ -428,7 +431,7 @@ def build_app():
                             show_progress="hidden")
 
         # ------------------------------------------------------------ wiring
-        settings = [paste_box, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_cb, final_cb, qc_cb]
+        settings = [paste_box, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_cb, final_cb, qc_cb, fmt_dd]
         refreshers = [r_script, r_plan, r_export]
 
         JOB_BUTTONS = {"gen": (gen_btn, "🚀 Make the video"), "plan": (plan_btn, "🧭 Plan first (see every shot)"),
@@ -610,20 +613,20 @@ def build_app():
 
         job_click("quick", on_quick, [paste_box, langs, length])
 
-        def on_write(topic, length_, langs_, note_):
+        def on_write(topic, length_, langs_, note_, fmt_="auto"):
             try:
                 if not (topic or "").strip():
                     raise FriendlyError("Type a topic first.", "For example: how cow poop becomes electricity.")
                 gr.Info("✍️ Writing the script (10-40 s)…")
                 text, provider = script_mod.write_from_topic(topic.split("=====")[0], length_, (langs_ or ["en"])[0],
-                                                             note_ or "")
+                                                             note_ or "", None, fmt_ or "auto")
                 gr.Info(f"Script written by {provider}. Check the doctor's score below, then press 🚀 or 🧭.")
                 return text
             except Exception as exc:  # noqa: BLE001
                 _toast(exc)
                 return gr.skip()
 
-        sync_click(write_btn, "✍️ Write the script (free AI, retention rules)", on_write, [idea, length, langs, note],
+        sync_click(write_btn, "✍️ Write the script (free AI, retention rules)", on_write, [idea, length, langs, note, fmt_dd],
                    paste_box)
 
         # ---- 🩺 Script doctor

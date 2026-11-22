@@ -1,0 +1,48 @@
+{
+ "name": "stone_block",
+ "about": "a big cut limestone block (2.5 tons)",
+ "tags": [
+  "history",
+  "building"
+ ],
+ "aliases": [
+  "limestone_block",
+  "block_of_stone",
+  "stone_blocks"
+ ],
+ "parts": [
+  {
+   "shape": "box",
+   "size": [
+    1.6,
+    0.9,
+    0.9
+   ],
+   "pos": [
+    0,
+    0.45,
+    0
+   ],
+   "color": "#d8c49a"
+  },
+  {
+   "shape": "box",
+   "size": [
+    1.62,
+    0.05,
+    0.92
+   ],
+   "pos": [
+    0,
+    0.88,
+    0
+   ],
+   "color": "#c4ad80"
+  }
+ ],
+ "label": [
+  0,
+  1.5,
+  0
+ ]
+}

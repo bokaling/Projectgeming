@@ -604,7 +604,7 @@ def truck(color="#3d8fd6", cargo="tank"):
 @asset("person", "a simple low poly person (worker, farmer, scientist)", ["people"],
        aliases=["man", "woman", "worker", "farmer", "human", "people", "scientist", "engineer"])
 def person(shirt="#d9534f", pants="#2f5fa8", skin="skin", hat="", hair="#5a3a22", height=1.8, overalls=False,
-           stripes=False, seed=1):
+           stripes=False, seed=1, mood="neutral"):
     """A simple blocky person (face toward +x): big square head with eyes and mouth, hair, shirt, pants."""
     s = height / 1.8
     sk, sh, pa = col(skin, C["skin"]), col(shirt, C["red"]), col(pants, "#2f5fa8")
@@ -622,9 +622,23 @@ def person(shirt="#d9534f", pants="#2f5fa8", skin="skin", hat="", hair="#5a3a22"
         m.add("arm", M.xf(M.box(0.18, 0.58 * s, 0.18, base=True), (0, 0.84 * s, z)), sh)
         m.add("hand", M.xf(M.box(0.16, 0.14 * s, 0.16, base=True), (0, 0.7 * s, z)), sk)
     m.add("head", M.xf(M.box(0.5, 0.48 * s, 0.5, base=True), (0, 1.43 * s, 0)), sk)
-    for z in (-0.11, 0.11):
-        m.add("eye", M.xf(M.box(0.02, 0.08 * s, 0.06), (0.255, 1.7 * s, z)), "#1c1c22")
-    m.add("mouth", M.xf(M.box(0.02, 0.03 * s, 0.14), (0.255, 1.56 * s, 0)), "#7a3b32")
+    big = mood in ("surprised", "scared")
+    for z in (-0.11, 0.11):  # eyes, eyebrows and mouth show the feeling (story characters)
+        m.add("eye", M.xf(M.box(0.02, (0.11 if big else 0.08) * s, 0.07 if big else 0.06), (0.255, 1.7 * s, z)),
+              "#1c1c22")
+        tilt = {"angry": 22, "sad": -18, "scared": -12}.get(mood, 0) * (1 if z > 0 else -1)
+        lift = {"surprised": 0.05, "scared": 0.04}.get(mood, 0.0)
+        m.add("brow", M.xf(M.box(0.02, 0.025 * s, 0.11), (0.257, (1.79 + lift) * s, z), (tilt, 0, 0)), "#2a1d14")
+    mouth = "#7a3b32"
+    if mood in ("surprised", "scared"):
+        m.add("mouth", M.xf(M.box(0.02, 0.07 * s, 0.07), (0.255, 1.555 * s, 0)), "#4a1f1a")
+    elif mood in ("happy", "sad"):
+        up = 1 if mood == "happy" else -1
+        m.add("mouth", M.xf(M.box(0.02, 0.03 * s, 0.12), (0.255, 1.555 * s, 0)), mouth)
+        for z in (-0.075, 0.075):
+            m.add("mouth", M.xf(M.box(0.02, 0.03 * s, 0.04), (0.255, (1.555 + 0.025 * up) * s, z)), mouth)
+    else:
+        m.add("mouth", M.xf(M.box(0.02, 0.03 * s, 0.14 if mood != "angry" else 0.1), (0.255, 1.56 * s, 0)), mouth)
     if hat:
         m.add("hat", M.xf(M.box(0.56, 0.12 * s, 0.56, base=True), (0, 1.9 * s, 0)), col(hat, C["yellow"]))
         m.add("brim", M.xf(M.box(0.3, 0.04 * s, 0.56, base=True), (0.36, 1.9 * s, 0)), col(hat, C["yellow"]))
@@ -640,3 +654,6 @@ def names() -> list[str]:
 
 
 from . import assets_more  # noqa: E402,F401  (registers the rest of the library)
+from . import builder as _builder  # noqa: E402  (built-in recipes: objects made of basic parts)
+
+_builder.load_dir(_builder.RECIPES_DIR)

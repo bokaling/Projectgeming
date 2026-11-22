@@ -1,0 +1,85 @@
+{
+ "name": "pancreas",
+ "about": "the pancreas: it makes insulin when blood sugar rises",
+ "tags": [
+  "body",
+  "organ"
+ ],
+ "aliases": [
+  "pancreatic"
+ ],
+ "parts": [
+  {
+   "shape": "capsule",
+   "size": [
+    0.55,
+    3.2
+   ],
+   "pos": [
+    0,
+    0.9,
+    0
+   ],
+   "rot": [
+    0,
+    0,
+    8
+   ],
+   "color": "#f0b27a",
+   "name": "body"
+  },
+  {
+   "shape": "sphere",
+   "size": [
+    0.75
+   ],
+   "pos": [
+    -1.9,
+    1.0,
+    0
+   ],
+   "color": "#f0b27a",
+   "name": "head"
+  },
+  {
+   "shape": "sphere",
+   "size": [
+    0.25
+   ],
+   "pos": [
+    0.6,
+    1.4,
+    0.4
+   ],
+   "color": "#7df0ff",
+   "name": "islet",
+   "kind": "light"
+  },
+  {
+   "shape": "sphere",
+   "size": [
+    0.22
+   ],
+   "pos": [
+    -0.5,
+    1.3,
+    0.45
+   ],
+   "color": "#7df0ff",
+   "name": "islet",
+   "kind": "light"
+  }
+ ],
+ "ports": {
+  "outlet": [
+   1.9,
+   1.1,
+   0
+  ]
+ },
+ "label": [
+  0,
+  2.4,
+  0
+ ]
+}

@@ -1,0 +1,68 @@
+{
+ "name": "fat_cell",
+ "about": "fat cells: pale yellow balls that store extra sugar as fat",
+ "tags": [
+  "micro",
+  "body"
+ ],
+ "aliases": [
+  "fat",
+  "fat_cells",
+  "adipose"
+ ],
+ "parts": [
+  {
+   "shape": "sphere",
+   "size": [
+    0.9
+   ],
+   "pos": [
+    0,
+    0.9,
+    0
+   ],
+   "color": "#f6e3a1"
+  },
+  {
+   "shape": "sphere",
+   "size": [
+    0.7
+   ],
+   "pos": [
+    1.2,
+    0.7,
+    0.4
+   ],
+   "color": "#f2d98a"
+  },
+  {
+   "shape": "sphere",
+   "size": [
+    0.6
+   ],
+   "pos": [
+    -0.9,
+    0.6,
+    0.6
+   ],
+   "color": "#f6e3a1"
+  },
+  {
+   "shape": "sphere",
+   "size": [
+    0.25
+   ],
+   "pos": [
+    0.2,
+    1.5,
+    0.6
+   ],
+   "color": "#d9a84a"
+  }
+ ],
+ "label": [
+  0,
+  2.2,
+  0
+ ]
+}

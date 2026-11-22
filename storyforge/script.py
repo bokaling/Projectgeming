@@ -35,7 +35,8 @@ NARRATOR: the narration for this shot (1-2 sentences)
 Reply with JSON only: {"script": "the full script text with \\n between lines"}"""
 
 
-def write_from_topic(topic: str, length: str = "short", language: str = "en", note: str = "", rep=None) -> tuple[str, str]:
+def write_from_topic(topic: str, length: str = "short", language: str = "en", note: str = "", rep=None,
+                     video_format: str = "auto") -> tuple[str, str]:
     """Topic → script text in our format. Returns (text, provider). Never fails: a simple template if no AI works."""
     topic = (topic or "").strip()
     if not topic:
@@ -46,6 +47,10 @@ def write_from_topic(topic: str, length: str = "short", language: str = "en", no
                "length": "about 60 seconds" if length == "short" else "about 10 minutes, a mini cliffhanger every 2 minutes, "
                                                                      "[CHAPTER] lines between parts",
                "creator_note": note}
+    from . import formats  # noqa: PLC0415
+
+    fkey = formats.resolve(video_format, topic)
+    payload["format"] = {"name": formats.get(fkey)["label"], "rules": formats.get(fkey)["rules"]}
 
     def validate(obj):
         text = str((obj or {}).get("script", "")) if isinstance(obj, dict) else ""

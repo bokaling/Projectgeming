@@ -1,0 +1,131 @@
+{
+ "name": "reed_boat",
+ "about": "an ancient wooden river boat with a mast and sail, carrying a stone block",
+ "tags": [
+  "vehicle",
+  "water",
+  "history"
+ ],
+ "aliases": [
+  "nile_boat",
+  "ancient_boat",
+  "barge"
+ ],
+ "parts": [
+  {
+   "shape": "extrude",
+   "poly": [
+    [
+     -4,
+     0.6
+    ],
+    [
+     -3.2,
+     0
+    ],
+    [
+     3.2,
+     0
+    ],
+    [
+     4,
+     0.6
+    ],
+    [
+     3,
+     1.0
+    ],
+    [
+     -3,
+     1.0
+    ]
+   ],
+   "size": [
+    2.2
+   ],
+   "pos": [
+    0,
+    0,
+    0
+   ],
+   "color": "#a0703f"
+  },
+  {
+   "shape": "box",
+   "size": [
+    6.4,
+    0.1,
+    2.0
+   ],
+   "pos": [
+    0,
+    1.0,
+    0
+   ],
+   "color": "#8a5a2e"
+  },
+  {
+   "shape": "cylinder",
+   "size": [
+    0.08,
+    4.2
+   ],
+   "pos": [
+    -0.8,
+    3.1,
+    0
+   ],
+   "color": "#7a5232"
+  },
+  {
+   "shape": "box",
+   "size": [
+    1.6,
+    2.4,
+    0.06
+   ],
+   "pos": [
+    -0.8,
+    3.3,
+    0
+   ],
+   "color": "#f3e3c3",
+   "name": "sail"
+  },
+  {
+   "shape": "box",
+   "size": [
+    1.6,
+    0.9,
+    0.9
+   ],
+   "pos": [
+    1.4,
+    1.5,
+    0
+   ],
+   "color": "#d8c49a",
+   "name": "block"
+  },
+  {
+   "shape": "box",
+   "size": [
+    0.1,
+    0.1,
+    2.6
+   ],
+   "pos": [
+    -3.4,
+    0.9,
+    0
+   ],
+   "color": "#6b4a2c",
+   "name": "oar"
+  }
+ ],
+ "label": [
+  0,
+  5.2,
+  0
+ ]
+}

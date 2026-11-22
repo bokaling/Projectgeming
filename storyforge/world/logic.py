@@ -23,7 +23,7 @@ from .mesh import Model
 CONNECTORS = {"pipe", "wire", "cable", "chain", "belt", "conveyor", "power_line"}
 PUSHABLE = {"manure", "crate", "rock", "hay_bale", "barrel", "ball", "coin", "cash"}
 PITS = {"pit", "tank", "digester", "conveyor", "silo", "beaker", "glass_box"}
-FLOAT_TAGS = {"micro", "space", "sky"}
+FLOAT_TAGS = {"micro", "space", "sky", "water", "body"}
 FLOAT_ASSETS = {"cloud", "sun", "bird", "airplane", "helicopter", "methane", "molecule", "atom", "smoke_cloud",
                 "explosion", "lightning_strike", "satellite", "moon", "planet", "fish", "bacteria", "virus"}
 PORT_ALIASES = {"out": "outlet", "output": "outlet", "in": "inlet", "input": "inlet", "gas": "gas_out",

@@ -48,7 +48,7 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 * **Shapes** (`mesh.py`): box, cylinder, cone, lathe, icosphere, torus, capsule, tube, extrude, roof, gear,
   plane, arrow, bolt; `Part(name, geo, color, emissive, opacity, shell, pivot, axis, kind)`, `Model(parts,
   anchors, paths)`.
-* **Asset library** (`assets.py` + `assets_more.py`, 126 objects): `@asset(name, about, tags, aliases)` functions
+* **Asset library** (`assets.py` + `assets_more.py`, 135 objects + 16 recipes): `@asset(name, about, tags, aliases)` functions
   with parameters (size, color, level…). `resolve()` maps any name the AI uses (aliases, plurals, last word,
   difflib) and falls back to `crate`. `catalog()` is what the planner AI sees. Part kinds the world animates:
   `liquid` (fill/drain), `crust`, `blade` (spin), `wheel` (rolls when moving), `piston` and `rocker` (while
@@ -62,6 +62,26 @@ The owner is a beginner coder. Explain things simply, in short sentences.
   low_angle, follow, cutaway, zoom_into, static; distance fits the object; eased flights with a lift between
   shots; a fade instead of a flight into/out of the micro world or after zoom_into; shell objects that block
   the view turn x-ray automatically.
+* **World presets (phase 5 B, `world/presets.py`):** 19 places (studio, farm, city, house_interior, factory, lab,
+  hospital, space, planet_surface, ocean, body, desert, forest, snow, ancient, battlefield, highway, school, office).
+  Each sets the renderer colours (`style_of`: background, horizon, floor, grid or none = black lines, sky, sun), the
+  ground (`base`, None = space), pad colour, props, people (`[]` = none), fence, lamps, `air` particles (stars, snow,
+  bubbles, dust, cells; never within 45 % of the camera distance of the lens) and `fog`. `natural=True` = open ground
+  (sea floor, sand, flesh): no pads, ground plate, roads or pipe stands, the floor colour IS the ground. The plan has
+  `"preset"`; without it `presets.guess` counts keyword hits (plurals too) in the title + lines (most hits wins).
+* **Object builder (phase 5 B, `world/builder.py`):** objects as JSON recipes of basic shapes (box, cylinder, cone,
+  sphere, capsule, torus, wedge, tube, extrude; kinds, pivots, shell, opacity, ports, paths). `model_from_recipe`
+  checks and builds (clamps sizes, refuses > 120 m, stands it on the ground), `register` adds it to the library.
+  Built-in recipes: `world/recipes/*.json` (loaded when `assets` is imported). `planner.make_plan` calls
+  `builder.ensure_objects`: unknown assets are designed by Gemini (`strong=True`) and saved to
+  `StoryForge/library/objects/`; without AI the closest asset is used. Objects with a `flow` path (blood vessel,
+  intestine) carry flows without a `to`. A see-through surface is a `shell` part, so it is left out when it blocks.
+* **Formats (phase 5 B, `storyforge/formats.py`):** how_it_works, what_if, how_made, history, top_list, story
+  (`EpisodeOptions.video_format`, "auto" = `formats.detect(title)`). Each has script rules (sent to the writer),
+  captions (`keywords` or `words` = one big word, red accents), ending (`overview` or `card` = "Part X") and a music
+  mood. People have `mood` (neutral, happy, sad, angry, surprised, scared).
+* **Moves:** `move` takes `"y"` (dive, climb a ramp, rise); a group keeps its formation (offsets from its first
+  member). Liquid parts fill/drain from their own bottom (a ballast tank high in a hull drains in place).
 * **Keyword captions** (`captions.keyword_header/keyword_events`): top of the screen, one at a time, colored
   by kind: problem red, part orange, number white, info teal.
 * **Framing (phase 4):** every shot is framed from the box of what the line talks about (`World.focus_ids`: the
@@ -177,13 +197,17 @@ storyforge/
   world/gl.py      moderngl renderer (shaders, shadows, bloom, labels)
   world/labels.py  label pills and the end card picture
   world/video.py   frames → FFmpeg clip, stills
-  world/examples.py  the cow poop demo script + plan
+  world/examples.py  4 demo scripts + hand-made plans (cow/farm, submarine/ocean, sugar/body, pyramids/ancient)
+  world/presets.py   the 19 world presets (colours, ground, props, people, air) + guess from the words
+  world/builder.py   object builder: recipes → models, AI design, Drive library
+  world/recipes/     built-in object recipes (JSON)
   audio/tts.py     Kokoro, Kokoro ONNX, Edge TTS, Piper, espeak, own voice; word timings
   audio/align.py   CTC forced alignment + proportional fallback
   audio/music.py   music beds, sound design, ducking, loudness
   captions.py      ASS builder: keyword captions, Farsi RTL rules
   render.py        FFmpeg join (copy) + audio mux
   publish.py       thumbnail, title, description, hashtags, chapters, platform checklist
+  formats.py       the 6 video formats (rules, captions, ending, music mood) + detect from the title
   pipeline.py      runs the steps in order, skips finished work, batch, quick test
   install.py       Colab/Kaggle setup (packages, OpenGL/EGL drivers)
   forms.py         backup mode without the web app
@@ -249,6 +273,9 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Phase 5 A: ports + routed pipes/cables, assemblies, pushing into pits, grounding, flows switch things on,
       clean composition (no ghosts, no props in front), ground + roads, side views of animals, opaque captions,
       logic check in QC + self-review
+- [x] Phase 5 B: 19 world presets (ground, props, people, light, air), object builder (Gemini recipes, saved to
+      Drive, 16 built-in recipes), 6 formats (story: blocky characters with moods, one-word captions, Part X card),
+      3 new demos (submarine/ocean, sugar/body, pyramids/ancient) rendered end to end on CPU
 - [x] Phase 4 visual quality: bounding-box framing in the safe area (+ check: ≥ 30 % of the frame, not cut off, not
       mostly empty), set dressing, better cow/person/barn/tractor/tank/digester/generator/house, point lights,
       crisper shadows, fainter grid, close hook with a "drop", overview ending that loops, bigger captions,
@@ -296,5 +323,9 @@ wav2vec2 alignment, the Colab port link (`serve_kernel_port_as_window`). Every o
   thin glass and x-ray shells don't.
 * Frame by what you SEE: a model's box includes thin chains/cables (the scraper's 3 m chain made its blade tiny);
   use `World.solid_bounds`. A long site seen side-on in a tall frame is a thin line: look ALONG it.
+* Presets: never take the FIRST matching keyword (the cow script says "stomach" and became "inside the body"):
+  count hits. A big see-through sheet (sea surface) over the subject washes the picture out: make it a shell part.
+  Air particles near the lens become huge blurry blocks: skip them near the camera.
+* Tests that register objects must restore `assets.REGISTRY`/`ALIASES` (other tests count the library).
 * `plan.validate` must be idempotent (numbers always float, label `count` kept): saved plans are checked again
   after every edit, and any drift changes every fingerprint (= the whole video re-renders).

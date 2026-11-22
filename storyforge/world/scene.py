@@ -86,8 +86,13 @@ class World:
 
         from . import logic  # noqa: PLC0415
 
+        from . import presets  # noqa: PLC0415
+
         plan = copy.deepcopy(plan)  # the world may add links (auto-connected pipes): never change the caller's plan
         self.plan, self.tl, self.size, self.lang = plan, timeline, size, lang
+        self.preset = presets.resolve(plan.get("preset")) or "studio"
+        self.look = presets.PRESETS[self.preset]
+        self.style = {**presets.style_of(self.preset), "fog": float(self.look.get("fog", 1.0))}
         self.fov = 40.0 if size[0] < size[1] else 34.0
         self.models: dict = {}
         self.insts: list[Inst] = []
@@ -226,6 +231,7 @@ class World:
             self.env_ids.add(oid)
 
     def upload(self, renderer) -> None:
+        renderer.style = {**renderer.style, **self.style}  # the preset's background, floor, light and fog
         for key, m in self.models.items():
             for k, p in enumerate(m.parts):
                 renderer.upload(f"{key}:{k}", p.geo)
@@ -384,9 +390,13 @@ class World:
 
     def _dest(self, inst: Inst, e: Event) -> np.ndarray:
         to = e.params.get("to")
-        if isinstance(to, list):
+        y = float(e.params["y"]) if isinstance(e.params.get("y"), (int, float)) else inst.pos[1]  # dive, climb, rise
+        if isinstance(to, list):  # a group keeps its formation (each member keeps its offset from the first)
             ax, az = self.area_xz.get(inst.area, (0, 0))
-            return np.array([ax + to[0], inst.pos[1], az + to[1]], np.float32)
+            g = self.groups.get(inst.oid) or [inst]
+            off = inst.pos - g[0].pos
+            yy = y + off[1] if "y" in e.params else inst.pos[1]
+            return np.array([ax + to[0] + off[0], yy, az + to[1] + off[2]], np.float32)
         if isinstance(to, str) and to.split(".")[0] in self.groups:
             other = self.groups[to.split(".")[0]][0]
             c = other.pos
@@ -756,8 +766,12 @@ class World:
                     sm[1, 1] = f
                     sm[1, 3] = float(lo[1]) * (1 - f)
                     local = local @ sm
-                if part.kind == "liquid" and st["fill"] != 1.0:
-                    local = local @ np.diag([1, max(0.02, st["fill"]), 1, 1]).astype(np.float32)
+                if part.kind == "liquid" and st["fill"] != 1.0:  # the level drops inside its own container
+                    lo, hi = part.geo.bounds()
+                    f = max(0.02, st["fill"])
+                    sm = np.diag([1, f, 1, 1]).astype(np.float32)
+                    sm[1, 3] = float(lo[1]) * (1 - f)
+                    local = local @ sm
                 if part.kind == "crust" and st["fill"] != 1.0:
                     lo, hi = part.geo.bounds()
                     local[1, 3] += (st["fill"] - 1) * float(lo[1])
@@ -820,7 +834,7 @@ class World:
 
     # ------------------------------------------------------------------ particles
     def particles(self, i: int, T: float) -> np.ndarray | None:
-        out = []
+        out = self._air(i, T)
         for e in self.events:
             if e.do not in ("flow", "bubbles", "smoke", "sparks", "cutaway") or not (e.start <= T < e.end):
                 continue
@@ -873,6 +887,46 @@ class World:
                     y = float(lo[1]) + 0.3 + h * (float(surf[1]) - float(lo[1]) + 1.2)
                     out.append([c[0] + rr * math.cos(a), y, c[2] + rr * math.sin(a), 0.1 + 0.08 * h, *color, 0.35])
         return np.asarray(out, np.float32) if out else None
+
+    def _air(self, i: int, T: float) -> list:
+        """Ambient particles of the place: bubbles under water, dust, snow, stars, blood cells."""
+        kind = self.look.get("air")
+        if not kind:
+            return []
+        c = np.asarray(self._cams[i]["c"], np.float64)
+        r = max(8.0, self._cams[i]["r"] * 3)
+        rng = np.random.default_rng(zlib.crc32(f"air/{kind}".encode()))
+        n = {"stars": 160, "snow": 110, "bubbles": 80, "dust": 70, "cells": 36}[kind]
+        base = rng.random((n, 3))
+        eye = np.asarray(self.camera(i, T - self.scenes[i]["start"])[0], np.float64) if i < len(self.scenes) else c
+        near = max(2.0, 0.45 * float(np.linalg.norm(eye - c)))  # nothing big and blurry right in front of the lens
+        out = []
+        for k in range(n):
+            x, y, z = (base[k] - 0.5) * 2 * r
+            if kind == "stars":
+                d = np.array([x, abs(y) + r * 0.3, z])
+                p = c + d / max(np.linalg.norm(d), 1e-6) * r * 6
+                out.append([*p, 0.35 * (0.5 + base[k][0]), 1.0, 1.0, 1.0, 1.5])
+                continue
+            h = 2 * r
+            if kind == "bubbles":
+                y = (base[k][1] * h + T * 0.9) % h - r * 0.2
+                col, size, emi = (0.75, 0.92, 1.0), 0.07 + 0.05 * base[k][2], 0.5
+            elif kind == "snow":
+                y = h - (base[k][1] * h + T * 0.7) % h
+                col, size, emi = (1.0, 1.0, 1.0), 0.06, 0.4
+            elif kind == "cells":
+                y = abs(y) * 0.5 + 0.5 + 0.3 * np.sin(T * 0.8 + k)
+                x += np.sin(T * 0.3 + k) * 0.8
+                col, size, emi = (0.82, 0.12, 0.16), 0.16 + 0.1 * base[k][2], 0.1
+            else:  # dust
+                y = abs(y) * 0.4 + 0.3 + 0.2 * np.sin(T * 0.5 + k)
+                x += T * 0.25 % (2 * r)
+                col, size, emi = (0.95, 0.85, 0.65), 0.04, 0.2
+            if np.linalg.norm(np.array([c[0] + x, y, c[2] + z]) - eye) < near:
+                continue
+            out.append([c[0] + x, y, c[2] + z, size, *col, emi])
+        return out
 
     def puffs(self, i: int, T: float) -> list:
         """Smoke: soft see-through puffs that rise, grow and fade."""

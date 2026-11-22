@@ -1,0 +1,123 @@
+{
+ "name": "sled",
+ "about": "a wooden sledge carrying a stone block, pulled with ropes",
+ "tags": [
+  "vehicle",
+  "history"
+ ],
+ "aliases": [
+  "sledge",
+  "sleigh"
+ ],
+ "parts": [
+  {
+   "shape": "box",
+   "size": [
+    2.4,
+    0.12,
+    0.14
+   ],
+   "pos": [
+    0,
+    0.08,
+    0.45
+   ],
+   "color": "#8a5a2e"
+  },
+  {
+   "shape": "box",
+   "size": [
+    2.4,
+    0.12,
+    0.14
+   ],
+   "pos": [
+    0,
+    0.08,
+    -0.45
+   ],
+   "color": "#8a5a2e"
+  },
+  {
+   "shape": "box",
+   "size": [
+    2.0,
+    0.1,
+    1.1
+   ],
+   "pos": [
+    0,
+    0.2,
+    0
+   ],
+   "color": "#a0703f"
+  },
+  {
+   "shape": "box",
+   "size": [
+    1.6,
+    0.9,
+    0.9
+   ],
+   "pos": [
+    0,
+    0.7,
+    0
+   ],
+   "color": "#d8c49a",
+   "name": "block"
+  },
+  {
+   "shape": "tube",
+   "points": [
+    [
+     1.2,
+     0.2,
+     0.3
+    ],
+    [
+     3.4,
+     0.9,
+     0.5
+    ]
+   ],
+   "size": [
+    0.03
+   ],
+   "color": "#c9a66b",
+   "name": "rope"
+  },
+  {
+   "shape": "tube",
+   "points": [
+    [
+     1.2,
+     0.2,
+     -0.3
+    ],
+    [
+     3.4,
+     0.9,
+     -0.5
+    ]
+   ],
+   "size": [
+    0.03
+   ],
+   "color": "#c9a66b",
+   "name": "rope"
+  }
+ ],
+ "ports": {
+  "rope": [
+   3.4,
+   0.9,
+   0
+  ]
+ },
+ "label": [
+  0,
+  1.8,
+  0
+ ]
+}

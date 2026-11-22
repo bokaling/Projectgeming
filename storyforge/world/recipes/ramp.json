@@ -1,0 +1,68 @@
+{
+ "name": "ramp",
+ "about": "a long mud-brick construction ramp up the side of a building",
+ "tags": [
+  "history",
+  "building"
+ ],
+ "aliases": [
+  "construction_ramp",
+  "slope_ramp"
+ ],
+ "parts": [
+  {
+   "shape": "extrude",
+   "poly": [
+    [
+     -6,
+     0
+    ],
+    [
+     6,
+     0
+    ],
+    [
+     6,
+     4.5
+    ],
+    [
+     5.4,
+     4.5
+    ]
+   ],
+   "size": [
+    3.0
+   ],
+   "rot": [
+    0,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    0,
+    0
+   ],
+   "color": "#b8925f"
+  },
+  {
+   "shape": "box",
+   "size": [
+    12.2,
+    0.06,
+    3.0
+   ],
+   "pos": [
+    0,
+    0.03,
+    0
+   ],
+   "color": "#a5824f"
+  }
+ ],
+ "label": [
+  0,
+  5.5,
+  0
+ ]
+}
