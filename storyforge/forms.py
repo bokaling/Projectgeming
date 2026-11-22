@@ -1,19 +1,18 @@
 """Backup mode: plain Colab forms, no web app.
 
-Use it if Colab blocks the web app link. Paste your script into the SCRIPT box
-of the notebook cell, pick an ACTION and run the cell. Everything after that is
-automatic. Several scripts separated by a line of ===== are made one after another.
+Use it if Colab blocks the web app link. Paste your script into the SCRIPT box (or type a TOPIC),
+pick an ACTION and run the cell. Everything after that is automatic: scene plan, voice, 3D render,
+sound, export. Several scripts separated by a line of ===== are made one after another.
 """
 
 from __future__ import annotations
 
-import re
 
 from . import config, pipeline
 from .messages import Reporter, explain
 from .project import EpisodeOptions, Series
 
-ACTIONS = ["🚀 Generate from my SCRIPT", "⚡ Quick test", "✨ AI writes from IDEA", "🔄 Regenerate scenes"]
+ACTIONS = ["🚀 Generate from my SCRIPT", "✍️ AI writes from my TOPIC", "⚡ Quick test"]
 
 
 def _langs(choice: str) -> list[str]:
@@ -21,11 +20,6 @@ def _langs(choice: str) -> list[str]:
     if "+" in c or "both" in c:
         return ["en", "fa"]
     return ["fa"] if "farsi" in c else ["en"]
-
-
-def _heroes(choice) -> int:
-    m = re.search(r"\d+", str(choice))
-    return int(m.group()) if m and "auto" not in str(choice).lower() else -1
 
 
 def _show_images(paths, labels, width=180) -> None:
@@ -39,7 +33,7 @@ def _show_images(paths, labels, width=180) -> None:
         cells = []
         for p, label in zip(paths, labels):
             if p is None:
-                cells.append(f"<div style='width:{width}px;color:#aaa'>{label}: no picture</div>")
+                cells.append(f"<div style='width:{width}px;color:#aaa'>{label}: no thumbnail</div>")
                 continue
             im = Image.open(p).convert("RGB")
             im.thumbnail((width * 2, width * 2))
@@ -67,9 +61,9 @@ def _show_videos(paths) -> None:
 
 
 def run(action: str, script_text: str = "", series_name: str = "My Series", episode: int = 0, length: str = "Short",
-        languages: str = "English", hero_scenes="Auto", quality: str = "1080p",
-        narrator_en: str = "kokoro:am_fenrir", narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True,
-        idea: str = "", regenerate: str = "", end_card: bool = True, final_episode: bool = False) -> None:
+        languages: str = "English", quality: str = "1080p", narrator_en: str = "kokoro:am_fenrir",
+        narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True, topic: str = "",
+        end_card: bool = True, final_episode: bool = False) -> None:
     s = config.init(root=None) if config._SETTINGS is None else config.get()
     found = config.load_secrets()
     prof = config.gpu_profile()
@@ -80,11 +74,12 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
     print()
     rep = Reporter(echo=True)
     try:
+        ai = action.startswith("✍️")
         opts = EpisodeOptions.from_dict({
-            "script_text": script_text, "idea": idea, "languages": _langs(languages),
-            "length": "long" if str(length).lower().startswith("long") else "short", "hero_count": _heroes(hero_scenes),
-            "resolution": quality, "sfx": bool(sound_effects), "source": "ai" if action.startswith("✨") else "paste",
-            "end_card": bool(end_card), "final_episode": bool(final_episode),
+            "script_text": script_text, "idea": topic, "languages": _langs(languages),
+            "length": "long" if str(length).lower().startswith("long") else "short", "resolution": quality,
+            "sfx": bool(sound_effects), "source": "ai" if ai else "paste", "end_card": bool(end_card),
+            "final_episode": bool(final_episode),
         })
         if action.startswith("⚡"):
             res = pipeline.quick_test(rep, script_text, opts.languages, opts.length)
@@ -97,28 +92,13 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
         series.data.setdefault("voices", {}).update({"en": narrator_en, "fa": narrator_fa})
         series.save()
         number = int(episode) if episode and int(episode) > 0 else None
-        if action.startswith("🔄"):
-            ep = series.episode(number or max(series.episode_numbers() or [1]))
-            nums = [int(n) for n in re.findall(r"\d+", regenerate or "")]
-            sc = ep.load_script()
-            if not sc or not nums:
-                print("❌ Type the scene numbers in REGENERATE (e.g. 3, 5) and the EPISODE number.")
-                return
-            pipe = pipeline.Pipeline(series, ep, rep, ep.load_options())
-            for n in nums:
-                if 1 <= n <= len(sc["scenes"]):
-                    pipe.regenerate(sc["scenes"][n - 1]["id"], keep_loaded=True)
-            res = pipe.make_video()
-        elif action.startswith("✨"):
-            if not idea.strip():
-                print("❌ Type your story IDEA in the form first.")
-                return
-            res = pipeline.generate(series, opts, "", rep, number)
-        else:
-            if not script_text.strip():
-                print("❌ Paste your script between the triple quotes in SCRIPT first.")
-                return
-            res = pipeline.generate(series, opts, script_text, rep, number)
+        if ai and not topic.strip():
+            print("❌ Type your TOPIC in the form first (e.g. how cow poop becomes electricity).")
+            return
+        if not ai and not script_text.strip():
+            print("❌ Paste your script between the triple quotes in SCRIPT first.")
+            return
+        res = pipeline.generate(series, opts, "" if ai else script_text, rep, number)
         _show_videos(res.get("videos", []))
         if res.get("thumbnails"):
             _show_images(res["thumbnails"], [p.split("/")[-1] for p in res["thumbnails"]], width=220)

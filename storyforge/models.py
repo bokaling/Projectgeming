@@ -13,6 +13,7 @@ Now:
   every file is still there with the same size: no internet, no download, a few seconds.
 * A file is only downloaded again if it is really missing or really broken.
 * HF_TOKEN (Colab secret) is used for every download.
+* Files from GitHub releases (the Kokoro ONNX backup voice) use download_url(), also checked by size.
 """
 
 from __future__ import annotations
@@ -34,9 +35,8 @@ STUB = re.compile(r"^(?:\.\./)+blobs/([0-9a-f]{40,64})\s*$")  # a Drive "symlink
 LFS = b"version https://git-lfs"
 # files we never need
 IGNORE = {
-    "image": ["*.gguf", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.mp4"],
-    "i2v": ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.mp4", "assets/*", "examples/*"],
     "kokoro": ["*.png", "*.jpg", "*.md", "samples/*", "*.wav"],
+    "local_llm": ["*.gguf", "original/*"],
 }
 
 
@@ -122,19 +122,7 @@ def safetensors_problem(path: Path, expected_size: int | None = None) -> str:
 
 
 def _ignore_patterns(key: str, repo: str) -> list[str] | None:
-    """Files to skip. FLUX: the single-file checkpoint at the top is skipped ONLY if the transformer/ folder
-    (the one the app loads) is there too: that saves ~8 GB and never removes something we need."""
-    pats = list(IGNORE.get(key, []))
-    if key == "image":
-        try:
-            from huggingface_hub import HfApi  # noqa: PLC0415
-
-            names = HfApi(token=_token()).list_repo_files(repo)
-            if any(n.startswith("transformer/") and n.endswith(".safetensors") for n in names):
-                pats += [n for n in names if "/" not in n and n.endswith(".safetensors")]
-        except Exception:  # noqa: BLE001 - offline: download everything, to be safe
-            pass
-    return pats or None
+    return list(IGNORE.get(key, [])) or None
 
 
 def _expected_sizes(repo: str) -> dict[str, int]:
@@ -316,3 +304,36 @@ def ensure_file(key: str, filename: str, rep=None) -> str:
         raise FriendlyError(f"Couldn't get {filename} from {config.MODELS[key]} ({file_problem(path)}).",
                             "Check the internet and run again.")
     return str(path)
+
+
+def download_url(url: str, dest: Path, rep=None) -> Path:
+    """Download a file once (e.g. from GitHub releases) into `dest` as a real file. Checked by size;
+    a cut-off download is resumed/re-done next time. No token needed."""
+    import requests  # noqa: PLC0415
+
+    dest = Path(dest)
+    marker = dest.with_name(dest.name + ".size")
+    if dest.is_file() and marker.is_file() and marker.read_text().strip() == str(dest.stat().st_size):
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    if rep is not None:
+        rep.info(f"📥 Downloading {dest.name} (once, then it stays on Drive)…")
+    try:
+        with requests.get(url, stream=True, timeout=60, allow_redirects=True) as r:
+            r.raise_for_status()
+            expected = int(r.headers.get("content-length") or 0)
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_content(1 << 20):
+                    f.write(chunk)
+    except Exception as exc:
+        tmp.unlink(missing_ok=True)
+        raise FriendlyError(f"Couldn't download {dest.name} ({type(exc).__name__}).", "Check the internet and run again.") \
+            from exc
+    size = tmp.stat().st_size
+    if expected and size != expected:
+        tmp.unlink(missing_ok=True)
+        raise FriendlyError(f"The download of {dest.name} was cut off.", "Run again: it starts over.")
+    tmp.replace(dest)
+    marker.write_text(str(size))
+    return dest

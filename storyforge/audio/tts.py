@@ -44,8 +44,10 @@ PIPER_VOICES = {
 FEMALE = {"en-US-AvaMultilingualNeural", "en-GB-SoniaNeural", "fa-IR-DilaraNeural", "en_US-lessac-medium"}
 # Backups keep the same gender, so a video never switches from a man's voice to a woman's.
 FALLBACKS = {
-    ("en", "male"): [("kokoro", "am_fenrir"), ("edge", "en-US-AndrewMultilingualNeural"), ("piper", "en_US-ryan-high")],
-    ("en", "female"): [("kokoro", "af_heart"), ("edge", "en-US-AvaMultilingualNeural"), ("piper", "en_US-lessac-medium")],
+    ("en", "male"): [("kokoro", "am_fenrir"), ("kokoro_onnx", "am_fenrir"), ("edge", "en-US-AndrewMultilingualNeural"),
+                     ("piper", "en_US-ryan-high")],
+    ("en", "female"): [("kokoro", "af_heart"), ("kokoro_onnx", "af_heart"), ("edge", "en-US-AvaMultilingualNeural"),
+                       ("piper", "en_US-lessac-medium")],
     ("fa", "male"): [("edge", "fa-IR-FaridNeural"), ("piper", "fa_IR-amir-medium")],
     ("fa", "female"): [("edge", "fa-IR-DilaraNeural")],
 }
@@ -185,6 +187,25 @@ def kokoro(text: str, voice: str, speed: float = 1.0):
     return _resample(np.concatenate(chunks), 24000), words
 
 
+_konnx: dict = {}
+
+
+def kokoro_onnx(text: str, voice: str, speed: float = 1.0):
+    """The same Kokoro voices as ONNX (Apache 2.0, from GitHub, ~350 MB once, kept on Drive). CPU is enough."""
+    from kokoro_onnx import Kokoro  # noqa: PLC0415
+
+    from ..models import download_url  # noqa: PLC0415
+
+    if "model" not in _konnx:
+        folder = Path(config.get().model_cache("kokoro")) / "onnx"
+        model = download_url(config.KOKORO_ONNX["model"], folder / "kokoro-v1.0.onnx")
+        voices = download_url(config.KOKORO_ONNX["voices"], folder / "voices-v1.0.bin")
+        _konnx["model"] = Kokoro(str(model), str(voices))
+    lang = "en-gb" if voice.startswith("b") else "en-us"
+    samples, sr = _konnx["model"].create(text, voice=voice, speed=float(speed), lang=lang)
+    return _resample(np.asarray(samples, np.float32), sr), []
+
+
 def _run_async(coro):
     """Run async code from any thread (Colab already has an event loop in the main thread)."""
     with concurrent.futures.ThreadPoolExecutor(1) as ex:
@@ -276,7 +297,7 @@ def espeak(text: str, lang: str, speed: float = 1.0, variant: str = "m3"):
 
 
 def voice_gender(engine: str, voice: str) -> str:
-    if engine == "kokoro":
+    if engine in ("kokoro", "kokoro_onnx"):
         return "female" if voice[:2] in ("af", "bf") else "male"
     if engine == "espeak":
         return "female" if voice.endswith("f3") else "male"
@@ -287,8 +308,8 @@ def engine_order(lang: str, choice: dict) -> list[tuple[str, str]]:
     """Engines to try, starting with the user's choice; backups have the same gender."""
     order = []
     eng, voice = choice.get("engine"), choice.get("voice")
-    gender = voice_gender(eng or "", voice or "") if eng in ("kokoro", "edge", "piper") else "male"
-    if eng in ("kokoro", "edge", "piper") and not (eng == "kokoro" and lang != "en"):
+    gender = voice_gender(eng or "", voice or "") if eng in ("kokoro", "kokoro_onnx", "edge", "piper") else "male"
+    if eng in ("kokoro", "kokoro_onnx", "edge", "piper") and not (eng.startswith("kokoro") and lang != "en"):
         order.append((eng, voice))
     for d in FALLBACKS[(lang, gender)]:
         if d[0] not in [o[0] for o in order]:
@@ -351,6 +372,8 @@ def resolve(lang: str, choice: dict, rep=None) -> tuple[str, str]:
 def _synth(eng: str, voice: str, text: str, lang: str, speed: float):
     if eng == "kokoro":
         return kokoro(text, voice, speed)
+    if eng == "kokoro_onnx":
+        return kokoro_onnx(text, voice, speed)
     if eng == "edge":
         return edge(text, voice, speed)
     if eng == "piper":
@@ -358,7 +381,8 @@ def _synth(eng: str, voice: str, text: str, lang: str, speed: float):
     return espeak(text, lang, speed, variant=voice)
 
 
-ENGINE_NAMES = {"kokoro": "Kokoro", "edge": "Edge TTS", "piper": "Piper", "espeak": "espeak-ng (robotic, emergency)"}
+ENGINE_NAMES = {"kokoro": "Kokoro", "kokoro_onnx": "Kokoro (ONNX)", "edge": "Edge TTS", "piper": "Piper",
+                "espeak": "espeak-ng (robotic, emergency)"}
 
 
 RETRY_WAITS = (2.0, 4.0)  # seconds between the 3 tries of one piece of text

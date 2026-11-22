@@ -45,11 +45,17 @@ def test_resolve_once_then_never_switch_mid_video(sf_root, tmp_path, monkeypatch
 
     calls = fake_engine(monkeypatch, behaviour)
     eng, voice = tts.resolve("en", tts.DEFAULT_VOICE["en"])
-    assert (eng, voice) == ("edge", "en-US-AndrewMultilingualNeural")  # male backup, chosen once
+    assert (eng, voice) == ("kokoro_onnx", "am_fenrir")  # the same voice from the ONNX backup, chosen once
     tts.speak("Scene one.", "en", tts.DEFAULT_VOICE["en"], tmp_path / "a.wav")
     state["kokoro_ok"] = True  # Kokoro comes back: this video still keeps the same voice
     tts.speak("Scene two.", "en", tts.DEFAULT_VOICE["en"], tmp_path / "b.wav")
-    assert [c[0] for c in calls if c[2].startswith("Scene")] == ["edge", "edge"]
+    assert [c[0] for c in calls if c[2].startswith("Scene")] == ["kokoro_onnx", "kokoro_onnx"]
+
+
+def test_both_kokoros_broken_falls_back_to_a_male_edge_voice(sf_root, monkeypatch):
+    fake_engine(monkeypatch, lambda eng, voice, text: (_ for _ in ()).throw(RuntimeError("no")) if eng.startswith(
+        "kokoro") else tone())
+    assert tts.resolve("en", tts.DEFAULT_VOICE["en"]) == ("edge", "en-US-AndrewMultilingualNeural")
 
 
 def test_voice_failing_in_the_middle_stops_instead_of_switching(sf_root, tmp_path, monkeypatch):

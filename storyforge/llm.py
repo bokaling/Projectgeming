@@ -240,7 +240,7 @@ def _local_chat(messages, json_mode, temperature, max_tokens):
 
 
 def unload_local() -> None:
-    """Free the GPU for image generation."""
+    """Free the GPU (the local AI writer is done)."""
     if _local["model"] is None:
         return
     _local["model"] = None

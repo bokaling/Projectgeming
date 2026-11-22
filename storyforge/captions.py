@@ -241,3 +241,49 @@ def ass_filter(ass_path: Path) -> str:
         return str(p).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
 
     return f"ass=filename='{q(ass_path)}':fontsdir='{q(config.FONTS_DIR)}':shaping=complex"
+
+
+# ---------------------------------------------------------------------------
+# 3D explainer: small keyword captions at the top, colored by meaning
+# ---------------------------------------------------------------------------
+
+KEY_COLORS = {"problem": (255, 92, 92), "part": (255, 170, 60), "number": (255, 255, 255), "info": (120, 235, 225)}
+
+
+def keyword_header(size: tuple[int, int], fmt: str, lang: str) -> list[str]:
+    """ASS styles for the top keywords (one style per meaning)."""
+    W, H = size
+    rtl = is_rtl(lang)
+    font = FONT_FA if rtl else FONT_EN
+    fs = int(min(W, H) * (0.062 if fmt == "9x16" else 0.05) * (1.1 if rtl else 1.0))
+    outline = max(3, fs // 11)
+    margin = int(H * (0.105 if fmt == "9x16" else 0.07))
+    enc = -1 if rtl else 1
+    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 0",
+             "ScaledBorderAndShadow: yes", "YCbCr Matrix: TV.709", "", "[V4+ Styles]",
+             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
+             "Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, "
+             "MarginR, MarginV, Encoding"]
+    for kind, rgb in KEY_COLORS.items():
+        # Spacing must stay 0 (non-zero letter spacing reverses Persian letters in libass)
+        lines.append(f"Style: Key_{kind},{font},{fs},{ass_color(rgb)},{ass_color(rgb)},{ass_color((6, 20, 24))},"
+                     f"{ass_color((0, 0, 0), 0x90)},{-1 if rtl else 0},0,0,0,100,100,0,0,1,{outline},{max(1, outline // 2)},"
+                     f"8,{int(W * 0.08)},{int(W * 0.08)},{margin},{enc}")
+    lines += ["", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+    return lines
+
+
+def keyword_events(items: list[dict], lang: str, total: float) -> list[tuple]:
+    """items: [{"text", "kind", "start", "end"}] (seconds) → events (start, end, style, text). One at a time."""
+    rtl = is_rtl(lang)
+    items = sorted(items, key=lambda x: x["start"])
+    events = []
+    for k, it in enumerate(items):
+        end = min(it["end"], items[k + 1]["start"]) if k + 1 < len(items) else min(it["end"], total)
+        if end - it["start"] < 0.15:
+            continue
+        text = escape(it["text"].upper() if not rtl else it["text"])
+        pop = r"{\fscx70\fscy70\t(0,110,\fscx106\fscy106)\t(110,180,\fscx100\fscy100)\fad(0,120)}"
+        style = f"Key_{it.get('kind') if it.get('kind') in KEY_COLORS else 'info'}"
+        events.append((round(it["start"], 3), round(end, 3), style, pop + _wrap(text, rtl)))
+    return events

@@ -1,7 +1,7 @@
 """Story beats: what in the text is a hook, a twist, a reveal, a scary moment or an emotion.
 
-Used by the script doctor (scores), the camera (punch-ins, shake, white flash), the sound
-design (music drops, booms) and the pictures (facial expressions, mood lock).
+Used by the script doctor (scores), the 3D camera (punch-ins, shake, white flash), the sound
+design (music drops, booms) and the music mood.
 All simple word lists: instant, offline, English + some Farsi.
 """
 
@@ -257,3 +257,26 @@ def _strength(word: str, i: int) -> float:
     if n not in STOP:
         s += min(len(n), 10) / 3
     return s - i * 0.05
+
+
+# moods (music and the automatic style line)
+MOOD_WORDS = {
+    "dark": ["blood", "dead", "death", "kill", "grave", "corpse", "shadow", "demon", "مرگ", "خون", "مرده", "سایه"],
+    "tense": ["run", "scream", "afraid", "fear", "danger", "knock", "heart", "suddenly", "ترس", "فریاد", "ناگهان", "خطر"],
+    "mysterious": ["secret", "strange", "mystery", "whisper", "unknown", "fog", "راز", "عجیب", "زمزمه", "مه"],
+    "sad": ["cry", "tears", "lost", "alone", "goodbye", "sorry", "گریه", "اشک", "تنها", "خداحافظ"],
+    "hopeful": ["hope", "smile", "sunlight", "sun", "home", "safe", "امید", "لبخند", "خورشید"],
+    "action": ["fight", "explosion", "chase", "fire", "attack", "crash", "جنگ", "انفجار", "تعقیب", "آتش"],
+    "romantic": ["love", "kiss", "heart beat", "together", "عشق", "بوسه"],
+    "epic": ["army", "kingdom", "battle", "legend", "mountain", "ارتش", "پادشاه", "نبرد", "افسانه"],
+}
+
+
+def guess_mood(text: str, default: str = "mysterious") -> str:
+    low = (text or "").lower()
+    best, score = default, 0
+    for mood, words in MOOD_WORDS.items():
+        s = sum(low.count(w) for w in words)
+        if s > score:
+            best, score = mood, s
+    return best

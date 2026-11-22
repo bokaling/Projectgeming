@@ -11,10 +11,11 @@ from . import config, llm
 from .project import Episode, Series, write_json
 
 PLATFORM_CHECKLIST = [
-    ("YouTube / Shorts", "Turn on 'Altered or synthetic content' if the video looks realistic. Keep your own voice/writing visible: "
-     "templated mass uploads are not monetizable since July 2026."),
+    ("YouTube / Shorts", "Low poly 3D doesn't look realistic, so 'Altered or synthetic content' is usually not needed (turn it on "
+     "if you show real people or events). Keep your own voice/writing visible: templated mass uploads are not "
+     "monetizable since July 2026."),
     ("TikTok", "Switch on the 'AI-generated content' label. Creator Rewards needs videos over 1 minute (and isn't in every country)."),
-    ("Instagram / Facebook Reels", "Add the 'AI info' label for realistic AI pictures. Post original content, not reposts."),
+    ("Instagram / Facebook Reels", "Add the 'AI info' label if the AI voice is used. Post original content, not reposts."),
     ("Snapchat Spotlight", "Since July 2026 wholly AI-generated videos are not recommended on Spotlight. "
      "Add real footage (e.g. a short filmed intro) or use Snapchat only to promote the series."),
 ]
@@ -279,7 +280,8 @@ def make_chapters(script: dict, timeline: dict, lang: str) -> list[dict]:
     return chapters if len(chapters) >= 3 else []
 
 
-def variation_warnings(series: Series, ep: Episode, script: dict, music_name: str) -> list[str]:
+def variation_warnings(series: Series, ep: Episode, script: dict, music_name: str,
+                       cameras: list[str] | None = None) -> list[str]:
     """Warn if this episode looks too much like recent ones (helps against 'templated content' rules)."""
     warns = []
     prev = series.previous_summaries(ep.number, limit=10)
@@ -292,10 +294,11 @@ def variation_warnings(series: Series, ep: Episode, script: dict, music_name: st
             break
     if music_name and any(p.get("music") == music_name for p in prev[-3:]):
         warns.append("Same music as one of the last 3 episodes. Add more tracks to your library for variety.")
-    cams = [s["camera"] for s in script["scenes"]]
+    cams = list(cameras or [])
     for p in prev[-3:]:
-        if p.get("cameras") == cams:
-            warns.append(f"Same camera moves, in the same order, as episode {p['episode']}. Change a few on the Scenes step.")
+        if cams and p.get("cameras") == cams:
+            warns.append(f"Same camera moves, in the same order, as episode {p['episode']}. "
+                         "Fix a few shots on the Scene plan step.")
             break
     return warns
 
@@ -303,8 +306,8 @@ def variation_warnings(series: Series, ep: Episode, script: dict, music_name: st
 def write_metadata(series: Series, ep: Episode, script: dict, langs: list[str], credits: list[str],
                    creator_note: str, rep=None, warnings=(), chapters: dict | None = None) -> dict:
     result = {"languages": {}, "credits": credits, "checklist": PLATFORM_CHECKLIST, "warnings": list(warnings)}
-    disclosure = {"en": "Made with AI-generated images and voices. Story and editing by the creator.",
-                  "fa": "تصاویر و صدا با هوش مصنوعی ساخته شده‌اند. داستان و تدوین توسط سازنده."}
+    disclosure = {"en": "3D animation made with code; script help and voice by AI. Topic and editing by the creator.",
+                  "fa": "انیمیشن سه‌بعدی با کد ساخته شده؛ کمک در متن و صدا با هوش مصنوعی. موضوع و تدوین توسط سازنده."}
     for lang in langs:
         provider = "Template"
         try:

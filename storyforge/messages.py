@@ -134,7 +134,7 @@ class Reporter:
 
     @contextlib.contextmanager
     def timed(self, name: str):
-        """`with rep.timed("🖼️ Pictures"):` adds the step's time to the timing report."""
+        """`with rep.timed("🎬 3D render"):` adds the step's time to the timing report."""
         t0 = time.time()
         try:
             yield
@@ -146,7 +146,7 @@ class Reporter:
         return self._lock
 
     def timing_report(self, total: float | None = None) -> list[str]:
-        """Lines like '🖼️ Pictures ........ 2:10'."""
+        """Lines like '🎬 3D render ........ 2:10'."""
         with self._lock:
             items = list(self.timings)
         if not items:

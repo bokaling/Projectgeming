@@ -2,6 +2,7 @@
 import json
 import struct
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -89,14 +90,12 @@ def test_79_byte_stub_is_a_link_not_a_broken_file(tmp_path):
 
 
 def test_old_drive_cache_is_moved_not_downloaded_and_next_time_no_internet(sf_root, fake_hub):
-    repo = config.MODELS["image"]
-    cache = config.get().big_model_cache
+    repo = config.MODELS["local_llm"]
+    cache = Path(config.get().model_cache("local_llm"))
     _old_drive_cache(cache, repo)
     rep = Reporter(echo=False)
-    folder = models.ensure_model("image", rep)
+    folder = models.ensure_model("local_llm", rep)
     assert fake_hub["files"] == []  # nothing downloaded again
-    from pathlib import Path
-
     for rel in REPO_FILES:
         f = Path(folder) / rel
         assert f.is_file() and not f.is_symlink() and f.stat().st_size > 100 or rel.endswith(".json")
@@ -104,19 +103,17 @@ def test_old_drive_cache_is_moved_not_downloaded_and_next_time_no_internet(sf_ro
     assert not (cache / ("models--" + repo.replace("/", "--"))).exists()  # old cache removed
     # next session: verified files are used without asking the internet at all
     fake_hub["snapshot"] = 0
-    assert models.ensure_model("image", Reporter(echo=False)) == folder
+    assert models.ensure_model("local_llm", Reporter(echo=False)) == folder
     assert fake_hub["snapshot"] == 0 and fake_hub["files"] == []
 
 
 def test_only_a_really_broken_file_is_downloaded_again(sf_root, fake_hub):
-    from pathlib import Path
-
-    folder = Path(models.ensure_model("image"))
+    folder = Path(models.ensure_model("local_llm"))
     fake_hub["files"].clear()
     bad = folder / "vae" / "diffusion_pytorch_model.safetensors"
     bad.write_bytes(bad.read_bytes()[:-20])  # cut off (e.g. a disconnect while copying)
     rep = Reporter(echo=False)
-    models.ensure_model("image", rep)
+    models.ensure_model("local_llm", rep)
     assert fake_hub["files"] == ["vae/diffusion_pytorch_model.safetensors"]
     assert "Repaired 1" in rep.text() and models.file_problem(bad) == ""
 
@@ -133,7 +130,7 @@ def test_hf_token_is_used(sf_root, monkeypatch, fake_hub):
 
     monkeypatch.setattr(huggingface_hub, "snapshot_download", spy)
     monkeypatch.setenv("HF_TOKEN", "hf_test_token")
-    models.ensure_model("depth")
+    models.ensure_model("align_en")
     assert seen["token"] == "hf_test_token"
 
 
@@ -269,20 +266,3 @@ def test_harmless_warnings_are_hidden(sf_root):
         warnings.warn_explicit("TypedStorage is deprecated", UserWarning, "x.py", 1, module="torch.storage")
         warnings.warn("a real problem", RuntimeWarning)
     assert [str(w.message) for w in caught] == ["a real problem"]
-
-
-def test_flux_single_file_is_skipped_only_if_transformer_folder_exists(monkeypatch):
-    import huggingface_hub
-
-    class Api:
-        def __init__(self, token=None):
-            pass
-
-        def list_repo_files(self, repo):
-            return self.files
-
-    Api.files = ["flux-2-klein-4b.safetensors", "transformer/diffusion_pytorch_model.safetensors", "vae/x.safetensors"]
-    monkeypatch.setattr(huggingface_hub, "HfApi", Api)
-    assert "flux-2-klein-4b.safetensors" in models._ignore_patterns("image", "r")
-    Api.files = ["flux-2-klein-4b.safetensors", "vae/x.safetensors"]  # no transformer folder: keep it
-    assert "flux-2-klein-4b.safetensors" not in (models._ignore_patterns("image", "r") or [])

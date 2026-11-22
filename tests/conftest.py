@@ -20,17 +20,17 @@ def sf_root(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def fresh_services():
-    """Each test starts with every online service 'up' and no waiting."""
-    from storyforge import images
-
-    images._down_until.clear()
-    images._last_pollinations[0] = 0.0
-    images.KleinEngine.failed_reason = ""
+def fresh_services(monkeypatch):
+    """Each test starts with no remembered voices, and the ONNX backup voice never downloads (no internet in tests)."""
     from storyforge.audio import tts
 
     tts._resolved.clear()  # voices remembered in a session must not leak between tests
     tts._broken.clear()
+
+    def no_onnx(*a, **k):
+        raise RuntimeError("Kokoro ONNX is off in tests")
+
+    monkeypatch.setattr(tts, "kokoro_onnx", no_onnx)  # a test can still replace it with its own fake
     yield
 
 
@@ -74,8 +74,30 @@ def offline(sf_root, monkeypatch):
     def no_engine(*a, **k):
         raise RuntimeError("offline")
 
-    for name in ("kokoro", "edge", "piper"):
+    for name in ("kokoro", "kokoro_onnx", "edge", "piper"):
         monkeypatch.setattr(tts, name, no_engine)
     return sf_root
+
+
+_GL = {}
+
+
+def gl_available() -> bool:
+    """Can this machine draw 3D without a screen (EGL / Mesa)? Rendering tests skip if not."""
+    if "ok" not in _GL:
+        try:
+            from storyforge.world import gl
+
+            gl.create_context().release()
+            _GL["ok"] = True
+        except Exception:
+            _GL["ok"] = False
+    return _GL["ok"]
+
+
+@pytest.fixture()
+def needs_gl():
+    if not gl_available():
+        pytest.skip("no OpenGL on this machine (install libegl1 libgl1-mesa-dri)")
 
 

@@ -11,7 +11,7 @@ from typing import Callable
 
 from ..messages import Reporter
 
-ALL = ("script", "chars", "scenes", "export")
+ALL = ("script", "plan", "export")
 
 
 class Job:

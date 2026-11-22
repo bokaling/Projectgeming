@@ -99,7 +99,7 @@ def score(text: str, length: str = "short") -> Report:
     rep.speakers = sorted({ln.speaker for ln in lines}, key=lambda x: (x != paste.NARRATOR, x))
     rep.seconds = round(rep.words / paste.WORDS_PER_SECOND, 1)
     rep.has_style = bool(parsed.get("style"))
-    from .planner import guess_mood  # noqa: PLC0415
+    from .beats import guess_mood  # noqa: PLC0415
 
     rep.style_line = parsed.get("style") or beats.auto_mood_lock(
         all_text + " " + " ".join(b["visual"] for b in parsed["blocks"]), guess_mood(all_text))

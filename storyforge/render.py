@@ -3,7 +3,7 @@
 Every scene clip (plus the 1 s cold open and the end card) is already encoded once at final
 quality with its captions burned in, and saved to Drive (so a disconnect only loses the clip
 being made). The final video = all clips joined (stream copy, a few seconds) + the audio.
-Scene lengths are whole frames, so picture and voice never drift apart.
+Scene lengths are whole frames, so the 3D video and the voice never drift apart.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def mux(clips: list[Path], audio: Path, out: Path, total: float, title: str = ""
     media.run_ffmpeg(["-f", "concat", "-safe", "0", "-i", lst, "-i", audio, "-map", "0:v", "-map", "1:a",
                       "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", 48000, "-t", f"{total:.3f}",
                       "-movflags", "+faststart", "-metadata", f"title={title}",
-                      "-metadata", "comment=Contains AI-generated images and voice", tmp], "join the video parts")
+                      "-metadata", "comment=Low poly 3D animation, AI-assisted voice", tmp], "join the video parts")
     tmp.replace(out)
     lst.unlink(missing_ok=True)
     return out

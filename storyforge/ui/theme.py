@@ -89,20 +89,6 @@ HEAD = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet">
 <script>document.documentElement.classList.add('dark');</script>
-<script>
-// 🍌 My images: remember when each picked/dropped file was made (File.lastModified), so pictures
-// without a number in the name can be put in order oldest first. Nothing leaves your browser but the times.
-window.sfFileTimes = window.sfFileTimes || {};
-(function () {
-  function remember(files) { for (const f of (files || [])) { window.sfFileTimes[f.name] = f.lastModified; } }
-  document.addEventListener('change', function (e) {
-    const t = e.target; if (t && t.type === 'file' && t.files) remember(t.files);
-  }, true);
-  document.addEventListener('drop', function (e) {
-    if (e.dataTransfer && e.dataTransfer.files) remember(e.dataTransfer.files);
-  }, true);
-})();
-</script>
 """
 
 CSS = f"""

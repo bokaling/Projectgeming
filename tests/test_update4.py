@@ -1,4 +1,4 @@
-"""Update 4: script doctor, mood lock, fast editing, sound design, speed, upload order."""
+"""Script doctor, keyword/pop captions, end card, sound design, narrator speed (kept from update 4)."""
 import json
 import os
 import time
@@ -7,10 +7,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from storyforge import beats, captions, characters, doctor, gemini, media, paste, pipeline, project, publish
+from storyforge import beats, captions, doctor, paste, pipeline, project, publish
 from storyforge.audio import align, music, tts
 from storyforge.messages import Reporter
-from storyforge.motion import cuts, effects
 
 WEAK = """[TITLE] The Night Radio
 [CHARACTER] MIRA: woman, 30s, short silver hair, yellow raincoat
@@ -74,28 +73,6 @@ def test_improve_keeps_format_and_never_dead_ends(sf_root, monkeypatch):
 
 
 # ---------------------------------------------------------------- B) mood lock, expressions
-def test_style_line_and_expressions_in_every_prompt(offline):
-    series = project.Series.create("Mood")
-    opts = project.EpisodeOptions(length="short")
-    res = pipeline.gemini_prompts(series, opts, STRONG, Reporter(echo=False))
-    ep = series.episode(res["episode"])
-    sc = ep.load_script()
-    assert sc["mood_lock"] == "night, heavy rain, yellow taxi, green radio glow, horror thriller"
-    assert sc["hook_text"].startswith("Her dead husband just called")
-    for s in gemini.slots(series, sc, "short"):
-        assert "night, heavy rain, yellow taxi, green radio glow, horror thriller" in s.prompt
-    pipe = pipeline.Pipeline(series, ep, Reporter(echo=False), opts)
-    flux_prompt, _ = characters.scene_prompt(series, sc["scenes"][0], False, mood_lock=sc["mood_lock"])
-    assert "green radio glow" in flux_prompt and pipe
-    # expressions follow the words and never smile unless the script says so
-    assert beats.expression("She screamed and ran", "tense").startswith("terrified")
-    assert "not smiling" in beats.expression("The radio spoke.", "mysterious")
-    assert beats.expression("He smiled at her", "calm") == "smiling warmly"
-    mira = [s for s in sc["scenes"] if "Mira" in s.get("characters", [])]
-    assert mira and all(s.get("expression") for s in mira)
-    assert all("smil" not in s["expression"] or "not smiling" in s["expression"] for s in mira)
-
-
 def test_auto_mood_lock_and_hook_text():
     lock = beats.auto_mood_lock("At midnight the rain hit the lab windows. The radio glowed.", "dark")
     assert lock.startswith("night, heavy rain, lab") and "horror" in lock
@@ -107,40 +84,6 @@ def test_auto_mood_lock_and_hook_text():
 # ---------------------------------------------------------------- C) editing
 def _words(text, start=0.0, total=6.0):
     return align.proportional(align.split_words(text), start, start + total)
-
-
-def test_cut_plan_every_2_seconds_from_the_same_picture(tmp_path):
-    img = tmp_path / "a.png"
-    Image.new("RGB", (768, 1344), (90, 60, 120)).save(img)
-    words = _words("Nobody touched the radio but at three it spoke her name and then it started to scream", 0, 6.0)
-    focus = cuts.cached_focus(img)
-    shots = cuts.plan([{"image": str(img), "depth": "", "camera": "push_in", "fx": [], "focus": focus}], 180, 30,
-                      "short", [w["s"] for w in words], 7, "tense", hook=True,
-                      events={"punch": [0.4], "flash": [4.1], "shake": [4.1]})
-    lens = [s["frames"] / 30 for s in shots]
-    assert sum(s["frames"] for s in shots) == 180 and len(shots) == 3  # 6 s → 3 cuts of ~2 s
-    assert all(1.3 <= x <= 2.7 for x in lens)
-    assert len({s["image"] for s in shots}) == 1 and len({s["framing"] for s in shots}) == 3  # crops, one picture
-    assert shots[0]["framing"] == "subject" and shots[0]["punch"] == [0.4]  # the hook starts tight + punch-in
-    assert any(s["flash"] for s in shots) and any(s["shake"] for s in shots)
-    starts = {round(w["s"] * 30) for w in words}
-    assert all(s["start"] in starts for s in shots[1:])  # cuts land on word starts
-    long_shots = cuts.plan([{"image": str(img), "focus": focus}], 30 * 12, 30, "long", [], 1)
-    assert all(3 * 0.85 <= s["frames"] / 30 <= 5.5 for s in long_shots)
-
-
-def test_crop_looks_at_the_subject_and_flash():
-    rgb = np.zeros((1344, 768, 3), np.uint8)
-    rgb[100:300, 500:700] = 255  # bright thing in the top right
-    m = effects.make_move("static", 1.0, rgb.shape, (90, 160), crop=(1.6, 0.78, 0.15))
-    assert m.base_zoom == 1.6 and m.center[0] > 0 and m.center[1] < 0
-    ov = effects.Overlay((90, 160), [], 1, 1.0, grain=False, vignette=False)
-    _, z, _, px, py, _, _ = effects.camera_state(m, ov, 0, 30, 30)
-    assert z >= 1.6 and 0 < px <= (effects.OVERSCAN - 1 / z) / 2 + 1e-6  # never past the edge
-    assert effects.flash_amount([0.5], 0.5) > 0.6 and effects.flash_amount([0.5], 0.9) < 0.05
-    frames = list(effects.frames(rgb, None, (90, 160), 0.5, 30, "push_fast", grain=False, flash_times=[0.0],
-                                 crop=(1.4, 0.5, 0.4)))
-    assert len(frames) == 15 and frames[0].mean() > frames[-1].mean() + 40  # white flash on the first frame
 
 
 def test_pop_captions_hook_text_and_scene_slices():
@@ -214,129 +157,3 @@ def test_voice_speed_keeps_captions_in_sync(sf_root, monkeypatch, tmp_path):
     assert words[3]["s"] >= words[2]["e"] + 0.35  # the pause before the reveal is in the timings too
 
 
-# ---------------------------------------------------------------- E) speed + whole video
-def test_whole_short_cold_open_end_card_timing_report(offline):
-    series = project.Series.create("Viral")
-    opts = project.EpisodeOptions(length="short", resolution="480p")
-    rep = Reporter(echo=False)
-    res = pipeline.generate(series, opts, STRONG, rep)
-    ep = series.episode(1)
-    tl = project.read_json(ep.audio_dir("en") / "timeline.json")
-    assert tl["cold"] == 1.0 and tl["scenes"][0]["start"] == 1.0 and tl["end"]["dur"] == 1.6
-    assert tl["beats"]["reveal"] and tl["beats"]["punch"]  # "That's when she realized…" + hook words
-    video = res["videos"][0]
-    assert abs(media.duration(video) - tl["total"]) < 0.1
-    edit = project.read_json(ep.dir / "render" / "edit_en_9x16.json")
-    all_cuts = [c for s in edit["scenes"] for c in s["cuts"]]
-    voice = sum(s["dur"] for s in tl["scenes"])
-    assert len(all_cuts) >= voice / 2.6  # a new shot about every 2 s
-    pictures = {c["image"] for c in all_cuts}
-    assert len(pictures) <= voice / 4  # but only about one picture per 5 s
-    assert edit["cold"]["flash"] == [0.0] and edit["end"]["text"] == "PART 2"
-    text = rep.text(400)
-    assert "Timing report" in text and "Voice (made at the same time)" in text and "Total" in text
-    result = project.read_json(ep.export_dir / "result.json")
-    assert result["timings"] and any("Scene clips" in n for n, _ in result["timings"])
-    # the last frame is the end card: dark background with a big white "PART 2"
-    frame = ep.dir / "end.png"
-    media.run_ffmpeg(["-sseof", "-0.2", "-i", video, "-frames:v", "1", frame], "grab the last frame")
-    a = np.asarray(Image.open(frame).convert("L")).astype(int)
-    assert (a > 230).mean() > 0.01 and np.median(a) < 90
-
-
-def test_final_episode_and_no_end_card(offline):
-    series = project.Series.create("Final")
-    opts = project.EpisodeOptions(length="short", resolution="480p", final_episode=True, cold_open=False)
-    pipeline.generate(series, opts, STRONG, Reporter(echo=False))
-    ep = series.episode(1)
-    edit = project.read_json(ep.dir / "render" / "edit_en_9x16.json")
-    assert edit["end"]["text"] == "THE END" and edit["cold"] is None
-    tl = project.read_json(ep.audio_dir("en") / "timeline.json")
-    assert tl["cold"] == 0 and tl["scenes"][0]["start"] == 0.0
-
-
-def test_gemini_mode_loads_no_image_model(offline, monkeypatch, tmp_path):
-    from storyforge import images
-    from storyforge.motion import depth
-
-    series = project.Series.create("NoModels")
-    opts = project.EpisodeOptions(length="short", resolution="480p")
-    res = pipeline.gemini_prompts(series, opts, STRONG, Reporter(echo=False))
-    ep = series.episode(res["episode"])
-    files = []
-    for n in range(res["pictures"]):
-        p = tmp_path / f"{n + 1}.png"
-        Image.new("RGB", (300, 520), (40 + 20 * n, 30, 90)).save(p)
-        files.append(p)
-    gemini.add_images(ep, files, res["pictures"])
-
-    def boom(*a, **k):
-        raise AssertionError("an image model was used")
-
-    monkeypatch.setattr(images, "generate_batch", boom)
-    monkeypatch.setattr(depth, "make_depth", boom)
-    monkeypatch.setattr(depth, "_load", boom)
-    o = ep.load_options()
-    o.image_source = "mine"
-    out = pipeline.Pipeline(series, ep, Reporter(echo=False), o).make_video()
-    assert out["videos"] and not list(ep.dir.glob("scenes/*/depth_*.png"))
-
-
-# ---------------------------------------------------------------- F) upload order
-def test_upload_order_by_time_character_sheets_first(offline, tmp_path):
-    series = project.Series.create("Order")
-    res = pipeline.gemini_prompts(series, project.EpisodeOptions(length="short"), STRONG, Reporter(echo=False))
-    ep = series.episode(res["episode"])
-    total = res["pictures"]
-    names = [f"Gemini_Generated_Image_{c * 6}.jfif" for c in "abcdefghij"[: total + 1]]
-    order = list(reversed(names))  # made in reverse alphabetical order
-    times = {n: 1000 + 60 * order.index(n) for n in names}
-    files = []
-    for n in names:
-        p = tmp_path / n
-        Image.new("RGB", (60, 100), (10, 10, 10)).save(p, format="JPEG")
-        files.append(p)
-    msgs = gemini.add_images(ep, files, total, times, n_chars=1)
-    data = project.read_json(ep.dir / "my_images.json")
-    assert data["characters"]["C1"] == order[0].replace(".jfif", ".png")  # the oldest = the character sheet
-    assert [data["slots"][str(k)] for k in range(1, total + 1)] == [o.replace(".jfif", ".png") for o in order[1:]]
-    assert any("by the time they were made" in m for m in msgs)
-    # ⬆️ on scene 1 swaps it with the character sheet
-    gemini.step(ep, "1", -1, total, 1)
-    data2 = project.read_json(ep.dir / "my_images.json")
-    assert data2["characters"]["C1"] == data["slots"]["1"] and data2["slots"]["1"] == data["characters"]["C1"]
-
-
-def test_upload_order_without_times_and_numbers_win(offline, tmp_path):
-    series = project.Series.create("Order2")
-    res = pipeline.gemini_prompts(series, project.EpisodeOptions(length="short"), STRONG, Reporter(echo=False))
-    ep = series.episode(res["episode"])
-    total = res["pictures"]
-    files = []
-    for n in ["zz_Gemini_Generated_Image_q.png", "2.png", "Gemini_Generated_Image_a.png", "C1.png"]:
-        p = tmp_path / n
-        Image.new("RGB", (60, 100), (10, 10, 10)).save(p)
-        files.append(p)
-    msgs = gemini.add_images(ep, files, total, times=None, n_chars=1)
-    data = project.read_json(ep.dir / "my_images.json")
-    assert data["slots"]["2"] == "2.png" and data["characters"]["C1"] == "C1.png"  # numbers in the name win
-    assert data["slots"]["1"] == "zz_Gemini_Generated_Image_q.png"  # then the order you picked them in
-    assert data["slots"]["3"] == "Gemini_Generated_Image_a.png"
-    assert any("order you selected" in m for m in msgs)
-    assert gemini._number("IMG_20261122_1430.jpg") is None and gemini._number("download (2).png") is None
-    assert gemini._number("03_taxi.png") == ("", 3) and gemini._number("scene-12.webp") == ("", 12)
-
-
-def test_drive_folder_uses_drive_file_times(offline):
-    series = project.Series.create("Drive")
-    res = pipeline.gemini_prompts(series, project.EpisodeOptions(length="short"), STRONG, Reporter(echo=False))
-    ep = series.episode(res["episode"])
-    d = gemini.folder(ep)
-    now = time.time()
-    for k, n in enumerate(["x.jpg", "a.jpg", "m.jpg"]):  # made in this order (x oldest)
-        Image.new("RGB", (60, 100), (10, 10, 10)).save(d / n)
-        os.utime(d / n, (now - 300 + k * 60, now - 300 + k * 60))
-    gemini.scan_folder(ep, res["pictures"], 0)
-    data = project.read_json(ep.dir / "my_images.json")
-    assert [data["slots"][k] for k in ("1", "2", "3")] == ["x.png", "a.png", "m.png"]
-    assert (d / "originals" / "x.jpg").exists()

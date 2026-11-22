@@ -43,11 +43,13 @@ PRESETS = {
     "playful": dict(root=55, bpm=96, prog=[(0, "M"), (5, "M"), (7, "M"), (0, "M")], layers=["pad", "piano", "sub"], wet=0.35, cutoff=1700),
 }
 SFX_GAIN = {"whoosh": 0.35, "impact": 0.5, "riser": 0.3, "heartbeat": 0.5, "wind": 0.18, "rain": 0.16,
-            "thunder": 0.4, "sting": 0.35, "low_whoosh": 0.17, "boom": 0.42, "soft_riser": 0.24}
+            "thunder": 0.4, "sting": 0.35, "low_whoosh": 0.17, "boom": 0.42, "soft_riser": 0.24,
+            "hum": 0.12, "pour": 0.12, "bubbles": 0.14, "zap": 0.1, "click": 0.16, "pop": 0.12, "alarm_hum": 0.1}
 MUSIC_LOWPASS = 8000  # Hz: nothing sharp above this
 SFX_LOWPASS = 6000
 AMBIENT = {"wind", "rain"}
-DESIGN_SFX = {"low_whoosh", "boom", "soft_riser"}  # sound design: picture changes, reveals, before the cliffhanger
+DESIGN_SFX = {"low_whoosh", "boom", "soft_riser", "hum", "pour", "bubbles", "zap", "click", "pop", "alarm_hum"}
+LOOPED = {"hum", "pour", "bubbles", "alarm_hum"}  # last as long as the action (machines running, liquid flowing)
 
 
 def midi_hz(m: float) -> float:
@@ -255,6 +257,17 @@ def generate_music(mood: str, seconds: float, seed: int = 0) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+def _loopable(x: np.ndarray, sec: float = 0.3) -> np.ndarray:
+    """Blend the end into the start, so a sound repeats without a click (machines running, liquid flowing)."""
+    k = min(int(sec * SR), len(x) // 3)
+    if k < 2:
+        return x
+    w = np.linspace(0, 1, k, dtype=np.float32)[:, None]
+    out = x[:-k].copy()
+    out[:k] = x[:k] * w + x[-k:] * (1 - w)
+    return out
+
+
 def make_sfx(name: str, seed: int = 0) -> np.ndarray:
     """Stereo float32 sound effect."""
     rng = np.random.default_rng(seed + zlib.crc32(name.encode()) % 1000)
@@ -305,7 +318,7 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         rumble = _lowpass(noise(4.5), 180) * decay(n, 1.3) * 3
         crack = _bandpass(noise(4.5), 600, 4000) * decay(n, 0.12)
         out = _reverb(np.stack([rumble + crack, rumble * 0.9 + crack], 1), 0.3, rng, 2.0)
-    elif name == "low_whoosh":  # soft air movement on a picture change (no hiss)
+    elif name == "low_whoosh":  # soft air movement on a scene change (no hiss)
         n = int(0.7 * SR)
         t = np.arange(n) / SR
         shape = np.exp(-((t - 0.3) / 0.13) ** 2)
@@ -330,6 +343,51 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         x[-int(0.05 * SR):] *= np.linspace(1, 0, int(0.05 * SR))
         out = np.stack([x, x * 0.96], 1)
         out = _lowpass(out, 3000)
+    elif name == "hum":  # a machine running: low motor hum with a slow wobble (loops)
+        n = int(4.0 * SR)
+        t = np.arange(n) / SR
+        f0 = 55.0
+        x = sum(np.sin(2 * np.pi * f0 * h * t + h) / h for h in (1, 2, 3, 4, 6))
+        x = x * (0.85 + 0.15 * np.sin(2 * np.pi * 0.7 * t)) + _lowpass(noise(4.0), 300) * 0.3
+        out = np.stack([x, x], 1)
+        out = _lowpass(out, 900)
+    elif name == "alarm_hum":  # a low warning pulse (danger), never shrill
+        n = int(4.0 * SR)
+        t = np.arange(n) / SR
+        x = np.sin(2 * np.pi * 110 * t) * (0.5 + 0.5 * np.sin(2 * np.pi * 1.6 * t)) ** 2
+        out = np.stack([x, x], 1)
+        out = _lowpass(out, 600)
+    elif name == "pour":  # liquid flowing through a pipe (soft, filtered noise, loops)
+        n = int(4.0 * SR)
+        lfo = 0.75 + 0.25 * np.sin(np.arange(n) / SR * 2 * np.pi * 1.3)
+        x = _bandpass(noise(4.0), 150, 1200) * lfo
+        out = np.stack([x, np.roll(x, 3000)], 1)
+    elif name == "bubbles":  # low soft bloops (loops)
+        n = int(4.0 * SR)
+        x = np.zeros(n, np.float32)
+        for st in rng.uniform(0, 3.8, 26):
+            ln = int(rng.uniform(0.05, 0.12) * SR)
+            tt = np.arange(ln) / SR
+            f = rng.uniform(180, 420) * (1 + 3 * tt)
+            i = int(st * SR)
+            x[i: i + ln] += (np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-tt / 0.03))[: n - i] * rng.uniform(0.4, 1)
+        out = np.stack([x, np.roll(x, 900)], 1)
+        out = _lowpass(out, 2000)
+    elif name == "zap":  # electricity: a soft low crackle (no hiss)
+        n = int(0.6 * SR)
+        t = np.arange(n) / SR
+        x = _bandpass(noise(0.6), 200, 2500) * (np.sin(2 * np.pi * 50 * t) > 0.6) * decay(n, 0.25)
+        out = np.stack([x, x], 1)
+    elif name == "click":  # a light switch / relay, muffled
+        n = int(0.25 * SR)
+        x = _lowpass(noise(0.25), 1800) * decay(n, 0.012)
+        x += np.sin(2 * np.pi * 140 * np.arange(n) / SR) * decay(n, 0.04) * 0.6
+        out = np.stack([x, x], 1)
+    elif name == "pop":  # something appears: a soft low pop
+        n = int(0.3 * SR)
+        t = np.arange(n) / SR
+        x = np.sin(2 * np.pi * np.cumsum(260 - 400 * t) / SR) * decay(n, 0.05)
+        out = np.stack([x, x], 1)
     else:  # "sting": dark orchestral hit
         n = int(2.4 * SR)
         x = np.zeros((n, 2), np.float32)
@@ -341,6 +399,8 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         x[: len(hit)] += hit * 0.6
         out = _reverb(x, 0.35, rng, 2.2)
     out = _lowpass(_lowpass(out.astype(np.float32), SFX_LOWPASS), SFX_LOWPASS)  # soft, never sharp
+    if name in LOOPED:
+        out = _loopable(out)
     return (out / (np.abs(out).max() + 1e-9) * 0.9).astype(np.float32)
 
 
@@ -518,8 +578,13 @@ def mix(voice: np.ndarray, total: float, music: np.ndarray | None, music_volume:
         out += _lowpass(m, MUSIC_LOWPASS) * music_volume * 2.0 * gain[:, None]
     fx = np.zeros((n, 2), np.float32)
     for t, audio, gain, max_sec in sfx_events:
+        if max_sec and len(audio) < int(max_sec * SR):  # loops (machines running) last as long as the action
+            audio = np.tile(audio, (int(np.ceil(max_sec * SR / max(1, len(audio)))), 1))
         seg = audio[: int(max_sec * SR)] if max_sec else audio
-        if max_sec and len(seg) > SR:  # fade out long ambience
+        if max_sec and len(seg) > SR:  # soft start, fade out long sounds
+            f_in = min(len(seg), int(0.15 * SR))
+            seg = seg.copy()
+            seg[:f_in] *= np.linspace(0, 1, f_in)[:, None]
             f = min(len(seg), int(0.6 * SR))
             seg = seg.copy()
             seg[-f:] *= np.linspace(1, 0, f)[:, None]

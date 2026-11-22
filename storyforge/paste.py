@@ -11,10 +11,8 @@ Format:
 * No [SCENE] lines? The text is split into scenes automatically.
 * A [SCENE] with a very long text is split into a few shots of the same scene.
 * Optional: [CHAPTER] Chapter name (for long videos / YouTube chapters).
-* Optional: [CHARACTER] NIKOLA: man, 40s, short dark hair, lab coat
-  (this look goes into every picture where he appears).
-* Optional: [STYLE] night, rain, dark lab, green radio glow, horror thriller
-  (the "mood lock": added to every picture so time of day, light and colors stay the same).
+* Optional: [CHARACTER] NIKOLA: man, 40s (a second speaker: "man"/"woman" picks the voice).
+* Optional: [STYLE] clean low poly farm, warm sunset light (the look of the 3D world).
 * Farsi works the same way (راوی: for the narrator).
 """
 
@@ -32,12 +30,6 @@ LATIN = re.compile(r"[A-Za-z]")
 NARRATOR_SPEED = 1.1  # the narrator talks a little faster (more energy)
 WORDS_PER_SECOND = 2.5 * NARRATOR_SPEED
 WORDS_PER_SCENE = {"short": 14, "long": 28}  # a scene = whole sentences, so the voice sounds natural
-# One picture per ~5 s (short) / ~10 s (long): about 12 pictures for a Short. The fast cuts in between
-# (every 1.5-2.5 s / 3-5 s) are zooms and crops into different parts of the same picture.
-SECONDS_PER_IMAGE = {"short": 5.0, "long": 10.0}
-WORDS_PER_IMAGE = {k: round(v * WORDS_PER_SECOND) for k, v in SECONDS_PER_IMAGE.items()}
-WORDS_PER_SHOT = WORDS_PER_IMAGE  # old name
-CUT_SECONDS = {"short": (1.5, 2.5), "long": (3.0, 5.0)}  # a new shot (cut) this often
 TARGET_SECONDS = {"short": 60, "long": 600}
 TARGET_WORDS = {"short": 150, "long": 1500}  # at 1.1x speed, with short pauses and the cold open
 

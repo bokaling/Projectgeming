@@ -27,14 +27,10 @@ SECRET_NAMES = [
     "OPENROUTER_API_KEY",  # openrouter.ai     (free models only)
     "HF_TOKEN",  # huggingface.co        (faster, more reliable model downloads)
     "FREESOUND_API_KEY",  # freesound.org     (CC0 sound effects)
-    "AIHORDE_API_KEY",  # aihorde.net          (higher priority in the free queue)
 ]
 
 # Model ids (all permissive licenses, see research.md section 14).
 MODELS = {
-    "image": "black-forest-labs/FLUX.2-klein-4B",  # Apache 2.0
-    "depth": "depth-anything/Depth-Anything-V2-Small-hf",  # Apache 2.0 (Small only!)
-    "i2v": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",  # Apache 2.0
     "kokoro": "hexgrad/Kokoro-82M",  # Apache 2.0
     "align_en": "facebook/wav2vec2-base-960h",  # Apache 2.0
     "align_fa": "jonatasgrosman/wav2vec2-large-xlsr-53-persian",  # Apache 2.0
@@ -42,10 +38,15 @@ MODELS = {
     "piper_voices": "rhasspy/piper-voices",
 }
 _START = time.time()
-BIG_MODELS_GB = 45  # klein (~16 GB) + Wan 2.2 5B (~25 GB) + margin
+BIG_MODELS_GB = 15  # only the optional local text model is big (~8 GB); everything else is small
+# Kokoro as ONNX (same voices, Apache 2.0) from GitHub: a backup when the normal Kokoro can't start
+KOKORO_ONNX = {
+    "model": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+    "voices": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+}
 
 # Models small enough to keep on free Google Drive (15 GB).
-SMALL_MODELS = {"depth", "kokoro", "align_en", "align_fa", "piper_voices"}
+SMALL_MODELS = {"kokoro", "align_en", "align_fa", "piper_voices"}
 
 
 @dataclass
@@ -57,26 +58,18 @@ class GPUInfo:
     @property
     def label(self) -> str:
         if not self.available:
-            return "No GPU (online + CPU mode)"
+            return "No GPU (CPU rendering)"
         return f"{self.name} ({self.vram_gb:.0f} GB)"
 
 
 @dataclass
 class GPUProfile:
-    """Settings that depend on the GPU Colab gave you."""
+    """Settings that depend on the machine Colab gave you."""
 
     name: str = "CPU"
-    dtype: str = "fp32"  # fp16 on T4 (no bf16), bf16 on L4/A100
-    image_max_side: int = 1280  # long side of generated pictures
-    keep_text_encoder: bool = False  # enough VRAM to keep the prompt reader loaded
-    heroes_short: int = 0  # real image-to-video scenes (auto)
-    heroes_long: int = 0
-    wan_sizes: dict = field(default_factory=lambda: {"9x16": (480, 832), "16x9": (832, 480)})
-    wan_frames: int = 81
-    wan_steps: int = 20
-    hero_minutes: float = 15.0
+    dtype: str = "fp32"  # fp16 on T4 (no bf16), bf16 on L4/A100 (local text model, Kokoro)
     cu_per_hour: float = 0.1  # Colab compute units per hour (unofficial user measurements, Nov 2026)
-    workers: int = 1  # parallel scene-motion renders (CPU cores)
+    workers: int = 1  # CPU cores for the encoder
 
     @property
     def label(self) -> str:
@@ -97,15 +90,10 @@ def gpu_profile(gpu: "GPUInfo | None" = None) -> GPUProfile:
     if "A100" in name or "H100" in name or vram >= 38:
         big = vram >= 70
         return GPUProfile(name="A100 80GB" if big else ("H100" if "H100" in name else "A100"), dtype="bf16",
-                          image_max_side=1920, keep_text_encoder=True, heroes_short=5, heroes_long=10,
-                          wan_sizes={"9x16": (704, 1280), "16x9": (1280, 704)}, wan_frames=81, wan_steps=30,
-                          hero_minutes=10.0, cu_per_hour=7.5 if big else 5.4, workers=w)
+                          cu_per_hour=7.5 if big else 5.4, workers=w)
     if "L4" in name or vram >= 21:
-        return GPUProfile(name="L4", dtype="bf16", image_max_side=1536, keep_text_encoder=True, heroes_short=3,
-                          heroes_long=6, wan_frames=81, wan_steps=25, hero_minutes=12.0, cu_per_hour=1.7, workers=w)
-    return GPUProfile(name="T4" if "T4" in name else gpu.name, dtype="fp16", image_max_side=1344,
-                      keep_text_encoder=False, heroes_short=1, heroes_long=2, wan_frames=81, wan_steps=20,
-                      hero_minutes=15.0, cu_per_hour=1.2, workers=w)
+        return GPUProfile(name="L4", dtype="bf16", cu_per_hour=1.7, workers=w)
+    return GPUProfile(name="T4" if "T4" in name else gpu.name, dtype="fp16", cu_per_hour=1.2, workers=w)
 
 
 def session_seconds() -> float:
@@ -250,12 +238,12 @@ def detect_gpu() -> GPUInfo:
 
 # What each free key turns on (shown in the log and in the app).
 KEY_FEATURES = {
-    "GEMINI_API_KEY": "Gemini (free): ✨ Improve script, picture prompts, titles and descriptions, Farsi translation",
+    "GEMINI_API_KEY": "Gemini (free): writes scripts from a topic, ✨ Improve script, the 3D scene plans, "
+                      "the quality check of each scene, scene fixes, titles and descriptions",
     "GROQ_API_KEY": "Groq (free): backup AI writer when Gemini is busy",
     "OPENROUTER_API_KEY": "OpenRouter free models: second backup AI writer",
-    "HF_TOKEN": "Hugging Face: faster, more reliable model downloads (FLUX, Wan, Kokoro, depth)",
+    "HF_TOKEN": "Hugging Face: faster, more reliable voice model downloads (Kokoro, word timing)",
     "FREESOUND_API_KEY": "Freesound: extra CC0 sound effects",
-    "AIHORDE_API_KEY": "AI Horde: faster online pictures when there is no GPU",
 }
 _SECRET_STATUS: dict[str, str] = {}
 

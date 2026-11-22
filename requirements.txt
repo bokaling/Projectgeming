@@ -1,13 +1,11 @@
 # Core packages, installed by the notebook's Setup cell (storyforge/install.py).
 # Colab/Kaggle already have torch, numpy, scipy, pillow, opencv and requests.
 gradio>=6.0,<7
-diffusers>=0.43,<1
-transformers>=4.56
-accelerate>=1.0
+moderngl>=5.10       # the 3D renderer (OpenGL; GPU through EGL, or the CPU through Mesa)
+transformers>=4.56   # word timing for your own recording (wav2vec2), optional local text model
 huggingface_hub
-ftfy
 soundfile
 edge-tts>=7.2
+kokoro-onnx>=0.4     # backup Kokoro voice (same voices, ONNX, runs on the CPU)
 arabic-reshaper
 python-bidi
-pillow-heif          # opens .heic pictures (iPhone) in the 🍌 My images upload

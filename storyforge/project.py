@@ -3,7 +3,7 @@
 How resume works: every finished step is saved in state.json together with a
 "fingerprint" (a short hash of everything that step used). When you run again,
 a step is skipped if its fingerprint is the same and its files still exist.
-Change a scene's prompt and only that scene's picture is redone.
+Change one scene and only that scene's 3D clip is rendered again.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import threading
 import time
 from dataclasses import asdict, dataclass, field, fields
@@ -22,8 +21,6 @@ from . import config
 
 FORMATS = {"9x16": "9:16 (Shorts, TikTok, Reels, Snapchat)", "16x9": "16:9 (YouTube)"}
 LANGUAGES = {"en": "English", "fa": "Farsi"}
-UPLOAD_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
-UPLOAD_VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
 
 
 def dims(fmt: str, resolution: str = "1080p") -> tuple[int, int]:
@@ -115,30 +112,22 @@ class State:
 
 @dataclass
 class EpisodeOptions:
-    idea: str = ""
-    script_text: str = ""  # your pasted script (main mode)
+    idea: str = ""  # the topic ("how cow poop becomes electricity") when the AI writes the script
+    script_text: str = ""  # your script (or the one the AI wrote)
     source: str = "paste"  # paste = your script, ai = the AI writes it from `idea`
     length: str = "short"  # short = ~60 s 9:16 1080x1920, long = ~10 min 16:9 1920x1080
     languages: list = field(default_factory=lambda: ["en"])
     formats: list = field(default_factory=lambda: ["9x16"])  # set from `length`
     resolution: str = "1080p"  # or "720p" (faster)
-    scene_count: int = 12  # only used when the AI writes the script
-    hero_count: int = -1  # real image-to-video scenes; -1 = auto (depends on your GPU)
-    hero_minutes: float = 0.0  # time limit per hero clip; 0 = auto (T4 15, L4 12, A100 10 minutes)
-    captions: bool = True
-    caption_style: str = "pop"  # pop (big 1-3 words) | highlight | karaoke | plain
+    captions: bool = True  # keyword captions at the top
     music_mood: str = "auto"
     music_volume: float = 0.10  # quiet: music sits well under the voice
-    sfx: bool = True  # soft editing sounds: low whoosh on picture changes, low boom on reveals, riser before the end
-    effects: bool = True  # particles, light leaks, grain
-    second_format_images: str = "auto"  # auto | generate | reuse
+    sfx: bool = True  # soft sounds: whooshes on camera moves, machine hums, booms on reveals
     creator_note: str = ""
     quick_test: bool = False
-    image_source: str = "flux"  # flux = AI pictures on the GPU, mine = your own images (Gemini mode)
-    missing_policy: str = "ask"  # mine mode, missing pictures: ask | flux | nearest
-    cold_open: bool = True  # 1 s flash of the most dramatic picture before scene 1
     end_card: bool = True  # last frame "Part X 👀" (X = next episode)
     final_episode: bool = False  # end card says "The End" instead
+    quality_check: bool = True  # check one still per scene (Gemini vision if you have a key) and fix
 
     def __post_init__(self):
         self.length = "long" if self.length == "long" else "short"
@@ -153,8 +142,6 @@ class EpisodeOptions:
         opts.length = "long" if opts.length == "long" else "short"
         opts.formats = ["16x9"] if opts.length == "long" else ["9x16"]
         opts.source = "ai" if opts.source == "ai" else "paste"
-        opts.hero_count = max(-1, min(12, int(opts.hero_count)))
-        opts.scene_count = max(3, min(120, int(opts.scene_count)))
         return opts
 
     def to_dict(self) -> dict:
@@ -170,7 +157,7 @@ class EpisodeOptions:
 # ---------------------------------------------------------------------------
 
 
-DEFAULT_STYLE = "cinematic digital painting, detailed background, film still, shallow depth of field"
+DEFAULT_STYLE = "clean low poly 3D, flat colors, soft shadows, dark teal background, glowing grid floor"
 
 
 class Series:
@@ -303,49 +290,11 @@ class Episode:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def image_path(self, sid: str, fmt: str, shot: int = 0) -> Path:
-        """Picture of shot `shot` of a scene (shot 0 = the scene's main picture)."""
-        return self.scene_dir(sid) / (f"image_{fmt}.png" if shot == 0 else f"image_{fmt}_{shot}.png")
-
-    def depth_path(self, sid: str, fmt: str) -> Path:
-        return self.scene_dir(sid) / f"depth_{fmt}.png"
-
-    def hero_path(self, sid: str, fmt: str) -> Path:
-        return self.scene_dir(sid) / f"hero_{fmt}.mp4"
-
     def clip_path(self, sid: str, fmt: str, lang: str) -> Path:
-        return self.scene_dir(sid) / f"clip_{fmt}_{lang}.mp4"
+        return self.dir / "render" / f"{sid}_{fmt}_{lang}.mp4"
 
     def video_path(self, lang: str, fmt: str) -> Path:
         return self.export_dir / f"{self.series.slug}_{self.tag}_{lang}_{fmt}.mp4"
-
-    # ---- uploads (user's own picture or clip for a scene) -----------------
-    def upload_path(self, sid: str) -> Path | None:
-        d = self.scene_dir(sid)
-        for p in sorted(d.glob("upload.*")):
-            if p.suffix.lower() in UPLOAD_IMAGE_EXT | UPLOAD_VIDEO_EXT:
-                return p
-        return None
-
-    def set_upload(self, sid: str, src: str | os.PathLike) -> Path:
-        src = Path(src)
-        ext = src.suffix.lower()
-        if ext not in UPLOAD_IMAGE_EXT | UPLOAD_VIDEO_EXT:
-            from .messages import FriendlyError
-
-            raise FriendlyError(
-                f"I can't use a '{ext}' file.", "Upload a picture (png, jpg, webp) or a video (mp4, mov, webm)."
-            )
-        self.clear_upload(sid)
-        dst = self.scene_dir(sid) / f"upload{ext}"
-        shutil.copyfile(src, dst)
-        self.state.forget(f"depth:{sid}")
-        self.state.forget(f"clip:{sid}")
-        return dst
-
-    def clear_upload(self, sid: str) -> None:
-        for p in self.scene_dir(sid).glob("upload.*"):
-            p.unlink(missing_ok=True)
 
     def own_voice_path(self, lang: str) -> Path | None:
         for p in sorted(self.audio_dir(lang).glob("own_voice.*")):
@@ -365,24 +314,24 @@ class Episode:
     def save_options(self, opts: EpisodeOptions) -> None:
         write_json(self.options_path, {"options": opts.to_dict()})
 
-    def scene_source_image(self, sid: str, fmt: str, formats: list[str], shot: int = 0) -> Path | None:
-        """Best picture to use for a shot in a format: upload > own format > other format."""
-        up = self.upload_path(sid)
-        if up and up.suffix.lower() in UPLOAD_IMAGE_EXT:
-            return up
-        p = self.image_path(sid, fmt, shot)
-        if p.exists():
-            return p
-        for other in formats:
-            q = self.image_path(sid, other, shot)
-            if q.exists():
-                return q
-        return None
+    # ---- the 3D scene plan ----------------------------------------------------
+    @property
+    def plan_path(self) -> Path:
+        return self.dir / "plan.json"
+
+    def load_plan(self) -> dict | None:
+        return read_json(self.plan_path, None)
+
+    def save_plan(self, plan: dict) -> None:
+        write_json(self.plan_path, plan)
+
+    def still_path(self, sid: str, fmt: str) -> Path:
+        return self.dir / "stills" / f"{sid}_{fmt}.jpg"
 
     def cleanup_work_files(self) -> int:
         """Delete re-creatable scene clips to save Drive space. Returns MB freed."""
         freed = 0
-        for p in list((self.dir / "scenes").glob("*/clip_*.mp4")) + list((self.dir / "render").glob("*.mp4")):
+        for p in list((self.dir / "render").glob("*.mp4")):
             freed += p.stat().st_size
             p.unlink(missing_ok=True)
         self.state.forget("clip")
