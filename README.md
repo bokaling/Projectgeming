@@ -16,6 +16,12 @@ Plus the thumbnail, title, description, hashtags and YouTube chapters. **Everyth
   ("the agitator **spins**" → it spins on "spins")
 - 🔑 **Keyword captions** at the top, colored by meaning: 🔴 red = problem, 🟠 orange = part name,
   ⚪ white = number
+- 🧱 **126 low poly objects** built in code: animals, people, buildings, factories, vehicles, pumps, gears,
+  engines, turbines, tanks, pipes, fire, smoke, electricity, cells, bacteria, viruses, molecules, atoms, DNA,
+  planets, tools, money, charts, arrows, glass containers and cross sections. Size, color and count can change.
+- 🔧 **Fix a shot by typing** ("make the tank bigger", "show the gas flowing"): only that shot is rendered again
+- 🔍 **Automatic quality check:** one still per shot is checked before the render (subject in the picture,
+  camera not inside a wall, labels apart) and, with a free Gemini key, Gemini looks at every still too
 - 🩺 **Script doctor** scores your script for retention and **✨ Improve** rewrites it (you pick)
 - 🗣️ One male narrator (Kokoro, 1.1× speed); backups keep the same voice; Farsi works too
 - 📚 **Batch:** several scripts (or topics) separated by a line of `=====`
@@ -67,14 +73,15 @@ simple starter script to edit.
 | Step | What it's for |
 |---|---|
 | **1 · 💡 Topic & Script** | Type a topic or paste a script. 🩺 Script doctor score + ✨ Improve. Short/Long, language, quality. **🚀 Make the video**, or **🧭 Plan first** to see every shot before the render. |
-| **2 · 🧭 Scene plan** | The 3D plan in plain words: the world, and for each shot the camera move, what moves, the labels and the keywords, with one still frame per shot. You can edit the plan JSON and press **💾 Check and save the plan** (mistakes are fixed for you). **🔧 Fix this shot** (type "make the tank bigger") comes in the next update. |
+| **2 · 🧭 Scene plan** | The 3D plan in plain words: the world, and for each shot the camera move, what moves, the labels and the keywords, with one still frame per shot. You can edit the plan JSON and press **💾 Check and save the plan** (mistakes are fixed for you). Under every shot: type what to change ("make the tank bigger", "show the gas flowing", "cut it open", "from above") and press **🔧 Fix this shot**. Only the shots that show the change are rendered again. |
 | **3 · 🎙️ Voice & Sound** | Narrator voice with 🔊 preview, your own recording, music mood and volume, sound effects on/off. |
 | **4 · 🎬 Export** | Your video, thumbnail, title, description (with chapters), hashtags, and the ⏱ timing report. |
 
 **How it works inside:** script → **scene plan** (Gemini writes a strict JSON plan: objects, positions,
-animations, camera, labels, keywords; the app checks it and fixes mistakes by itself) → **voice** (made at the
-same time) → **3D render** (one clip per shot, encoded once at final quality) → music and sound design →
-the clips are joined without re-encoding → thumbnail and texts.
+animations, camera, labels, keywords; the app checks it and fixes mistakes by itself; long videos are planned
+14 shots at a time in one shared world) → **voice** (made at the same time) → **🔍 quality check** (one small
+still per shot, broken shots fixed) → **3D render** (one clip per shot, encoded once at final quality) → music
+and sound design → the clips are joined without re-encoding → thumbnail and texts.
 
 **Colab disconnected?** Run cells 1️⃣ and 2️⃣ again and press the button again. The plan, voices and finished
 3D clips are saved on Drive and reused, so only the missing shots are rendered.
@@ -116,7 +123,7 @@ them in step 1 under **🔑 Free keys**.
 
 | Name | Where (free, no card) | What it turns on |
 |---|---|---|
-| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) → Get API key | Topic → script, the 3D scene plan, ✨ Improve script, titles and descriptions, Farsi translation |
+| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) → Get API key | Topic → script, the 3D scene plan, 🔧 fixing shots in your own words, 🔍 Gemini vision quality check, ✨ Improve script, titles and descriptions, Farsi translation |
 | `HF_TOKEN` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (a "Read" token) | Faster, more reliable downloads of the Kokoro voice |
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) → API Keys | Backup AI writer when Gemini is busy |
 | `FREESOUND_API_KEY` | [freesound.org](https://freesound.org/apiv2/apply) | Extra CC0 sound effects |
@@ -150,7 +157,8 @@ version is saved on the branch `legacy-images`.) To test it:
 | "The 3D renderer couldn't start" | Run cell 1️⃣ again (it installs the OpenGL drivers), then cell 2️⃣. |
 | The plan looks simple | Add a free `GEMINI_API_KEY`: the built-in planner only knows the words in your script. |
 | Robot voice | The voice services were unreachable. Press the button again later: only the voice is redone, and the whole video gets the same voice. The log shows the real reason with a 🔧 line. |
-| A shot looks wrong | Step 2 shows every shot. Change that `[SCENE]` line, the narration or the plan JSON and press 🚀 again: only the shots that changed are rendered again. |
+| A shot looks wrong | Step 2 → type what to change under that shot → **🔧 Fix this shot**. Without a Gemini key the fixer understands simple words: bigger, smaller, closer, further, from above, low angle, spin, flow, cut open, x-ray, light up, smoke, a color, add a pump, label "38 °C", remove labels. |
+| "I couldn't understand that change" | Use one of the simple words above, or add a free `GEMINI_API_KEY` (it understands anything). |
 
 ---
 
@@ -191,7 +199,7 @@ MyDrive/StoryForge/
 | Part | Tool | License |
 |---|---|---|
 | 3D renderer | moderngl (OpenGL 3.3, EGL on the GPU, Mesa on the CPU) | MIT |
-| 3D objects | Built-in procedural low poly library (`storyforge/world/assets.py`) | Yours |
+| 3D objects | Built-in procedural low poly library, 126 objects (`storyforge/world/assets.py`, `assets_more.py`) | Yours |
 | Voices | Kokoro 82M (+ Kokoro ONNX backup), Edge TTS / Piper (Farsi), your voice | Apache 2.0 / see above |
 | Captions | FFmpeg + libass, Vazirmatn / Montserrat / Anton | LGPL / SIL OFL |
 | Music & SFX | Generated in code | Yours |
@@ -212,4 +220,6 @@ python -m pytest -q
 The tests run on a normal CPU without internet (AI services are faked). They draw real 3D frames with Mesa
 (skipped if OpenGL can't start), build real videos with FFmpeg, and check the sounds stay soft (nothing above
 8 kHz). Adding a 3D object: write a function with `@asset("name", "what it is", tags, aliases)` in
-`storyforge/world/assets.py` that returns a `Model` made of shapes from `storyforge/world/mesh.py`.
+`storyforge/world/assets_more.py` that returns a `Model` made of shapes from `storyforge/world/mesh.py`. Give moving
+parts a `kind` (`blade` spins, `wheel` rolls, `piston` goes up and down, `rocker` swings, `flame` flickers,
+`liquid` fills, `light` turns on) and it animates by itself.

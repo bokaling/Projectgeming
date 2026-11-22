@@ -417,14 +417,17 @@ class Renderer:
         p = self.prog
         self._common(p, fr, vp, light_vp)
         solid = [d for d in fr.draws if d.opacity >= 0.99 and not d.xray]
-        glass = [d for d in fr.draws if d.opacity < 0.99 or d.xray]
+        thick = [d for d in fr.draws if 0.6 <= d.opacity < 0.99 and not d.xray]  # liquids, water: blended, but solid
+        glass = [d for d in fr.draws if d.opacity < 0.6 or d.xray]  # glass, gas, x-ray shells
         eye = np.asarray(fr.eye)
-        glass.sort(key=lambda d: -float(np.linalg.norm(d.model[:3, 3] - eye)))
-        for group, blend in ((solid, False), (glass, True)):
+        far_first = lambda d: -float(np.linalg.norm(d.model[:3, 3] - eye))  # noqa: E731
+        thick.sort(key=far_first)
+        glass.sort(key=far_first)
+        for group, blend, write in ((solid, False, True), (thick, True, True), (glass, True, False)):
             if blend:
                 ctx.enable(mgl.BLEND)
                 ctx.blend_func = mgl.SRC_ALPHA, mgl.ONE_MINUS_SRC_ALPHA
-                ctx.depth_mask = False
+                self.ms_fbo.depth_mask = write  # thin see-through parts don't hide what's behind or inside them
             for d in group:
                 if d.key not in self.meshes:
                     continue
@@ -440,7 +443,7 @@ class Renderer:
                 self.meshes[d.key][0].render()
             if blend:
                 ctx.disable(mgl.BLEND)
-                ctx.depth_mask = True
+                self.ms_fbo.depth_mask = True
         if fr.particles is not None and len(fr.particles):
             self._particles(fr, vp, light_vp)
 

@@ -280,6 +280,30 @@ def chat(messages, *, json_mode=False, temperature=0.8, max_tokens=4000, rep=Non
     return net.try_in_order(task, calls, rep)
 
 
+def vision_json(system: str, text: str, images: list, *, rep=None, max_tokens: int = 3000):
+    """Ask Gemini (free key) about pictures. Returns the parsed JSON, or None when there is no key or no answer.
+
+    images: JPEG bytes. Only Gemini is used (free vision); without GEMINI_API_KEY this returns None at once."""
+    import base64  # noqa: PLC0415
+
+    fn = _keyed_provider("gemini", GEMINI_BASE, "GEMINI_API_KEY", strong=True)
+    if fn is None:
+        return None
+    content = [{"type": "text", "text": text}] + [
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}}
+        for b in images]
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": content}]
+    try:
+        _, reply = net.try_in_order("quality check", [("Gemini vision", lambda: fn(messages, True, 0.2, max_tokens))], rep)
+        return extract_json(reply)
+    except Exception as exc:  # noqa: BLE001
+        from .messages import StopRequested  # noqa: PLC0415
+
+        if isinstance(exc, StopRequested):
+            raise
+        return None
+
+
 def generate_json(system: str, user: str, *, validate=None, rep=None, task="script", temperature=0.85,
                   max_tokens=4000, allow_local=True, strong=False):
     """Ask for JSON, check it with `validate(obj)` (raise ValueError if bad). Returns (provider, obj)."""

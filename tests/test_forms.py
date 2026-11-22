@@ -28,3 +28,12 @@ def test_forms_friendly_messages(offline, capsys):
     assert "SERIES name" in capsys.readouterr().out
     forms.run("✍️ AI writes from my TOPIC", "", "Empty Show")
     assert "TOPIC" in capsys.readouterr().out
+
+
+def test_forms_fix_one_shot_needs_a_shot_and_an_instruction(offline, capsys):
+    forms.run("🔧 Fix one shot", "", "Nothing Yet")
+    assert "no episodes yet" in capsys.readouterr().out
+    series = project.Series.create("Has One")
+    series.episode(1).save_options(project.EpisodeOptions())
+    forms.run("🔧 Fix one shot", "", "Has One", shot=0, fix="")
+    assert "Fill in SHOT" in capsys.readouterr().out

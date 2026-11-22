@@ -48,10 +48,12 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 * **Shapes** (`mesh.py`): box, cylinder, cone, lathe, icosphere, torus, capsule, tube, extrude, roof, gear,
   plane, arrow, bolt; `Part(name, geo, color, emissive, opacity, shell, pivot, axis, kind)`, `Model(parts,
   anchors, paths)`.
-* **Asset library** (`assets.py`): `@asset(name, about, tags, aliases)` functions with parameters (size, color,
-  level…). `resolve()` maps any name the AI uses (aliases, plurals, last word, difflib) and falls back to
-  `crate`. `catalog()` is what the planner AI sees. Part kinds the world animates: `liquid` (fill),
-  `crust`, `blade` (spin), `light` (light_on), `glow`.
+* **Asset library** (`assets.py` + `assets_more.py`, 126 objects): `@asset(name, about, tags, aliases)` functions
+  with parameters (size, color, level…). `resolve()` maps any name the AI uses (aliases, plurals, last word,
+  difflib) and falls back to `crate`. `catalog()` is what the planner AI sees. Part kinds the world animates:
+  `liquid` (fill/drain), `crust`, `blade` (spin), `wheel` (rolls when moving), `piston` and `rocker` (while
+  spinning), `flame` (always flickers), `light` (light_on). Aliases must be concrete nouns (the offline planner
+  turns every alias it finds in the text into an object: no "time", "data", "no").
 * **World** (`scene.py`): ONE continuous world per video. Areas laid out along +x, the micro world at z=−90.
   Everything is a pure function of time T (so resume and single-shot renders work). Events: persistent
   (appear, disappear, grow, move, spin, fill, drain, light_on/off, float, show_part, hide_part) and shot-only
@@ -62,6 +64,20 @@ The owner is a beginner coder. Explain things simply, in short sentences.
   the view turn x-ray automatically.
 * **Keyword captions** (`captions.keyword_header/keyword_events`): top of the screen, one at a time, colored
   by kind: problem red, part orange, number white, info teal.
+* **Frozen layout:** after planning, each area's x/z is written into the plan (`scene.freeze_layout`), so a fix
+  (bigger tank) never moves other areas. `Pipeline.scene_fp` covers only `plan.relevant_objects(plan, i)` (the
+  areas shot i and the shot before look at + what its actions/labels name), so a fix re-renders only the shots
+  that show it.
+* **Long videos:** `planner.ai_plan` plans 14 shots per request (`CHUNK`); later requests get `world_so_far`
+  and must reuse ids; `merge_part` renames clashing ids and pads missing shots; a failing part (not the first)
+  uses the offline planner with prefixed ids.
+* **🔧 Fix a shot** (`world/fixer.py`, `Pipeline.fix_scene`): Gemini edits that shot's JSON (+ changed/new
+  objects); without AI `rule_fix` understands simple words. After a video exists, `make_video()` re-renders only
+  stale clips and joins again.
+* **🔍 Quality check** (`world/checker.py`, `Pipeline.quality_check`, before the render): small stills, local
+  checks (subject in frame and ≥22% of it, camera not inside a solid object or under the floor, labels on screen
+  and apart, frame not empty) fixed by camera/label changes; then Gemini vision (`llm.vision_json`, batches of
+  8 stills, free key only) → `fixer.fix`. Saved as state "qc", so resume skips it.
 
 ## Architecture
 
@@ -123,9 +139,12 @@ storyforge/
   characters.py    speakers and their voices
   models.py        small model downloads checked by size (HF + GitHub files)
   world/mesh.py    low poly shapes, Part, Model
-  world/assets.py  the procedural asset library (add new objects here)
+  world/assets.py  the procedural asset library (core objects, registry, palette)
+  world/assets_more.py  the rest of the library (add new objects here)
   world/plan.py    scene plan schema, validate + auto-fix, readable summary
-  world/planner.py AI planner (Gemini) + offline planner + example match
+  world/planner.py AI planner (Gemini, long videos in parts) + offline planner + example match
+  world/fixer.py   🔧 fix one shot: AI edit or simple rules
+  world/checker.py 🔍 quality check: local checks + Gemini vision
   world/scene.py   World: layout, events, camera, labels, frame(T)
   world/gl.py      moderngl renderer (shaders, shadows, bloom, labels)
   world/labels.py  label pills and the end card picture
@@ -190,8 +209,9 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Pivot phase 1: 3D engine (moderngl), asset library v1 (28 objects), plan schema + validator, AI/offline
       planner, World (events, cameras, labels, cutaway, x-ray, micro world), keyword captions, mechanical SFX,
       Kokoro ONNX backup, new 4-step UI, notebooks, docs; cow poop Short rendered end to end on CPU
-- [ ] Phase 2: bigger asset library, long videos (chunked planning), 🔧 fix one shot by instruction
-      (`Pipeline.fix_scene`), auto quality check (stills + local checks + Gemini vision)
+- [x] Phase 2: asset library 126 objects (piston/rocker/flame kinds), long videos planned in parts with one
+      shared world, frozen area layout + per-shot fingerprints, 🔧 fix one shot (AI + rules, app + backup form),
+      🔍 quality check (local + Gemini vision), see-through liquids drawn correctly
 - [ ] Phase 3: polish (camera, lighting, captions, sound), final report
 
 ### Verified only on CPU (needs a real Colab run)
@@ -226,3 +246,8 @@ wav2vec2 alignment, the Colab port link (`serve_kernel_port_as_window`). Every o
   before the camera is inside the wall.
 * 3D: python `hash()` changes every run; seeds come from `zlib.crc32`. Looped sounds need a seamless loop
   (`music._loopable`), or each repeat clicks.
+* moderngl: `depth_mask` is a FRAMEBUFFER setting (`fbo.depth_mask`); `ctx.depth_mask = False` silently does
+  nothing, and glass then hides the liquid inside it. Thick see-through parts (opacity ≥ 0.6) write depth,
+  thin glass and x-ray shells don't.
+* `plan.validate` must be idempotent (numbers always float, label `count` kept): saved plans are checked again
+  after every edit, and any drift changes every fingerprint (= the whole video re-renders).

@@ -12,7 +12,7 @@ from . import config, pipeline
 from .messages import Reporter, explain
 from .project import EpisodeOptions, Series
 
-ACTIONS = ["🚀 Generate from my SCRIPT", "✍️ AI writes from my TOPIC", "⚡ Quick test"]
+ACTIONS = ["🚀 Generate from my SCRIPT", "✍️ AI writes from my TOPIC", "🔧 Fix one shot", "⚡ Quick test"]
 
 
 def _langs(choice: str) -> list[str]:
@@ -63,7 +63,7 @@ def _show_videos(paths) -> None:
 def run(action: str, script_text: str = "", series_name: str = "My Series", episode: int = 0, length: str = "Short",
         languages: str = "English", quality: str = "1080p", narrator_en: str = "kokoro:am_fenrir",
         narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True, topic: str = "",
-        end_card: bool = True, final_episode: bool = False) -> None:
+        end_card: bool = True, final_episode: bool = False, shot: int = 0, fix: str = "") -> None:
     s = config.init(root=None) if config._SETTINGS is None else config.get()
     found = config.load_secrets()
     prof = config.gpu_profile()
@@ -92,6 +92,18 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
         series.data.setdefault("voices", {}).update({"en": narrator_en, "fa": narrator_fa})
         series.save()
         number = int(episode) if episode and int(episode) > 0 else None
+        if action.startswith("🔧"):  # change one shot of an episode you already made, render only what changed
+            nums = series.episode_numbers()
+            if not nums:
+                print("❌ This series has no episodes yet. Make the video first.")
+                return
+            ep = series.episode(number or nums[-1])
+            if not int(shot or 0) or not (fix or "").strip():
+                print("❌ Fill in SHOT (the shot number) and FIX (what to change, e.g. make the tank bigger).")
+                return
+            res = pipeline.Pipeline(series, ep, rep, ep.load_options()).fix_scene(int(shot) - 1, fix)
+            _show_videos(res.get("videos", []))
+            return
         if ai and not topic.strip():
             print("❌ Type your TOPIC in the form first (e.g. how cow poop becomes electricity).")
             return

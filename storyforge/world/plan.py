@@ -68,9 +68,9 @@ def _num(v, default, lo, hi):
         x = float(v)
         if x != x:  # NaN
             raise ValueError
-        return max(lo, min(hi, x))
+        return float(max(lo, min(hi, x)))
     except (TypeError, ValueError):
-        return default
+        return float(default)  # always a float: 0 and 0.0 must give the same fingerprint
 
 
 def _xy(v, default=(0.0, 0.0)):
@@ -242,6 +242,9 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
                 item["at"] = lb["at"] if isinstance(lb["at"], NUM) else str(lb["at"])
             if isinstance(lb.get("from"), NUM) and isinstance(lb.get("to"), NUM):
                 item["count"] = [float(lb["from"]), float(lb["to"])]  # "{n} homes" counts up
+            elif isinstance(lb.get("count"), (list, tuple)) and len(lb["count"]) == 2 and \
+                    all(isinstance(v, NUM) for v in lb["count"]):  # a plan that was checked before
+                item["count"] = [float(lb["count"][0]), float(lb["count"][1])]
             labels.append(item)
         keywords = []
         for kw in (s.get("keywords") or [])[:3]:
@@ -293,3 +296,23 @@ def schema_text() -> str:
         "Label/keyword kinds: problem (red), part (orange, names of parts), number (white), info (teal).\n"
         "Layouts for count > 1: row, column, grid, circle, scatter."
     )
+
+
+def relevant_objects(plan: dict, i: int) -> set:
+    """The objects shot i can show: everything in the areas its camera (and the camera it flies in from) looks at,
+    plus everything its actions and labels name. A change elsewhere doesn't re-render this shot."""
+    obj = {o["id"]: o for o in plan["objects"]}
+    sc = plan["scenes"]
+    areas = set()
+    for k in (i - 1, i):
+        if 0 <= k < len(sc):
+            t = sc[k]["camera"].get("target")
+            if t in obj:
+                areas.add(obj[t]["area"])
+    ids = {o["id"] for o in plan["objects"] if o["area"] in areas}
+    for a in sc[i]["actions"]:
+        ids.add(a["target"].split(".")[0])
+        if isinstance(a.get("to"), str):
+            ids.add(a["to"].split(".")[0])
+    ids |= {lb["target"] for lb in sc[i]["labels"]}
+    return {x for x in ids if x in obj}

@@ -305,10 +305,9 @@ def prism_roof(w: float, d: float, h: float) -> Geo:
 def gear(r: float = 1.0, teeth: int = 10, depth: float = 0.3, tooth: float = 0.18, hole: float = 0.0) -> Geo:
     """A flat gear in the XY plane (spins around Z)."""
     parts = [cylinder(r - tooth * 0.5, depth, max(12, teeth * 2), base=False)]
-    for k in range(teeth):
+    for k in range(teeth):  # teeth around the rim, in the same plane as the disc (XZ before the swap)
         a = 360 * k / teeth
-        parts.append(xf(box(tooth * 1.1, tooth * 1.4, depth), (0, r - tooth * 0.2, 0), (0, 0, 0)))
-        parts[-1] = xf(parts[-1], r=(0, 0, a))
+        parts.append(xf(xf(box(tooth * 1.1, depth, tooth * 1.4), (0, 0, r - tooth * 0.2)), r=(0, a, 0)))
     return _yz_swap(merge(*parts))
 
 

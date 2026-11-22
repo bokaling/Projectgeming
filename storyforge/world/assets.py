@@ -380,7 +380,7 @@ def pipe(length=6.0, rise=0.0, r=0.22, color="yellow", height=0.6):
 
 
 @asset("generator", "an engine-generator set (burns gas, makes electricity): engine block, fan grille, exhaust, panel",
-       ["energy", "machine"], aliases=["genset", "engine_generator", "power_generator", "chp", "dynamo", "turbine", "power_plant"])
+       ["energy", "machine"], aliases=["genset", "engine_generator", "power_generator", "chp", "dynamo"])
 def generator(color="#f2b134", length=3.6):
     body_c = col(color, "#f2b134")
     m = Model()
@@ -402,7 +402,7 @@ def generator(color="#f2b134", length=3.6):
 
 
 @asset("power_pole", "a wooden power pole with a cross arm and insulators (wires go between poles)",
-       ["energy", "city"], aliases=["utility_pole", "pole", "power_line", "electric_pole"])
+       ["energy", "city"], aliases=["utility_pole", "pole", "electric_pole"])
 def power_pole(h=6.0):
     m = Model().add("pole", M.cylinder(0.14, h, 8), C["wood"])
     m.add("arm", M.xf(M.box(0.18, 0.18, 2.2), (0, h - 0.4, 0)), C["wood"])
@@ -511,3 +511,6 @@ def person(shirt="#3d8fd6", pants="#2f3b4c", skin="skin", hat="", height=1.8):
 
 def names() -> list[str]:
     return sorted(REGISTRY)
+
+
+from . import assets_more  # noqa: E402,F401  (registers the rest of the library)

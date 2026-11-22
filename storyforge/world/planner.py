@@ -47,31 +47,147 @@ def example_for(script: dict) -> dict | None:
     return examples.COW_POOP_PLAN if same else None  # the whole demo, or its first scenes (Quick test)
 
 
+CHUNK = 14  # long videos are planned in parts of this many shots (one request each)
+
+
 def ai_plan(script: dict, length: str, rep=None) -> tuple[str, dict]:
+    """Shorts: one request. Long videos: one request per CHUNK shots, every request sees the world so far."""
     texts = _scene_texts(script)
+    if len(texts) <= CHUNK + 2:
+        return _ai_request(script, texts, 0, len(texts), None, length, rep)
+    from ..messages import StopRequested  # noqa: PLC0415
+
+    merged = {"title": script.get("title", ""), "areas": [], "objects": [], "scenes": []}
+    used = []
+    starts = list(range(0, len(texts), CHUNK))
+    if len(texts) - starts[-1] < 4 and len(starts) > 1:  # no tiny last part
+        starts.pop()
+    for k, a in enumerate(starts):
+        b = starts[k + 1] if k + 1 < len(starts) else len(texts)
+        if rep is not None:
+            rep.info(f"🧭 Planning shots {a + 1}-{b} of {len(texts)} (part {k + 1}/{len(starts)})")
+        try:
+            prov, part = _ai_request(script, texts, a, b, merged if k else None, length, rep)
+        except StopRequested:
+            raise
+        except Exception:  # noqa: BLE001  (this part only: the built-in planner, the rest stays AI)
+            if k == 0:
+                raise  # nothing worked at all: the caller makes the whole plan offline
+            prov = "Built-in planner (no AI)"
+            part = _prefixed(offline_plan({"title": "", "scenes": script["scenes"][a:b]}), f"p{a + 1}_")
+        merge_part(merged, part, b - a)
+        used.append(prov)
+    names = list(dict.fromkeys(used))
+    return " + ".join(names) + f" ({len(starts)} parts)", merged
+
+
+def _ai_request(script: dict, texts: list[str], a: int, b: int, world: dict | None, length: str, rep) -> tuple[str, dict]:
+    n = b - a
     payload = {
         "title": script.get("title", ""),
         "format": "YouTube Short, vertical 9:16 (keep the action narrow and tall)" if length == "short"
         else "long YouTube video, horizontal 16:9",
         "style": script.get("style", ""),
-        "scenes": [{"n": i + 1, "text": t, "picture": sc.get("visual", "")} for i, (t, sc) in
-                   enumerate(zip(texts, script["scenes"]))],
+        "scenes": [{"n": i + 1, "text": texts[i], "picture": script["scenes"][i].get("visual", ""),
+                    **({"chapter": script["scenes"][i]["chapter"]} if script["scenes"][i].get("chapter") else {})}
+                   for i in range(a, b)],
         "asset_catalog": assets.catalog(),
         "schema": P.schema_text(),
         "example_plan": examples.COW_POOP_PLAN,
         "reply_format": {"title": "…", "areas": [{"id": "…"}], "objects": ["…"], "scenes": ["one per script scene"]},
     }
+    if world is not None:  # a later part of a long video
+        payload["world_so_far"] = {
+            "areas": [x["id"] + (" (micro)" if x.get("micro") else "") for x in world["areas"]],
+            "objects": [f"{o['id']}: {o['asset']} in {o.get('area', '')}" + (" ×" + str(o["count"]) if o.get("count", 1) > 1
+                                                                              else "") for o in world["objects"]],
+            "last_shots": [{"n": a - k, "text": texts[a - k - 1][:160],
+                            "camera": (world["scenes"][a - k - 1].get("camera") or {}) if a - k - 1 < len(world["scenes"])
+                            else {}} for k in range(min(2, a), 0, -1)],
+        }
+        payload["this_part"] = (f"Plan ONLY scenes {a + 1} to {b} ({n} scenes). REUSE objects from world_so_far by id "
+                                f"(don't repeat them). In 'areas' and 'objects' list ONLY NEW ones; new areas come after the "
+                                f"existing ones. Reply with exactly {n} scenes.")
+        payload["reply_format"] = {"areas": ["only new areas"], "objects": ["only new objects"],
+                                   "scenes": [f"exactly {n}, for scenes {a + 1}..{b}"]}
 
     def validate(obj):
-        if not isinstance(obj, dict) or not isinstance(obj.get("objects"), list) or not isinstance(obj.get("scenes"), list):
-            raise ValueError("need 'objects' and 'scenes' lists")
-        if not obj["objects"]:
+        if not isinstance(obj, dict) or not isinstance(obj.get("scenes"), list):
+            raise ValueError("need a 'scenes' list")
+        if not isinstance(obj.get("objects", []), list):
+            raise ValueError("'objects' must be a list")
+        if world is None and not obj.get("objects"):
             raise ValueError("no objects")
-        if len(obj["scenes"]) < max(1, len(texts) // 2):
-            raise ValueError(f"need {len(texts)} scenes (one per script scene), got {len(obj['scenes'])}")
+        if len(obj["scenes"]) < max(1, n // 2):
+            raise ValueError(f"need {n} scenes (one per script scene), got {len(obj['scenes'])}")
 
     return llm.generate_json(PLAN_SYSTEM, json.dumps(payload, ensure_ascii=False), validate=validate, rep=rep,
                              task="scene plan", temperature=0.6, max_tokens=12000, strong=True)
+
+
+def _prefixed(part: dict, pre: str) -> dict:
+    """Give a part's own areas and objects unique names (two offline parts both start at 'area1')."""
+    amap = {x["id"]: pre + x["id"] for x in part.get("areas", [])}
+    omap = {o["id"]: pre + o["id"] for o in part.get("objects", [])}
+    part["areas"] = [{**x, "id": amap[x["id"]]} for x in part.get("areas", [])]
+    part["objects"] = [{**o, "id": omap[o["id"]], "area": amap.get(o.get("area"), o.get("area"))}
+                       for o in part.get("objects", [])]
+    _rename_refs(part.get("scenes", []), omap)
+    return part
+
+
+def _rename_refs(scenes: list, omap: dict) -> None:
+    def ren(t):
+        if not isinstance(t, str) or not t:
+            return t
+        base, dot, rest = t.partition(".")
+        return omap.get(base, base) + (dot + rest if dot else "")
+
+    for sc in scenes:
+        if not isinstance(sc, dict):
+            continue
+        if isinstance(sc.get("camera"), dict):
+            sc["camera"]["target"] = ren(sc["camera"].get("target"))
+        for key in ("actions", "labels"):
+            for it in sc.get(key) or []:
+                if isinstance(it, dict):
+                    it["target"] = ren(it.get("target"))
+                    if isinstance(it.get("to"), str):
+                        it["to"] = ren(it["to"])
+
+
+def merge_part(world: dict, part: dict, n: int) -> None:
+    """Add one planned part of a long video to the world: new areas and objects, exactly n scenes."""
+    have_areas = {x["id"] for x in world["areas"] if isinstance(x, dict)}
+    for x in part.get("areas") or []:
+        if isinstance(x, str):
+            x = {"id": x}
+        if isinstance(x, dict) and x.get("id") and x["id"] not in have_areas:
+            world["areas"].append(x)
+            have_areas.add(x["id"])
+    have = {o["id"]: o.get("asset") for o in world["objects"] if isinstance(o, dict) and o.get("id")}
+    omap = {}
+    for o in part.get("objects") or []:
+        if not isinstance(o, dict) or not o.get("id"):
+            continue
+        oid = o["id"]
+        if oid in have:
+            if assets.resolve(str(have[oid])) == assets.resolve(str(o.get("asset", ""))):
+                continue  # the same thing again: reuse it
+            new = oid
+            while new in have:
+                new += "_b"
+            omap[oid] = new
+            o = {**o, "id": new}
+        world["objects"].append(o)
+        have[o["id"]] = o.get("asset")
+    scenes = [sc for sc in (part.get("scenes") or []) if isinstance(sc, dict)][:n]
+    _rename_refs(scenes, omap)
+    last = (world["scenes"][-1].get("camera") or {}).get("target") if world["scenes"] else None
+    while len(scenes) < n:  # the AI forgot a shot: keep looking at the last thing
+        scenes.append({"camera": {"move": "orbit", "target": (scenes[-1].get("camera") or {}).get("target")
+                                  if scenes else last}})
+    world["scenes"] += scenes
 
 
 def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str, list[str]]:
@@ -100,6 +216,8 @@ def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str,
 # ---------------------------------------------------------------------------
 
 MOVES = ["orbit", "push_in", "fly_over", "close_up", "pull_out", "low_angle", "orbit", "top_down", "push_in"]
+GROUPS = {"house", "tree", "person", "bacteria", "methane", "manure", "car", "coin", "molecule", "blood_cell", "virus",
+          "cell", "solar_panel", "wind_turbine", "barrel", "rock", "cloud", "skyscraper", "atom"}
 
 
 def find_assets(text: str) -> list[str]:
@@ -132,17 +250,16 @@ def offline_plan(script: dict) -> dict:
         new = [a for a in found if a not in by_asset]
         if new:
             area = f"area{len(areas) + 1}"
-            micro = any(a in ("bacteria", "methane") for a in new)
+            micro = any("micro" in assets.REGISTRY[a].tags for a in new)
             areas.append({"id": area, **({"micro": True} if micro else {})})
             for k, a in enumerate(new):
                 oid = f"{a}{len(objects) + 1}"
                 info = assets.REGISTRY[a]
-                group = a in ("cow", "house", "tree", "person", "bacteria", "methane", "manure")
+                group = a in GROUPS or "animal" in info.tags
                 objects.append({"id": oid, "asset": a, "area": area, "pos": [(k - (len(new) - 1) / 2) * 7.0, 0],
                                 "count": 4 if group else 1, "layout": "scatter" if micro else "row",
                                 "y": 1.0 if micro else 0, "params": {}})
                 by_asset[a] = oid
-                del info  # (only the name is needed)
         ids = [by_asset[a] for a in found] or ([last] if last else [objects[0]["id"]])
         target = ids[0]
         last = target
@@ -154,7 +271,7 @@ def offline_plan(script: dict) -> dict:
             word = _first_word(text)
             if oid in [by_asset.get(a) for a in new]:
                 actions.append({"do": "appear", "target": oid, "at": 0.08})
-            if "blade" in kinds:
+            if kinds & {"blade", "piston", "rocker"}:
                 actions.append({"do": "spin", "target": oid, "at": word})
             elif "light" in kinds:
                 actions.append({"do": "light_on", "target": oid, "at": word})
@@ -162,10 +279,13 @@ def offline_plan(script: dict) -> dict:
                 actions.append({"do": "fill", "target": oid, "at": word})
             elif "wheel" in kinds:
                 actions.append({"do": "move", "target": oid, "to": [obj["pos"][0] + 6, obj["pos"][1] + 2]})
-            elif obj["asset"] in ("pipe", "wire"):
-                actions.append({"do": "flow" if obj["asset"] == "pipe" else "sparks", "target": oid, "at": 0.1})
-            elif obj["asset"] in ("bacteria", "methane"):
+            elif "flow" in model.paths:
+                electric = obj["asset"] in ("wire", "power_line", "neuron")
+                actions.append({"do": "sparks" if electric else "flow", "target": oid, "at": 0.1})
+            elif "micro" in assets.REGISTRY[obj["asset"]].tags or obj["asset"] in ("cloud", "fish", "bird"):
                 actions.append({"do": "float", "target": oid})
+            elif "exhaust" in model.anchors:
+                actions.append({"do": "smoke", "target": oid, "at": word})
             elif obj["asset"] == "manure":
                 actions.append({"do": "grow", "target": oid, "at": word})
         labels = [{"target": target, "text": next(o for o in objects if o["id"] == target)["asset"].replace("_", " "),

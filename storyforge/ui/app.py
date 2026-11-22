@@ -320,8 +320,7 @@ def build_app():
                             res = gr.Radio([("1080p (best)", "1080p"), ("720p (faster)", "720p")],
                                            value=default_opts.resolution, label="Quality")
                             qc_cb = gr.Checkbox(value=True, label="🔍 Quality check: look at one still frame per shot and "
-                                                                  "fix broken ones (Gemini vision with a free key; switched on "
-                                                                  "in the next update)")
+                                                                  "fix broken ones (with a free key: Gemini vision too)")
                         with gr.Accordion("🔑 Free keys: what the app found", open=False):
                             gr.HTML(keys_html())
                         with gr.Group(elem_classes="sf-card"):

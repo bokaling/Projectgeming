@@ -20,7 +20,7 @@ from .project import Episode, EpisodeOptions, Series, dims, fingerprint, read_js
 
 LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.08, 0.22, 0.6, 1.6  # seconds: short gaps between scenes
 END_CARD, END_HOLD = 1.6, 0.8
-QUALITY_CHECK_READY = False  # phase 2 turns the automatic quality check on
+QUALITY_CHECK_READY = True  # the automatic quality check (step 🔍) is on
 SPEAKER_GAP, REVEAL_PAUSE = 0.2, 0.4  # pause between speakers / before a reveal
 CHARACTER_SPEED = 1.05
 
@@ -189,6 +189,7 @@ class Pipeline:
         """Script → scene plan (AI, checked and repaired). Saved as plan.json; reused while the script is the same."""
         from .world import plan as P  # noqa: PLC0415
         from .world import planner  # noqa: PLC0415
+        from .world.scene import freeze_layout  # noqa: PLC0415
 
         sc = self.script
         texts = [s["narration"] for s in sc["scenes"]]
@@ -199,6 +200,7 @@ class Pipeline:
         self.rep.step("🧭 Scene plan (the 3D world and every shot)")
         with Timer() as t:
             plan, provider, fixes = planner.make_plan(sc, self.opts.length, self.rep)
+        freeze_layout(plan)
         self.ep.save_plan(plan)
         (self.ep.dir / "plan.md").write_text(P.summary(plan), encoding="utf-8")
         self.ep.state.done("plan", fp, provider=provider, fixes=fixes)
@@ -214,9 +216,11 @@ class Pipeline:
     def save_plan(self, plan: dict) -> dict:
         """Your edited plan (or a fixed scene): checked, saved, kept until the script changes."""
         from .world import plan as P  # noqa: PLC0415
+        from .world.scene import freeze_layout  # noqa: PLC0415
 
         sc = self.script
         plan, fixes = P.validate(plan, [s["narration"] for s in sc["scenes"]])
+        freeze_layout(plan)  # new areas get a fixed place too
         self.ep.save_plan(plan)
         (self.ep.dir / "plan.md").write_text(P.summary(plan), encoding="utf-8")
         fp = fingerprint([s["narration"] for s in sc["scenes"]], [s.get("visual", "") for s in sc["scenes"]],
@@ -256,11 +260,25 @@ class Pipeline:
         return items
 
     def scene_fp(self, plan: dict, tl: dict, i: int, size, extra="") -> str:
-        """What a scene clip depends on: the world, every action up to this scene, this camera and the one before."""
-        sc = plan["scenes"]
+        """What a scene clip depends on: the objects it can show (their areas, earlier lasting changes and when they
+        first appear), this shot's actions, labels and keywords, this camera and the one before, and the timing.
+        So fixing one shot re-renders that shot (and the ones that really show the change), not the whole video."""
+        from .world.plan import relevant_objects  # noqa: PLC0415
+        from .world.scene import PERSIST  # noqa: PLC0415
         from .world.video import RENDER_VERSION  # noqa: PLC0415
 
-        return fingerprint(plan["areas"], plan["objects"], [s["actions"] for s in sc[: i + 1]],
+        sc = plan["scenes"]
+        rel = relevant_objects(plan, i)
+        objs = [o for o in plan["objects"] if o["id"] in rel]
+        areas = [a for a in plan["areas"] if a["id"] in {o["area"] for o in objs}]
+        lasting = [a for s in sc[:i] for a in s["actions"] if a["do"] in PERSIST and a["target"].split(".")[0] in rel]
+        first_seen = {}  # an object that 'appears' later is hidden until then, even in earlier shots
+        for s in sc:
+            for a in s["actions"]:
+                oid = a["target"].split(".")[0]
+                if oid in rel and (a["do"] in ("appear", "disappear") and oid not in first_seen or a["do"] == "show_part"):
+                    first_seen.setdefault(a["target"] if a["do"] == "show_part" else oid, a["do"])
+        return fingerprint(areas, objs, lasting, sorted(first_seen.items()), sc[i]["actions"],
                            [s["camera"] for s in sc[max(0, i - 1): i + 1]], sc[i]["labels"], sc[i]["keywords"],
                            tl["scenes"][max(0, i - 1): i + 1], [w for w in tl["words"]
                                                                 if tl["scenes"][i]["start"] <= w["s"] < tl["scenes"][i]["start"]
@@ -331,8 +349,8 @@ class Pipeline:
     def end_card_text(self, lang: str) -> str:
         return publish.end_card_text(self.ep.number, lang, self.opts.final_episode) if self.opts.end_card else ""
 
-    def stills(self, fmt: str, lang: str, tl: dict, plan: dict, at: float = 0.6) -> list[Path]:
-        """One still frame per scene (for the app, the quality check and the thumbnail)."""
+    def stills(self, fmt: str, lang: str, tl: dict, plan: dict, at: float = 0.6, only=None) -> list[Path]:
+        """One still frame per scene (for the app, the quality check and the thumbnail). only = these shots."""
         from .world import video  # noqa: PLC0415
         from .world.labels import LabelMaker  # noqa: PLC0415
         from .world.scene import World  # noqa: PLC0415
@@ -346,7 +364,8 @@ class Pipeline:
             outs = []
             for i, sc in enumerate(world.scenes):
                 out = self.ep.still_path(self.script["scenes"][i]["id"], fmt)
-                video.render_still(world, renderer, labels, sc["start"] + sc["dur"] * at, out)
+                if only is None or i in only:
+                    video.render_still(world, renderer, labels, sc["start"] + sc["dur"] * at, out)
                 outs.append(out)
             return outs
         finally:
@@ -559,12 +578,92 @@ class Pipeline:
         return result
 
     def quality_check(self, plan: dict) -> dict:
-        """Phase 2 fills this in (stills + checks). For now the plan is used as it is."""
-        return plan
+        """🔍 Before rendering: one still per shot, local checks (subject in frame, camera not inside a wall, labels
+        on screen and apart, nothing empty) and, with a free Gemini key, Gemini vision. Broken shots are fixed."""
+        from .world import checker, video  # noqa: PLC0415
+        from .world.labels import LabelMaker  # noqa: PLC0415
+        from .world.scene import World  # noqa: PLC0415
+
+        lang, fmt = self.opts.languages[0], self.opts.formats[0]
+        tl = self.timeline(lang)
+        fp = fingerprint(plan, tl, fmt, "qc-1", bool(config.secret("GEMINI_API_KEY")))
+        if self.ep.state.fresh("qc", fp):
+            return plan
+        self.rep.step("🔍 Quality check (one still per shot)")
+        size = self.out_size(fmt)
+        small = (size[0] // 3 // 2 * 2, size[1] // 3 // 2 * 2)  # small stills are enough to judge a shot
+        renderer = None
+        try:
+            renderer, rsize, _ = video.make_renderer(small)
+            labels = LabelMaker((renderer.W, renderer.H), lang)
+            texts = [s["narration"] for s in self.script["scenes"]]
+
+            def make_world(p):
+                w = World(p, tl, (renderer.W, renderer.H), lang)
+                w.upload(renderer)
+                w.label_tex = labels
+                return w
+
+            def still(w, i):
+                sc = w.scenes[i]
+                return renderer.render(w.frame(sc["start"] + sc["dur"] * 0.6, labels))
+
+            with Timer() as t:
+                new, report, _ = checker.check(plan, make_world, still, texts, self.rep)
+        except Exception as exc:  # noqa: BLE001  (never stop a video because the check broke)
+            from .messages import StopRequested  # noqa: PLC0415
+
+            if isinstance(exc, StopRequested):
+                raise
+            self.rep.warn(f"The quality check didn't work ({type(exc).__name__}), so the plan is used as it is.")
+            return plan
+        finally:
+            if renderer is not None:
+                renderer.release()
+        if report:
+            new = self.save_plan(new)
+            for line in report[:12]:
+                self.rep.info("🔧 " + line)
+        ai = "with Gemini vision" if config.secret("GEMINI_API_KEY") else "local checks (add a free GEMINI_API_KEY for Gemini vision)"
+        self.rep.ok(f"{len(plan['scenes'])} shots checked, {len(report)} fixed ({ai}, {t.label})")
+        self.rep.record("ok" if not report else "warn", "Quality check", f"{len(report)} fixed")
+        self.ep.state.done("qc", fingerprint(new, tl, fmt, "qc-1", bool(config.secret("GEMINI_API_KEY"))))
+        return new
 
     def fix_scene(self, i: int, instruction: str) -> dict:
-        """Phase 2 fills this in."""
-        raise FriendlyError("Fixing one shot comes in the next update.", "Edit the plan JSON on step 2 for now.")
+        """🔧 Change one shot by typing what you want. Only the shots that show the change are rendered again."""
+        from .world import fixer  # noqa: PLC0415
+
+        rep = self.rep
+        plan = self.ep.load_plan()
+        if not plan:
+            raise FriendlyError("There is no scene plan yet.", "Press 🧭 Plan first (or 🚀 Make the video) first.")
+        if not 0 <= i < len(plan["scenes"]):
+            raise FriendlyError(f"There is no shot {i + 1}.", f"Pick a shot from 1 to {len(plan['scenes'])}.")
+        instruction = (instruction or "").strip()
+        if not instruction:
+            raise FriendlyError("Type what to change first.", "For example: make the tank bigger.")
+        text = self.script["scenes"][i]["narration"]
+        rep.step(f"🔧 Fixing shot {i + 1}: “{instruction}”")
+        try:
+            new, changes, provider = fixer.fix(plan, i, instruction, text, rep)
+        except ValueError:
+            raise FriendlyError("I couldn't understand that change without AI.",
+                                "Try: bigger · smaller · closer · further · from above · show the gas flowing · cut it open"
+                                " · spin · light up · add a pump · label \"38 °C\" · remove labels. A free GEMINI_API_KEY "
+                                "understands anything.") from None
+        plan = self.save_plan(new)
+        rep.ok(f"Shot {i + 1} changed ({provider}): " + "; ".join(changes))
+        lang, fmt = self.opts.languages[0], self.opts.formats[0]
+        tl = read_json(self.ep.audio_dir(lang) / "timeline.json", None)
+        made_video = any(k.startswith("clip:") for k in self.ep.state.data.get("steps", {}))
+        if made_video:  # re-render only the shots that changed, then join again (fast)
+            return self.make_video()
+        if tl:
+            self.stills(fmt, lang, tl, plan, only=[i])
+            rep.ok(f"New still frame for shot {i + 1}")
+        rep.done({"episode": self.ep.number}, f"Shot {i + 1} is fixed. Press 🚀 when all shots look good.")
+        return {"episode": self.ep.number, "changes": changes}
 
 
 def _mmss(sec: float) -> str:

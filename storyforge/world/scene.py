@@ -112,19 +112,21 @@ class World:
                 r = max(r, math.hypot(*o["pos"]) + rad + spread)
             ext[a["id"]] = r
         self.area_xz, self.area_r = {}, ext
-        x, prev = 0.0, None
+        right, prev = None, None  # the right edge of the areas placed so far
         for a in self.plan["areas"]:
-            if "x" in a:
+            if "x" in a:  # a frozen position (saved with the plan, so a fix never moves other areas)
                 self.area_xz[a["id"]] = (a["x"], a["z"])
+                if not a.get("micro"):
+                    right = max(right if right is not None else -1e9, a["x"] + ext[a["id"]])
+                    prev = a["id"]
                 continue
             if a.get("micro"):
-                base = self.area_xz.get(prev, (x, 0.0))
+                base = self.area_xz.get(prev, (0.0, 0.0))
                 self.area_xz[a["id"]] = (base[0], -90.0)
                 continue
-            if prev is not None:
-                x += ext[prev] + ext[a["id"]] + 7
+            x = 0.0 if right is None else right + 7 + ext[a["id"]]
             self.area_xz[a["id"]] = (x, 0.0)
-            prev = a["id"]
+            right, prev = x + ext[a["id"]], a["id"]
 
     def _layout(self, o: dict, width: float) -> list[tuple[float, float, float]]:
         n = o["count"]
@@ -221,6 +223,9 @@ class World:
                 end = math.inf if keep else sc["end"] + (0.0 if do not in ("flow", "sparks") else 0.0)
                 self.events.append(Event(do, oid, part, t0, float(dur), end, i, dict(a)))
         self.events.sort(key=lambda e: e.start)
+        self.events_of: dict[str, list] = {}  # per object (long videos have hundreds of events)
+        for e in self.events:
+            self.events_of.setdefault(e.oid, []).append(e)
         # things that appear (or parts that are shown) later start hidden
         self.hidden_at_start = {o["id"] for o in self.plan["objects"] if o.get("hidden")}
         first = {}
@@ -238,9 +243,9 @@ class World:
         for part in [p for (o, p) in self.hidden_parts if o == inst.oid]:
             st["parts"][part] = 0.0
         n_group = len(self.groups[inst.oid])
-        for e in self.events:
-            if e.oid != inst.oid or e.start > T:
-                continue
+        for e in self.events_of.get(inst.oid, ()):
+            if e.start > T:
+                break  # sorted by start time
             stagger = e.params.get("stagger", STAGGER.get(e.do, 0.0))
             t = T - e.start - stagger * inst.index * (1 if n_group > 1 else 0)
             if t < 0:
@@ -513,6 +518,21 @@ class World:
                     pv = np.asarray(part.pivot, np.float32)
                     local[:3, :3] = r
                     local[:3, 3] = pv - r @ pv
+                if part.kind == "piston" and st["spin_on"]:  # engines: pistons go up and down in turn
+                    local[1, 3] += 0.22 * math.sin(st["spin"] * 2.0 + k * 1.9)
+                if part.kind == "rocker" and st["spin_on"]:  # pumpjacks, arms, wings, needles: swing back and forth
+                    axis = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[part.axis]
+                    r = rot_matrix(*(np.array(axis) * 18.0 * math.sin(st["spin"])))
+                    pv = np.asarray(part.pivot, np.float32)
+                    local[:3, :3] = r
+                    local[:3, 3] = pv - r @ pv
+                if part.kind == "flame":  # fire flickers all the time (a pure function of T)
+                    lo, hi = part.geo.bounds()
+                    f = 1.0 + 0.14 * math.sin(T * 11.0 + k * 1.7) + 0.06 * math.sin(T * 23.0 + k)
+                    sm = np.eye(4, dtype=np.float32)
+                    sm[1, 1] = f
+                    sm[1, 3] = float(lo[1]) * (1 - f)
+                    local = local @ sm
                 if part.kind == "liquid" and st["fill"] != 1.0:
                     local = local @ np.diag([1, max(0.02, st["fill"]), 1, 1]).astype(np.float32)
                 if part.kind == "crust" and st["fill"] != 1.0:
@@ -701,3 +721,20 @@ def _along(path: np.ndarray, lengths: np.ndarray, s: float) -> np.ndarray:
             return path[k] + (path[k + 1] - path[k]) * min(1.0, u)
         s -= ln
     return path[-1]
+
+
+def area_layout(plan: dict) -> dict:
+    """Where every area goes (x, z), without building the whole world."""
+    w = World.__new__(World)
+    w.plan, w.models = plan, {}
+    w._areas()
+    return {k: (round(float(x), 2), round(float(z), 2)) for k, (x, z) in w.area_xz.items()}
+
+
+def freeze_layout(plan: dict) -> dict:
+    """Write the area positions into the plan, so a later fix (a bigger tank) doesn't move every other area."""
+    pos = area_layout(plan)
+    for a in plan["areas"]:
+        if "x" not in a and a["id"] in pos:
+            a["x"], a["z"] = pos[a["id"]]
+    return plan
