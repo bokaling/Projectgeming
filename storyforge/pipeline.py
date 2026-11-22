@@ -630,6 +630,8 @@ class Pipeline:
 
             with Timer() as t:
                 new, report, _ = checker.check(plan, make_world, still, texts, self.rep)
+                for note in make_world(new).notes[:8]:  # how things were connected and grounded
+                    self.rep.info("🔗 " + note)
         except Exception as exc:  # noqa: BLE001  (never stop a video because the check broke)
             from .messages import StopRequested  # noqa: PLC0415
 
@@ -701,6 +703,14 @@ class Pipeline:
         for i in range(n):
             if checker.content_fraction(frames[i]) < 0.3:
                 bad.setdefault(i, []).append("mostly_empty")
+        from .world.scene import World  # noqa: PLC0415
+
+        world = World(plan, tl, (270, 480), lang)  # the logic check: connected, touching, nothing in the way
+        for i in range(n):
+            logic = checker.logic_problems(world, i)
+            if logic:
+                bad.setdefault(i, []).extend(logic)
+                self.rep.info(f"🧩 Shot {i + 1}: " + ", ".join(x.replace("_", " ") for x in logic))
         seen = checker.ask_vision(frames[:n], texts, self.rep)  # {} without a free Gemini key
         new = json.loads(json.dumps(plan))
         report = []

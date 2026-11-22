@@ -29,7 +29,7 @@ def coverage(world, i: int, T: float, eye, tgt, fov, grid=(18, 32)) -> float:
     gx, gy = grid if W < H else grid[::-1]
     cover = np.zeros((gy, gx), bool)
     for inst in world.insts:
-        if inst.asset in ("pad", "ground", "terrain"):
+        if inst.asset in ("pad", "ground", "terrain", "ground_plate"):
             continue
         st = world.state(inst, T)
         if st["vis"] < 0.5:
@@ -181,6 +181,9 @@ def fix_local(plan: dict, i: int, problems: list[str]) -> list[str]:
             if len(sc["labels"]) == 2:
                 sc["labels"][1]["at"] = 0.55  # the second one comes later
             done.append("fewer labels")
+        elif p.startswith("subject_blocked"):
+            cam["angle"] = float(cam.get("angle", 25.0)) + 55.0
+            done.append("camera moved round so nothing hides the subject")
         elif p == "label_off_screen":
             sc["labels"] = sc["labels"][:1]
             done.append("label kept on screen")
@@ -233,7 +236,7 @@ def check(plan: dict, make_world, render_still, texts: list[str], rep=None, use_
     for _ in range(rounds):
         changed = set()
         for i in range(len(world.scenes)):
-            probs = local_problems(world, i, label_tex=getattr(world, "label_tex", None))
+            probs = local_problems(world, i, label_tex=getattr(world, "label_tex", None)) + logic_problems(world, i)
             if empty_picture(stills[i]):
                 probs.append("empty_picture")
             fixes = fix_local(plan, i, probs)
@@ -266,3 +269,56 @@ def check(plan: dict, make_world, render_still, texts: list[str], rep=None, use_
                 stills[i] = render_still(world, i)
     return plan, report, stills
 
+
+
+def logic_problems(world, i: int) -> list[str]:
+    """Does shot i make sense? Pipes connected at both ends, moving tools touch what they move, nothing solid
+    blocks the subject. (Floating things are grounded and loose pipes connected when the world is built.)"""
+    from .logic import CONNECTORS, PUSHABLE  # noqa: PLC0415
+
+    out = []
+    sc = world.scenes[i]
+    names = {a["target"].split(".")[0] for a in sc["plan"]["actions"]} | {sc["plan"]["camera"]["target"]}
+    objs = {o["id"]: o for o in world.plan["objects"]}
+    for oid in names:
+        o = objs.get(oid)
+        if o and o["asset"] in CONNECTORS and not (o.get("from") and o.get("to")):
+            out.append(f"open_pipe:{oid}")
+    for a in sc["plan"]["actions"]:
+        oid = a["target"].split(".")[0]
+        if a["do"] != "move" or oid not in world.groups:
+            continue
+        inst = world.groups[oid][0]
+        if "blade" in inst.model.anchors:  # a pile right next to the blade's path that it misses = a logic mistake
+            ev = next((e for e in world.events_of.get(oid, []) if e.do == "move" and e.scene == i), None)
+            if ev is None:
+                continue
+            S = world.state(inst, ev.start)["pos"].astype(float)
+            D = world._dest(inst, ev).astype(float)
+            d = D - S
+            d[1] = 0
+            L = float(np.linalg.norm(d)) or 1.0
+            u = d / L
+            linked = {k for k, links in world.push.items() if any(x[0] is ev for x in links)}
+            for p in world.insts:
+                if p.asset not in PUSHABLE or p.oid.startswith("_env") or (p.oid, p.index) in linked:
+                    continue
+                rel = p.pos - S
+                along, lateral = float(np.dot(rel, u)), abs(float(rel[0] * -u[2] + rel[2] * u[0]))
+                if 0 < along < L and lateral < 1.6:
+                    out.append(f"tool_not_touching:{oid}")
+                    break
+    T = sc["start"] + sc["dur"] * 0.6
+    eye, tgt, fov, fade = world.camera(i, sc["dur"] * 0.6)
+    if fade < 0.5:
+        world._aim_i = i
+        for inst in world.insts:
+            if inst.oid.startswith("_env") or inst.oid in world._focus[i] or inst.asset in CONNECTORS:
+                continue
+            if any(p.shell for p in inst.model.parts):
+                continue  # walls and roofs in the way are left out automatically
+            st = world.state(inst, T)
+            if st["vis"] > 0.5 and world._blocks(inst, st, eye, tgt):
+                out.append(f"subject_blocked:{inst.oid}")
+                break
+    return out

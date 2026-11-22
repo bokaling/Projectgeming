@@ -1279,3 +1279,33 @@ def pipe_stand(h=0.6):
     m = Model().add("post", M.box(0.12, h, 0.12, base=True), "#8f9ba8")
     m.add("foot", M.box(0.4, 0.06, 0.4, base=True), "#6f777c")
     return m
+
+
+@asset("pit", "a manure pit / channel / hole in the floor (things pushed into it drop in)", ["farm", "helper"],
+       aliases=["channel", "hole", "sump", "gutter", "trench", "hopper", "reception_pit"])
+def pit(w=2.4, d=2.6):
+    m = Model().add("hole", M.xf(M.box(w, 0.02, d, base=True), (0, 0.13, 0)), "#2a1d12")
+    m.add("rim", M.merge(M.xf(M.box(w + 0.3, 0.2, 0.15, base=True), (0, 0, d / 2 + 0.07)),
+                         M.xf(M.box(w + 0.3, 0.2, 0.15, base=True), (0, 0, -d / 2 - 0.07)),
+                         M.xf(M.box(0.15, 0.2, d, base=True), (w / 2 + 0.07, 0, 0)),
+                         M.xf(M.box(0.15, 0.2, d, base=True), (-w / 2 - 0.07, 0, 0))), "#8e979c")
+    m.add("grate", M.merge(*[M.xf(M.box(0.05, 0.03, d, base=True), (-w / 2 + 0.3 + k * 0.4, 0.14, 0))
+                             for k in range(int(w / 0.4))]), "#5b6672")
+    m.anchors["inlet"] = (0.0, 0.2, 0.0)
+    m.anchors["outlet"] = (w / 2, 0.15, 0.0)
+    return m
+
+
+@asset("rail", "a steel guide rail on the floor (scrapers and carts run on it)", ["helper", "industry"],
+       aliases=["guide_rail", "track", "rails"])
+def rail(length=10.0):
+    m = Model().add("rail", M.box(length, 0.1, 0.16, base=True), "#5b6672")
+    m.add("chain", M.xf(M.box(length, 0.05, 0.05, base=True), (0, 0.1, 0.22)), "#9aa3ab")
+    m.add("ties", M.merge(*[M.xf(M.box(0.12, 0.04, 0.6, base=True), (-length / 2 + 0.4 + k * 1.2, 0, 0.1))
+                            for k in range(max(1, int(length / 1.2)))]), "#3a3f45")
+    return m
+
+
+@asset("ground_plate", "the ground under a whole site (grass, dirt or concrete)", ["helper", "terrain"])
+def ground_plate(w=60.0, d=40.0, color="#5f7a4c"):
+    return Model().add("ground", M.box(w, 0.03, d, base=True), col(color, "#5f7a4c"))

@@ -283,7 +283,7 @@ def keyword_events(items: list[dict], lang: str, total: float) -> list[tuple]:
         if end - it["start"] < 0.15:
             continue
         text = escape(it["text"].upper() if not rtl else it["text"])
-        pop = r"{\blur1.5\fscx70\fscy70\t(0,110,\fscx106\fscy106)\t(110,180,\fscx100\fscy100)\fad(0,120)}"
+        pop = r"{\blur1.5\fscx70\fscy70\t(0,110,\fscx106\fscy106)\t(110,180,\fscx100\fscy100)}"  # never faded
         style = f"Key_{it.get('kind') if it.get('kind') in KEY_COLORS else 'info'}"
         events.append((round(it["start"], 3), round(end, 3), style, pop + _wrap(text, rtl)))
     return events

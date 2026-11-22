@@ -82,6 +82,11 @@ class Event:
 
 class World:
     def __init__(self, plan: dict, timeline: dict, size: tuple[int, int], lang: str = "en"):
+        import copy  # noqa: PLC0415
+
+        from . import logic  # noqa: PLC0415
+
+        plan = copy.deepcopy(plan)  # the world may add links (auto-connected pipes): never change the caller's plan
         self.plan, self.tl, self.size, self.lang = plan, timeline, size, lang
         self.fov = 40.0 if size[0] < size[1] else 34.0
         self.models: dict = {}
@@ -90,9 +95,18 @@ class World:
         self.obj = {o["id"]: o for o in plan["objects"]}
         self._areas()
         self._build()
+        self.notes = logic.ground_everything(self)  # nothing floats without support
+        self.notes += logic.auto_connect(self)  # pipes/cables without ends get connected to the nearest ports
+        self.notes += logic.build_connections(self)  # routed pipes, cables, chains between ports
         self._build_env()
         self._timing()
         self._events()
+        self._add_env(logic.assemblies(self))  # complete machines (scraper rail, chain, motor)
+        self.push = logic.push_links(self)  # blades push piles
+        self.notes += logic.arrival_clamps(self)  # lights start when the flow arrives
+        self.events.sort(key=lambda e: e.start)
+        for evs in self.events_of.values():
+            evs.sort(key=lambda e: e.start)
         self.ending = "overview" if (timeline.get("end") or {}).get("kind") == "overview" else "hold"
         self._focus = [self.focus_ids(i) for i in range(len(self.scenes))]
         self._cams = [self._cam_spec(i) for i in range(len(self.scenes))]
@@ -197,7 +211,11 @@ class World:
         from . import decor  # noqa: PLC0415
 
         self.env_ids = set()
-        for k, o in enumerate(decor.dress(self)):
+        self._add_env(decor.dress(self))
+
+    def _add_env(self, items: list) -> None:
+        for o in items:
+            k = len(self.env_ids)
             key, m = self._model(o["asset"], o.get("params", {}))
             lo, hi = self.solid_bounds(m)
             oid = f"_env{k}"
@@ -355,6 +373,10 @@ class World:
                 st["parts"][e.part] = pop(p)
             elif e.do == "hide_part":
                 st["parts"][e.part] = 1 - ease(p)
+        if getattr(self, "push", None) and (inst.oid, inst.index) in self.push:
+            from .logic import pushed_state  # noqa: PLC0415
+
+            pushed_state(self, inst, st, T)
         return st
 
     def _faces_travel(self, inst: Inst) -> bool:
@@ -502,7 +524,12 @@ class World:
         az = cam.get("angle", 25.0 + 15 * ((i * 7) % 5 - 2))
         el = cam.get("height", 22.0)
         ext = hi - lo
-        if self.size[1] > self.size[0] and max(ext[0], ext[2]) > 2.2 * max(ext[1], 0.5):
+        tags = set(getattr(assets.REGISTRY.get(self.groups[tgt][0].asset), "tags", []))
+        if tags & {"animal", "people"}:
+            el = min(max(el, 6.0), 20.0)  # animals and people: from the side or 3/4, never from above
+        elif "vehicle" in tags:
+            el = min(el, 30.0)
+        elif self.size[1] > self.size[0] and max(ext[0], ext[2]) > 2.2 * max(ext[1], 0.5):
             el = max(el, 36.0)  # a wide, low subject in a tall frame: look down more, so the place fills the picture
         keys = [sc["start"] + self.at_time(i, k.get("at"), 0.2) for k in sc["plan"]["keywords"]]
         area = self.groups[tgt][0].area
@@ -559,8 +586,8 @@ class World:
                 k *= 1 - 0.05 * math.sin(min(1.0, dt / 0.15) * math.pi / 2) * math.exp(-dt * 2.2)
         eye, tgt = self.fit(lo, hi, az, el, sp["fov"], sp["fill"])
         eye = tgt + (eye - tgt) * k
-        if mv == "zoom_into":  # dive into the cut-open tank in the second half (fades out at 72 %)
-            q = max(0.0, (u - 0.45) / 0.55)
+        if mv == "zoom_into":  # dive into the cut-open tank at the end of the shot (fades out at 82 %)
+            q = max(0.0, (u - 0.62) / 0.38)
             inside = self.anchor(sp["target"], "inside", self.scenes[i]["start"] + t)
             tgt2 = tgt + (inside - tgt) * ease(q)
             eye = tgt2 + (eye - tgt) * (1.0 - 0.85 * (q * q * (3 - 2 * q)))
@@ -599,8 +626,8 @@ class World:
         eye, tgt, fov = self._cam_path(i, t)
         fade = 0.0
         du = self.scenes[i]["dur"]
-        if self._cams[i]["move"] == "zoom_into" and t > du * 0.72:  # fade before the camera is inside
-            fade = ease((t - du * 0.72) / (du * 0.2))
+        if self._cams[i]["move"] == "zoom_into" and t > du * 0.82:  # fade before the camera is inside
+            fade = ease((t - du * 0.82) / (du * 0.15))
         if i == 0:
             return eye, tgt, fov, fade
         prev = self._cams[i - 1]
@@ -661,6 +688,7 @@ class World:
         t = T - sc["start"] if (self.ending == "overview" and i == len(self.scenes) - 1) else min(T - sc["start"], sc["dur"])
         eye, tgt, fov, fade = self.camera(i, t)
         draws = []
+        self._aim_i = i
         cam_dir = np.asarray(eye) - np.asarray(tgt)
         focus_id = self._cams[i]["target"]
         flying = i > 0 and t < min(1.1, 0.4 * sc["dur"]) + 0.3
@@ -680,8 +708,17 @@ class World:
                 continue
             if np.linalg.norm(st["pos"] - eye) > 260:
                 continue
-            if inst.oid != focus_id and not (flying and inst.oid == prev_id) and self._blocks(inst, st, eye, tgt):
-                st["xray"] = True  # a roof or wall between the camera and the subject: see through it
+            if inst.oid in self.env_ids and self._in_front_of_subject(inst, st, eye, tgt, fov, i):
+                continue  # a prop drawn over the subject: leave it out (clean composition)
+            hidden_parts = set()
+            if inst.oid not in self._focus[i] and not (flying and inst.oid == prev_id) and \
+                    inst.asset not in ("pad", "ground", "terrain", "ground_plate") and self._blocks(inst, st, eye, tgt):
+                if inst.oid in self.env_ids:
+                    continue  # a prop in front of the subject: leave it out
+                if any(p.shell for p in inst.model.parts):  # a roof or wall in the way: leave out exactly the
+                    hidden_parts = self._blocking_parts(inst, st, eye, tgt)  # parts that block (no ghost lines)
+            if inst.oid not in self._focus[i] and any(p.shell for p in inst.model.parts):
+                hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i)
             m0 = self.inst_matrix(inst, st)
             clip = None
             if st["cut"] > 0:
@@ -692,7 +729,7 @@ class World:
                 clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.2 - 0.02))
             for k, part in enumerate(inst.model.parts):
                 vis = st["parts"].get(part.name, 1.0)
-                if vis <= 0.01:
+                if vis <= 0.01 or k in hidden_parts:
                     continue
                 m = m0
                 local = np.eye(4, dtype=np.float32)
@@ -785,12 +822,12 @@ class World:
     def particles(self, i: int, T: float) -> np.ndarray | None:
         out = []
         for e in self.events:
-            if e.do not in ("flow", "bubbles", "smoke", "sparks") or not (e.start <= T < e.end):
+            if e.do not in ("flow", "bubbles", "smoke", "sparks", "cutaway") or not (e.start <= T < e.end):
                 continue
             if abs(e.scene - i) > 1:
                 continue
             t = T - e.start
-            color = hex_rgb(e.params["color"]) if e.params.get("color") else FLOW_COLORS[e.do]
+            color = hex_rgb(e.params["color"]) if e.params.get("color") else FLOW_COLORS.get(e.do, (0.45, 0.86, 0.36))
             fade = min(1.0, t / 0.4)
             rng = np.random.default_rng(zlib.crc32(f"{e.oid}/{e.do}/{e.scene}".encode()))
             if e.do in ("flow", "sparks"):
@@ -811,6 +848,19 @@ class World:
                         p = p + rng.normal(0, 0.05, 3)
                     size = (0.16 if e.do == "flow" else 0.1) * fade
                     out.append([*p, size, *color, 0.5 if e.do == "flow" else 1.2])
+            elif e.do == "cutaway":  # the cut-open tank shows what lives inside: drifting bacteria
+                inst = self.groups[e.oid][0]
+                lo, hi = self.group_box(e.oid, T)
+                c = (lo + hi) / 2
+                surf = self.anchor(e.oid, "surface", T) if "surface" in inst.model.anchors else \
+                    self.anchor(e.oid, "inside", T) * np.array([1, 2.0, 1])
+                r = min(hi[0] - lo[0], hi[2] - lo[2]) * 0.4
+                for k in range(46):
+                    a, rr, h = rng.random() * 6.283, math.sqrt(rng.random()) * r, rng.random()
+                    y = float(lo[1]) + 0.3 + h * max(0.5, float(surf[1]) - float(lo[1]) - 0.5)
+                    wob = 0.15 * math.sin(t * 1.7 + k)
+                    out.append([c[0] + rr * math.cos(a) + wob, y + 0.1 * math.sin(t * 2.1 + k * 0.7),
+                                c[2] + rr * math.sin(a), 0.11 * min(1.0, t / 0.6), 0.45, 0.86, 0.36, 0.4])
             elif e.do == "bubbles":
                 inst = self.groups[e.oid][0]
                 lo, hi = self.group_box(e.oid, T)
@@ -845,10 +895,90 @@ class World:
                 out.append(Draw("__puff", m, color, 0.0, 0.55 * (1 - h) ** 0.7, shadow=False))
         return out
 
-    def _blocks(self, inst: Inst, st: dict, eye, tgt) -> bool:
-        """Does this object stand between the camera and what it looks at? (ray vs box)"""
-        if not any(p.shell for p in inst.model.parts):
+    def _blocking_parts(self, inst: Inst, st: dict, eye, tgt) -> set:
+        """Indexes of the shell parts (walls, posts, roofs) that are between the camera and the subject."""
+        m = self.inst_matrix(inst, {**st, "vis": 1.0})
+        try:
+            inv = np.linalg.inv(m.astype(np.float64))
+        except np.linalg.LinAlgError:
+            return set()
+        e = (inv @ np.append(np.asarray(eye, np.float64), 1.0))[:3]
+        out = set()
+        for k, part in enumerate(inst.model.parts):
+            if not part.shell:
+                continue
+            for tp in self._aim_points(tgt):
+                t = (inv @ np.append(tp, 1.0))[:3]
+                if any(_seg_box(e, t, a, b) for a, b in (part.boxes or [part.geo.bounds()])):
+                    out.add(k)
+                    break
+        return out
+
+    def _in_front_of_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int) -> bool:
+        """A prop that is nearer than the subject and overlaps it on screen."""
+        if inst.asset in ("pad", "ground_plate", "ground", "rail", "fence", "railing", "pipe_stand"):
             return False
+        from .decor import inst_box  # noqa: PLC0415
+
+        lo, hi = inst_box(inst, st["pos"], st["yaw"], st["scale"])
+        slo, shi = self._cams[i]["lo"], self._cams[i]["hi"]
+        e = np.asarray(eye, np.float64)
+        if np.linalg.norm((lo + hi) / 2 - e) >= np.linalg.norm((slo + shi) / 2 - e):
+            return False
+        def rect(a, b):  # noqa: E306
+            c = np.array([[x, y, z] for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])])
+            p = project_points(eye, tgt, fov, self.size, c)
+            return p[:, 0].min(), p[:, 0].max(), p[:, 1].min(), p[:, 1].max(), (p[:, 2] > 0).all()
+        px0, px1, py0, py1, ok1 = rect(lo, hi)
+        sx0, sx1, sy0, sy1, ok2 = rect(slo, shi)
+        return bool(ok1 and ok2 and px0 < sx1 and px1 > sx0 and py0 < sy1 and py1 > sy0)
+
+    def _shell_parts_over_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int) -> set:
+        """Posts, walls and roof parts that are nearer than the subject and cover it on screen."""
+        m = self.inst_matrix(inst, {**st, "vis": 1.0})
+        slo, shi = self._cams[i]["lo"], self._cams[i]["hi"]
+        e = np.asarray(eye, np.float64)
+        ds = float(np.linalg.norm((slo + shi) / 2 - e))
+        sc = np.array([[x, y, z] for x in (slo[0], shi[0]) for y in (slo[1], shi[1]) for z in (slo[2], shi[2])])
+        sp = project_points(eye, tgt, fov, self.size, sc)
+        if not (sp[:, 2] > 0).all():
+            return set()
+        sx0, sx1, sy0, sy1 = sp[:, 0].min(), sp[:, 0].max(), sp[:, 1].min(), sp[:, 1].max()
+        out = set()
+        for k, part in enumerate(inst.model.parts):
+            if not part.shell:
+                continue
+            for a, b in (part.boxes or [part.geo.bounds()]):
+                if sorted(np.asarray(b) - np.asarray(a))[1] > 0.5:
+                    continue  # only thin posts and beams; walls and domes stay (no hollow tanks)
+                c = np.array([[x, y, z, 1.0] for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])])
+                w = (c @ m.T.astype(np.float64))[:, :3]
+                if float(np.linalg.norm(w.mean(0) - e)) >= ds * 0.92:
+                    continue
+                p = project_points(eye, tgt, fov, self.size, w)
+                if (p[:, 2] > 0).all() and p[:, 0].min() < sx1 and p[:, 0].max() > sx0 and \
+                        p[:, 1].min() < sy1 and p[:, 1].max() > sy0:
+                    out.add(k)
+                    break
+        return out
+
+    def _aim_points(self, tgt) -> list:
+        """The look-at point and the top corners of the subject: if any of them is hidden, the thing blocks."""
+        i = getattr(self, "_aim_i", None)
+        pts = [np.asarray(tgt, np.float64)]
+        if i is not None:
+            lo, hi = self._cams[i]["lo"], self._cams[i]["hi"]
+            pts += [np.array([x, hi[1] * 0.8 + lo[1] * 0.2, z]) for x in (lo[0], hi[0]) for z in (lo[2], hi[2])]
+        return pts
+
+    def _blocks(self, inst: Inst, st: dict, eye, tgt) -> bool:
+        """Does this object stand between the camera and what it looks at? (rays vs box)"""
+        from .decor import inst_box  # noqa: PLC0415
+
+        lo, hi = inst_box(inst, st["pos"], st["yaw"], st["scale"])
+        return any(_seg_box(np.asarray(eye, np.float64), tp, lo, hi) for tp in self._aim_points(tgt))
+
+    def _blocks_old(self, inst: Inst, st: dict, eye, tgt) -> bool:
         s = inst.scale * st["scale"]
         lo, hi = st["pos"] + inst.lo * s, st["pos"] + inst.hi * s
         e, d = np.asarray(eye, np.float64), np.asarray(tgt, np.float64) - np.asarray(eye, np.float64)
@@ -948,3 +1078,19 @@ def freeze_layout(plan: dict) -> dict:
         if "x" not in a and a["id"] in pos:
             a["x"], a["z"] = pos[a["id"]]
     return plan
+
+
+def _seg_box(a, b, lo, hi, t0: float = 0.02, t1: float = 0.94) -> bool:
+    """Does the segment a→b (between 2 % and 94 % of the way) pass through the box?"""
+    d = np.asarray(b, np.float64) - np.asarray(a, np.float64)
+    tmin, tmax = t0, t1
+    for k in range(3):
+        if abs(d[k]) < 1e-9:
+            if a[k] < lo[k] or a[k] > hi[k]:
+                return False
+            continue
+        u, v = (lo[k] - a[k]) / d[k], (hi[k] - a[k]) / d[k]
+        tmin, tmax = max(tmin, min(u, v)), min(tmax, max(u, v))
+        if tmin > tmax:
+            return False
+    return True

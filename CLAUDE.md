@@ -82,6 +82,16 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 * **🧐 Self-review** (`Pipeline.self_review`, after the render): `export/contact_sheet.jpg` (one frame per shot +
   the ending), pixel check (`checker.content_fraction` ≥ 0.3) + Gemini vision with the framing rules; fixes the plan
   and re-renders only the stale clips (one round).
+* **Things work (phase 5 A, `world/logic.py`):** ports are model anchors (inlet, outlet, gas_out, wire, power…).
+  Objects with `"from": "tank1.outlet", "to": "dig1.inlet"` are routed (pipes: out of the port, down to stand height,
+  right-angle bends, into the other port, on `pipe_stand`s; cables hang between ends); flows follow the route.
+  Loose pipes are auto-connected to the nearest ports; floating objects are grounded (only gas, sky, micro and
+  space things float); `arrival_clamps` start lights/machines when the flow arrives. Assemblies: a moving scraper
+  gets a rail + chain + motor; the tractor has a front bucket with a `load` part. Blades (`blade` anchor) push
+  `PUSHABLE` piles (`push_links`/`pushed_state`) and piles drop into pits/tanks they reach. Composition: props in
+  front of the subject and shell parts in the way are LEFT OUT (no x-ray ghosts); thin posts/beams over the subject
+  too. One ground plate under the whole site + gravel roads between areas. Animals/people are filmed from the side
+  (el ≤ 20). `checker.logic_problems` (open pipe, tool not touching, subject blocked) runs in the QC and the review.
 * **Frozen layout:** after planning, each area's x/z is written into the plan (`scene.freeze_layout`), so a fix
   (bigger tank) never moves other areas. `Pipeline.scene_fp` covers only `plan.relevant_objects(plan, i)` (the
   areas shot i and the shot before look at + what its actions/labels name), so a fix re-renders only the shots
@@ -230,6 +240,9 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Phase 2: asset library 126 objects (piston/rocker/flame kinds), long videos planned in parts with one
       shared world, frozen area layout + per-shot fingerprints, 🔧 fix one shot (AI + rules, app + backup form),
       🔍 quality check (local + Gemini vision), see-through liquids drawn correctly
+- [x] Phase 5 A: ports + routed pipes/cables, assemblies, pushing into pits, grounding, flows switch things on,
+      clean composition (no ghosts, no props in front), ground + roads, side views of animals, opaque captions,
+      logic check in QC + self-review
 - [x] Phase 4 visual quality: bounding-box framing in the safe area (+ check: ≥ 30 % of the frame, not cut off, not
       mostly empty), set dressing, better cow/person/barn/tractor/tank/digester/generator/house, point lights,
       crisper shadows, fainter grid, close hook with a "drop", overview ending that loops, bigger captions,

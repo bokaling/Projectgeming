@@ -17,7 +17,8 @@ from . import assets
 
 FARM = {"cow", "pig", "sheep", "chicken", "horse", "barn", "manure", "tractor", "scraper", "hay_bale", "crops", "silo"}
 TOWN = {"house", "skyscraper", "tree", "car", "bus"}
-NO_PAD = {"pad", "ground", "terrain", "water", "platform", "wire", "power_line", "cloud", "sun", "planet"}
+NO_PAD = {"pad", "ground", "terrain", "water", "platform", "wire", "power_line", "cloud", "sun", "planet", "pipe",
+          "cable", "chain", "belt"}
 PROPS = {
     "farm": [("hay_bale", {}), ("bucket", {}), ("hay_bale", {}), ("bucket", {"color": "#d9534f"}), ("crate", {})],
     "industry": [("barrel", {}), ("crate", {}), ("barrel", {"color": "#f28c28"}), ("bucket", {"color": "#f4c430"})],
@@ -54,6 +55,7 @@ def inst_box(inst, pos=None, yaw=None, scale=1.0) -> tuple[np.ndarray, np.ndarra
 def dress(world) -> list[dict]:
     """Extra objects (plan format, world coordinates in 'at') for every normal area of the world."""
     out = []
+    rects = []  # (cx, cz, w, d, kind) of every area pad: for the ground under everything and the roads between
     micro = {a["id"] for a in world.plan["areas"] if a.get("micro")}
     for area in world.plan["areas"]:
         aid = area["id"]
@@ -86,6 +88,7 @@ def dress(world) -> list[dict]:
         pad_color = {"farm": "dirt", "town": "grass", "industry": "concrete"}[kind]
         out.append({"asset": "pad", "area": aid, "at": (cx, 0.0, cz), "params": {"w": round(w, 2), "d": round(d, 2),
                                                                                  "color": pad_color}})
+        rects.append((cx, cz, w, d, kind))
         rng = _rng(aid, kind)
 
         def free(x, z, r=0.7):
@@ -126,8 +129,25 @@ def dress(world) -> list[dict]:
             if free(x, cz - d / 2 + 0.6, 0.3):
                 out.append({"asset": "lamp_post", "area": aid, "at": (x, 0.0, cz - d / 2 + 0.6), "rot": -90.0,
                             "params": {}})
+    if rects:  # one ground under the whole site (no islands in the void) + gravel roads between the places
+        x0 = min(r[0] - r[2] / 2 for r in rects) - 10
+        x1 = max(r[0] + r[2] / 2 for r in rects) + 10
+        z0 = min(r[1] - r[3] / 2 for r in rects) - 10
+        z1 = max(r[1] + r[3] / 2 for r in rects) + 10
+        kinds = [r[4] for r in rects]
+        base = "#5f7a4c" if ("farm" in kinds or "town" in kinds) else "#6d7377"
+        out.append({"asset": "ground_plate", "area": world.plan["areas"][0]["id"], "at": ((x0 + x1) / 2, 0.0, (z0 + z1) / 2),
+                    "params": {"w": round(x1 - x0, 1), "d": round(z1 - z0, 1), "color": base}})
+        order = sorted(rects, key=lambda r: r[0])
+        for a, b in zip(order[:-1], order[1:]):
+            xa, xb = a[0] + a[2] / 2, b[0] - b[2] / 2
+            if xb - xa > 0.2:
+                out.append({"asset": "pad", "area": world.plan["areas"][0]["id"],
+                            "at": ((xa + xb) / 2, 0.0, (a[1] + b[1]) / 2),
+                            "params": {"w": round(xb - xa + 0.4, 2), "d": 3.2, "color": "gravel"}})
     for inst in world.insts:  # stands under pipes that run low over the ground
-        path = inst.model.paths.get("flow") if inst.asset == "pipe" else None
+        path = inst.model.paths.get("flow") if inst.asset == "pipe" and inst.model.parts and \
+            inst.model.parts[0].name == "pipe" else None
         if not path:
             continue
         m = world.inst_matrix(inst, {"pos": inst.pos, "yaw": inst.rot, "scale": 1.0, "vis": 1.0, "shake": np.zeros(3),

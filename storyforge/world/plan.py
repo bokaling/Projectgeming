@@ -141,6 +141,9 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
         }
         if obj["color"] and "color" in info.params:
             obj["params"].setdefault("color", obj["color"])
+        for k in ("from", "to"):  # pipes, cables, chains: routed between two ports ("tank1.outlet")
+            if o.get(k):
+                obj[k] = str(o[k]).strip()
         objects.append(obj)
     if not areas:
         areas.append({"id": "main"})
@@ -154,6 +157,15 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
         fixes.append("the plan had no objects: added a crate")
     out["areas"], out["objects"] = areas, objects
     ids = {o["id"] for o in objects}
+    for o in objects:
+        for k in ("from", "to"):
+            if k in o and slug(o[k].split(".")[0]) not in ids:
+                fixes.append(f"{o['id']}: '{k}' {o[k]} is not an object: the link was removed")
+                o.pop("from", None)
+                o.pop("to", None)
+            elif k in o:
+                base, dot, port = o[k].partition(".")
+                o[k] = slug(base) + (dot + port if dot else "")
     parts_of = {o["id"]: {pt.name for pt in assets.build(o["asset"], **o["params"]).parts} for o in objects}
 
     def target(t, fallback):

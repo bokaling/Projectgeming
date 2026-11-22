@@ -62,11 +62,10 @@ def _merge_static(model: Model) -> Model:
     """Plain parts (no animation, not a shell) with the same look become one mesh: far fewer draws, same picture."""
     keep, groups = [], {}
     for p in model.parts:
-        if p.kind:
+        if p.kind or p.shell:  # moving parts and shells (walls, posts: hidden one by one when they block) stay apart
             keep.append(p)
             continue
-        key = (str(p.color).lower(), round(float(p.opacity), 3), round(float(p.emissive), 3), p.shell,
-               p.name if p.shell else "")  # shells (cut open / x-ray) only merge with parts of the same name
+        key = (str(p.color).lower(), round(float(p.opacity), 3), round(float(p.emissive), 3))
         groups.setdefault(key, []).append(p)
     merged = []
     for parts in groups.values():
@@ -312,10 +311,16 @@ def manure(size=1.0, color="manure", seed=3):
 
 @asset("scraper", "a manure scraper blade that slides along the barn alley", ["farm", "machine"],
        aliases=["alley_scraper", "blade"])
-def scraper(width=1.6, color="yellow"):
-    m = Model().add("blade", M.xf(M.box(0.18, 0.45, width, base=True), (0, 0, 0), (0, 0, -12)), col(color, C["yellow"]))
-    m.add("frame", M.xf(M.box(0.9, 0.12, 0.2, base=True), (-0.45, 0.05, 0)), C["dark_steel"])
-    m.add("chain", M.xf(M.box(3.0, 0.05, 0.05, base=True), (-1.9, 0.05, 0)), C["steel"])
+def scraper(width=2.2, color="yellow"):
+    """The moving blade of an alley scraper (it pushes manure along +x). Its rail, chain and motor are added by
+    the world (logic.assemblies) along the path it travels."""
+    m = Model().add("blade", M.xf(M.box(0.18, 0.55, width, base=True), (0, 0, 0), (0, 0, -12)), col(color, C["yellow"]))
+    m.add("frame", M.merge(M.xf(M.box(0.9, 0.14, 0.24, base=True), (-0.45, 0.05, 0)),
+                           M.xf(M.box(0.14, 0.4, width * 0.8, base=True), (-0.6, 0.05, 0))), C["dark_steel"])
+    m.add("shoe", M.xf(M.box(0.5, 0.08, 0.34, base=True), (-0.45, 0, 0)), "#3a3f45")
+    m.anchors["blade"] = (0.25, 0.3, 0.0)
+    m.anchors["blade_half"] = (width / 2, 0.0, 0.0)
+    m.anchors["label"] = (0.0, 1.3, 0.0)
     return m
 
 
@@ -337,6 +342,17 @@ def tractor(color="green", cab="#8ecfe8"):
             m.add("pillar", M.xf(M.box(0.08, 1.15, 0.08, base=True), (x, 1.4, z)), body)
     m.add("cab_roof", M.xf(M.box(1.55, 0.14, 1.6, base=True), (-0.75, 2.55, 0)), body)
     m.add("exhaust", M.xf(M.cylinder(0.07, 1.0, 8), (1.35, 1.65, 0.3)), "#2a2a2e")
+    # front loader: arms + bucket (it scoops and carries; "load" is shown with show_part while it carries)
+    for z in (-0.62, 0.62):
+        m.add("arm", M.tube([(0.2, 1.6, z), (2.3, 0.75, z), (2.55, 0.45, z)], 0.07, 5, joints=False), "#d9b43a")
+    m.add("bucket", M.merge(M.xf(M.box(0.7, 0.08, 1.7, base=True), (2.75, 0.12, 0)),
+                            M.xf(M.box(0.08, 0.7, 1.7, base=True), (2.42, 0.12, 0)),
+                            M.xf(M.box(0.7, 0.55, 0.08, base=True), (2.75, 0.12, 0.85)),
+                            M.xf(M.box(0.7, 0.55, 0.08, base=True), (2.75, 0.12, -0.85))), "#d9b43a")
+    m.add("load", M.merge(*[M.xf(M.sphere(0.32, 0), (2.7 + dx, 0.45, dz), s=(1, 0.6, 1)) for dx, dz in
+                            ((0, -0.45), (0.1, 0.05), (-0.05, 0.5), (0.12, 0.3))]), C["manure"], kind="load")
+    m.anchors["blade"] = (3.1, 0.3, 0.0)
+    m.anchors["blade_half"] = (0.85, 0.0, 0.0)
     for x, z, r, w in ((-0.95, 0.95, 0.88, 0.5), (-0.95, -0.95, 0.88, 0.5), (1.35, 0.78, 0.5, 0.32),
                        (1.35, -0.78, 0.5, 0.32)):
         c = (x, r, z)
@@ -532,6 +548,7 @@ def house(w=5.0, d=4.4, h=3.0, color="#f3e3c3", roof="#b5523b", seed=1):
     for z in (-d * 0.2, d * 0.2):
         m.add("window", M.xf(M.box(0.06, 0.7, 0.7), (w / 2 + 0.03, h * 0.55, z)), "#2b3a4a", kind="light")
     m.anchors["label"] = (0.0, h * 1.55 + 0.6, 0.0)
+    m.anchors["power"] = (-w / 2, h * 0.92, 0.0)
     return m
 
 
