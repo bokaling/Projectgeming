@@ -18,10 +18,19 @@ Plus the thumbnail, title, description, hashtags and YouTube chapters. **Everyth
   if**, **How it's made**, **History of**, **Top 5/10** and **Story**. Each has its own script rules, pacing, music
   mood and ending. Story uses original blocky characters with faces (happy, sad, angry, surprised, scared), one
   big word at a time as captions with the key words in red, and a "Part X" end card.
+- ⚙️ **How it works, first (the default format):** type a topic like "How an elevator works". The AI first writes
+  what you must SEE for every line, then plans the shots; a shot that doesn't show its line is planned again.
+  Machines are cut open with their real working parts moving: a car engine (pistons, rods, crankshaft, valves,
+  spark plugs, the gas changing colour with every stroke), an elevator (car, steel ropes, sheave, motor,
+  counterweight, safety brakes), a fridge (evaporator, compressor, condenser coils, capillary tube) and a toilet
+  (flapper, float, fill valve, siphon). Every machine stands in its real place (kitchen, bathroom, garage, street)
+  at its real size, the camera films the exact part the line talks about, and numbers become things you can see
+  (counters, balance scales, stacks). New videos go into an automatic series per format and the file is named
+  after the video title.
 - 🧱 **New objects on demand:** if your topic needs something the library doesn't have (a submarine, a pyramid),
   the free Gemini key designs it as a low poly recipe of simple shapes. The app checks it, builds it and saves it
   to `StoryForge/library/objects/` on Drive, so next time it is already there. Without a key the closest object is
-  used. 16 recipes come built in (submarine, pyramid, stone block, sled, ramp, reed boat, palm tree, sea surface,
+  used. 19 recipes come built in (fridge, toilet, piston pump, submarine, pyramid, stone block, sled, ramp, reed boat, palm tree, sea surface,
   sugar cube, glucose, stomach, intestine, blood vessel, pancreas, insulin, fat cell).
 - 🎥 **Camera:** every shot is framed automatically: the thing the line talks about fills the picture, fully
   visible, between the captions (top 15 %) and the app buttons (bottom 20 %). Orbit, push in, follow, low angle,
