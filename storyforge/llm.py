@@ -280,28 +280,51 @@ def chat(messages, *, json_mode=False, temperature=0.8, max_tokens=4000, rep=Non
     return net.try_in_order(task, calls, rep)
 
 
+VISION_DEFAULTS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"]
+
+
+def vision_models(key: str) -> list[str]:
+    """Gemini models that can look at pictures: Flash before Flash-Lite, never Gemma (text only on this API)."""
+    found = [m for m in _list_models("gemini", GEMINI_BASE, key) if "gemma" not in m.lower()]
+    found.sort(key=lambda m: 0 if re.search(r"flash(?!-lite)", m) else 1)
+    return list(dict.fromkeys(found + VISION_DEFAULTS))[:3]
+
+
 def vision_json(system: str, text: str, images: list, *, rep=None, max_tokens: int = 3000):
     """Ask Gemini (free key) about pictures. Returns the parsed JSON, or None when there is no key or no answer.
 
-    images: JPEG bytes. Only Gemini is used (free vision); without GEMINI_API_KEY this returns None at once."""
+    images: JPEG bytes. Only Gemini is used (free vision). The pictures are the same on a CPU or GPU runtime
+    (still frames as JPEG), so this works the same on both. If it fails, the real reason is shown in the log."""
     import base64  # noqa: PLC0415
 
-    fn = _keyed_provider("gemini", GEMINI_BASE, "GEMINI_API_KEY", strong=True)
-    if fn is None:
+    from .messages import StopRequested  # noqa: PLC0415
+
+    key = config.secret("GEMINI_API_KEY")
+    if not key or not images:
         return None
     content = [{"type": "text", "text": text}] + [
         {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}}
         for b in images]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": content}]
-    try:
-        _, reply = net.try_in_order("quality check", [("Gemini vision", lambda: fn(messages, True, 0.2, max_tokens))], rep)
-        return extract_json(reply)
-    except Exception as exc:  # noqa: BLE001
-        from .messages import StopRequested  # noqa: PLC0415
-
-        if isinstance(exc, StopRequested):
+    errors = []
+    for model in vision_models(key):
+        try:
+            reply = _openai_chat(GEMINI_BASE, key, model, messages, True, 0.2, max_tokens)
+            obj = extract_json(reply)
+            if rep is not None:
+                rep.info(f"👁️ Gemini vision ({model}) looked at {len(images)} picture(s)")
+            return obj
+        except StopRequested:
             raise
-        return None
+        except net.ServiceError as exc:
+            errors.append(f"{model}: {exc}")
+            if exc.status in (401, 403):
+                break  # a bad key: other models won't work either
+        except Exception as exc:  # noqa: BLE001  (a reply that isn't JSON: try the next model)
+            errors.append(f"{model}: {type(exc).__name__}: {exc}")
+    if rep is not None and errors:
+        rep.warn(f"Gemini vision didn't answer ({errors[-1][:140]}). The local checks still ran.")
+    return None
 
 
 def generate_json(system: str, user: str, *, validate=None, rep=None, task="script", temperature=0.85,

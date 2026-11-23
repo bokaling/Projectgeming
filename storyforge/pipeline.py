@@ -799,6 +799,36 @@ def log_video_usage(series: str, number: int, length: str, gpu: str, seconds: fl
     write_json(path, data[-500:])
 
 
+def auto_series(opts: EpisodeOptions, text: str = "") -> Series:
+    """No series picked: one per video format ("How it works"), so a new topic never lands in an old story series.
+    A story gets its own series named after its topic/title. Voices are copied from the series used last."""
+    topic = (opts.idea or "").split("=====")[0].strip()
+    if not topic:
+        topic = (paste.parse_lines(text or opts.script_text or "").get("title") or "").strip()
+    key = formats.resolve(opts.video_format, topic)
+    name = (topic[:60] or "My story") if key == "story" else formats.get(key)["label"]
+    last = read_json(config.get().root / "app.json", {}) or {}
+    s = Series.create(name)
+    if not s.data.get("voices") and last.get("series") and last["series"] != s.slug:
+        old = Series(last["series"])
+        if old.path.exists() and old.data.get("voices"):
+            s.data["voices"] = dict(old.data["voices"])
+            s.save()
+    return s
+
+
+def episode_number(series: Series, number: int | None, opts: EpisodeOptions) -> int | None:
+    """The episode to make. A number that already holds a DIFFERENT video is never overwritten: the next free one."""
+    if not number or number not in series.episode_numbers():
+        return number or None
+    old = series.episode(number).load_options()
+    if (opts.script_text or "").strip():
+        same = (old.script_text or "").strip() == opts.script_text.strip()
+    else:  # a topic: the AI writes the script
+        same = bool((opts.idea or "").strip()) and (old.idea or "").strip() == opts.idea.strip()
+    return number if same else None
+
+
 def generate(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, number: int | None = None) -> dict:
     """Everything after you press Generate: (topic → script), plan, voice, 3D render, sound, export."""
     texts = paste.split_scripts(text) if opts.source == "paste" else []

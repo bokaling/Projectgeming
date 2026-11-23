@@ -34,8 +34,8 @@ CAMERA_MOVES = {
 ACTIONS = {
     "appear": "pop in", "disappear": "shrink away", "grow": "grow (from → to size)", "move": "move to a place",
     "spin": "spin its wheels/blades/fan (or the whole object)", "fill": "liquid level rises (from → to)",
-    "drain": "liquid level falls", "flow": "particles flow from one object to another (or along a pipe)",
-    "bubbles": "bubbles rise from it", "smoke": "smoke puffs rise", "sparks": "electric sparks travel to 'to'",
+    "drain": "liquid level falls", "flow": "particles flow from the target to 'to' (REQUIRED: the object id it goes into, or a pipe id)",
+    "bubbles": "bubbles rise from it", "smoke": "smoke puffs rise", "sparks": "electric sparks travel from the target to 'to' (REQUIRED: an object id)",
     "light_on": "lights/windows/screens turn on", "light_off": "lights turn off", "glow": "pulse with light",
     "alarm": "pulse red (danger)", "shake": "shake", "cutaway": "cut it open to show the inside",
     "xray": "make the outside see-through", "float": "gently bob and turn (micro world, space)",
@@ -101,6 +101,36 @@ def _has_path(asset: str) -> bool:
         return bool(assets.build(asset).paths.get("flow"))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _flow_target(src: str, objects: list, scene: dict, target) -> str:
+    """Where a flow without a 'to' goes: along a pipe/cable that starts at it, else to another thing the same shot
+    names, else to the nearest object in its area that has an inlet. '' = nothing sensible (the flow is removed)."""
+    by_id = {o["id"]: o for o in objects}
+    me = by_id.get(src)
+    if me is None:
+        return ""
+    for o in objects:  # a pipe from this object: the flow follows it
+        if str(o.get("from", "")).split(".")[0] == src and o["id"] != src:
+            return o["id"]
+    names = [(scene.get("camera") or {}).get("target")] if isinstance(scene.get("camera"), dict) else []
+    names += [a.get("target") for a in (scene.get("actions") or []) if isinstance(a, dict)]
+    names += [lb.get("target") for lb in (scene.get("labels") or []) if isinstance(lb, dict)]
+    for n in names:
+        t = target(n, "").split(".")[0] if n else ""
+        if t and t != src and t in by_id:
+            return t
+
+    def has_inlet(o):
+        try:
+            return "inlet" in assets.build(o["asset"], **o["params"]).anchors
+        except Exception:  # noqa: BLE001
+            return False
+
+    near = [o for o in objects if o["id"] != src and o["area"] == me["area"] and has_inlet(o)]
+    if near:
+        return min(near, key=lambda o: (o["pos"][0] - me["pos"][0]) ** 2 + (o["pos"][1] - me["pos"][1]) ** 2)["id"]
+    return ""
 
 
 def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, list[str]]:
@@ -250,7 +280,12 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
                         act["to"] = tt
                 if do in ("flow", "sparks") and "to" not in act and not _has_path(next(
                         o["asset"] for o in objects if o["id"] == tg.split(".")[0])):
-                    fixes.append(f"scene {i + 1}: '{do}' from {tg} has no 'to': it flows upward instead")
+                    to = _flow_target(tg.split(".")[0], objects, s, target)
+                    if not to:
+                        fixes.append(f"scene {i + 1}: '{do}' from {tg} has no 'to' (where does it go?): removed")
+                        continue
+                    act["to"] = to
+                    fixes.append(f"scene {i + 1}: '{do}' from {tg} had no 'to': it now goes to {to}")
             elif isinstance(a.get("to"), NUM):
                 act["to_value"] = float(a["to"])
             if do in ("show_part", "hide_part") and "." not in tg:

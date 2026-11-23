@@ -273,6 +273,35 @@ class RendererError(RuntimeError):
     pass
 
 
+PAD = {"1f": "1x4", "2f": "2x4", "3f": "3x4", "4f": "4x4"}
+
+
+def attrs_of(prog, layout: list[tuple[str, str]]) -> tuple[str, list[str]]:
+    """The vertex format for a program, keeping ONLY the attributes it really has.
+
+    GPU drivers (NVIDIA on Colab) remove inputs a shader never uses, e.g. the grid floor never reads the normal,
+    so asking for "in_nrm" raised KeyError on a T4. Missing attributes become padding bytes in the same buffer."""
+    fmt, names = [], []
+    for f, name in layout:
+        if name in prog:
+            fmt.append(f)
+            names.append(name)
+        else:
+            fmt.append(PAD[f])
+    return " ".join(fmt), names
+
+
+def set_uniform(prog, name: str, value) -> None:
+    """Set a uniform if the driver kept it (unused uniforms are removed too)."""
+    if name in prog:
+        prog[name].value = value
+
+
+def write_uniform(prog, name: str, data: bytes) -> None:
+    if name in prog:
+        prog[name].write(data)
+
+
 def create_context():
     """A headless OpenGL context: the NVIDIA GPU if there is one, else Mesa (CPU)."""
     import moderngl  # noqa: PLC0415
@@ -306,7 +335,7 @@ class Renderer:
         self.final_prog = ctx.program(vertex_shader=QUAD_VERT, fragment_shader=FINAL_FRAG)
         self.label_prog = ctx.program(vertex_shader=LABEL_VERT, fragment_shader=LABEL_FRAG)
         quad = ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1], np.float32).tobytes())
-        self.quads = {name: ctx.vertex_array(p, [(quad, "2f", "in_pos")])
+        self.quads = {name: self.vertex_array(p, quad, [("2f", "in_pos")])
                       for name, p in (("bg", self.bg_prog), ("bright", self.bright_prog), ("blur", self.blur_prog),
                                       ("final", self.final_prog), ("label", self.label_prog))}
         self.meshes: dict = {}
@@ -341,10 +370,17 @@ class Renderer:
         self._part_vbo = None
 
     # ------------------------------------------------------------------ geometry
+    def vertex_array(self, prog, vbo, layout: list[tuple[str, str]]):
+        """A vertex array that binds only the attributes `prog` has (see attrs_of)."""
+        fmt, names = attrs_of(prog, layout)
+        if not names:
+            raise RendererError("a shader has none of its inputs (" + ", ".join(n for _, n in layout) + ")")
+        return self.ctx.vertex_array(prog, [(vbo, fmt, *names)])
+
     def _vao(self, prog, pos, nrm):
         data = np.hstack([pos, nrm]).astype(np.float32)
         vbo = self.ctx.buffer(data.tobytes())
-        return self.ctx.vertex_array(prog, [(vbo, "3f 3f", "in_pos", "in_nrm")]), vbo
+        return self.vertex_array(prog, vbo, [("3f", "in_pos"), ("3f", "in_nrm")]), vbo
 
     def upload(self, key: str, geo) -> None:
         """Send a mesh to the GPU once."""
@@ -353,7 +389,7 @@ class Renderer:
         pos, nrm = geo.pos.astype(np.float32), geo.normals()
         vao, vbo = self._vao(self.prog, pos, nrm)
         svbo = self.ctx.buffer(pos.tobytes())
-        svao = self.ctx.vertex_array(self.shadow_prog, [(svbo, "3f", "in_pos")])
+        svao = self.vertex_array(self.shadow_prog, svbo, [("3f", "in_pos")])
         self.meshes[key] = (vao, svao, (vbo, svbo))
 
     def texture(self, key: str, rgba: np.ndarray):
@@ -418,10 +454,10 @@ class Renderer:
         self.shadow_fbo.clear(depth=1.0)
         ctx.enable(mgl.DEPTH_TEST)
         ctx.disable(mgl.CULL_FACE)
-        self.shadow_prog["u_light"].write(light_vp.T.tobytes())
+        write_uniform(self.shadow_prog, "u_light", light_vp.T.tobytes())
         for d in fr.draws:
             if d.shadow and d.opacity > 0.5 and not d.xray and d.key in self.meshes and d.clip is None:
-                self.shadow_prog["u_model"].write(d.model.T.tobytes())
+                write_uniform(self.shadow_prog, "u_model", d.model.T.tobytes())
                 self.meshes[d.key][1].render()
 
         # 2) the scene (HDR, multisampled)
@@ -429,18 +465,18 @@ class Renderer:
         ctx.viewport = (0, 0, self.W, self.H)
         self.ms_fbo.clear(0, 0, 0, 1, depth=1.0)
         ctx.disable(mgl.DEPTH_TEST)
-        self.bg_prog["u_top"].value = hex_rgb(st["background"])
-        self.bg_prog["u_bottom"].value = hex_rgb(st["horizon"])
+        set_uniform(self.bg_prog, "u_top", hex_rgb(st["background"]))
+        set_uniform(self.bg_prog, "u_bottom", hex_rgb(st["horizon"]))
         self.quads["bg"].render()
         ctx.enable(mgl.DEPTH_TEST)
         self.shadow_tex.use(0)
         gp = self.grid_prog
         self._common(gp, fr, vp, light_vp)
-        gp["u_model"].write(np.eye(4, dtype=np.float32).tobytes())
-        gp["u_floor"].value = hex_rgb(st["floor"])
-        gp["u_grid"].value = hex_rgb(st["grid"])
-        gp["u_center"].value = tuple(float(x) for x in fr.grid_center)
-        gp["u_radius"].value = max(25.0, dist * 3.0)
+        write_uniform(gp, "u_model", np.eye(4, dtype=np.float32).tobytes())
+        set_uniform(gp, "u_floor", hex_rgb(st["floor"]))
+        set_uniform(gp, "u_grid", hex_rgb(st["grid"]))
+        set_uniform(gp, "u_center", tuple(float(x) for x in fr.grid_center))
+        set_uniform(gp, "u_radius", max(25.0, dist * 3.0))
         self._floor[0].render()
         p = self.prog
         self._common(p, fr, vp, light_vp)
@@ -459,15 +495,15 @@ class Renderer:
             for d in group:
                 if d.key not in self.meshes:
                     continue
-                p["u_model"].write(d.model.T.tobytes())
-                p["u_color"].value = tuple(d.color)
-                p["u_emissive"].value = float(d.emissive)
-                p["u_opacity"].value = float(d.opacity)
-                p["u_xray"].value = 1 if d.xray else 0
-                p["u_clip_on"].value = 1 if d.clip is not None else 0
+                write_uniform(p, "u_model", d.model.T.tobytes())
+                set_uniform(p, "u_color", tuple(d.color))
+                set_uniform(p, "u_emissive", float(d.emissive))
+                set_uniform(p, "u_opacity", float(d.opacity))
+                set_uniform(p, "u_xray", 1 if d.xray else 0)
+                set_uniform(p, "u_clip_on", 1 if d.clip is not None else 0)
                 if d.clip is not None:
-                    p["u_clip"].value = tuple(float(x) for x in d.clip)
-                    p["u_inner"].value = tuple(d.inner)
+                    set_uniform(p, "u_clip", tuple(float(x) for x in d.clip))
+                    set_uniform(p, "u_inner", tuple(d.inner))
                 self.meshes[d.key][0].render()
             if blend:
                 ctx.disable(mgl.BLEND)
@@ -483,14 +519,14 @@ class Renderer:
             self.bloom_fa.use()
             ctx.viewport = (0, 0, bw, bh)
             self.scene_tex.use(0)
-            self.bright_prog["u_tex"].value = 0
+            set_uniform(self.bright_prog, "u_tex", 0)
             self.quads["bright"].render()
             for _ in range(2):
                 for src, dst, direction in ((self.bloom_a, self.bloom_fb, (1 / bw, 0)), (self.bloom_b, self.bloom_fa, (0, 1 / bh))):
                     dst.use()
                     src.use(0)
-                    self.blur_prog["u_tex"].value = 0
-                    self.blur_prog["u_dir"].value = direction
+                    set_uniform(self.blur_prog, "u_tex", 0)
+                    set_uniform(self.blur_prog, "u_dir", direction)
                     self.quads["blur"].render()
         else:
             self.bloom_fa.clear(0, 0, 0, 1)
@@ -499,11 +535,12 @@ class Renderer:
         self.scene_tex.use(0)
         self.bloom_a.use(1)
         fp = self.final_prog
-        fp["u_scene"].value, fp["u_bloom"].value = 0, 1
-        fp["u_bloom_k"].value = float(fr.bloom)
-        fp["u_fade_col"].value = hex_rgb(st["background"])
-        fp["u_fade"].value = float(min(1.0, max(0.0, fr.fade)))
-        fp["u_flash"].value = float(min(1.0, max(0.0, fr.flash)))
+        set_uniform(fp, "u_scene", 0)
+        set_uniform(fp, "u_bloom", 1)
+        set_uniform(fp, "u_bloom_k", float(fr.bloom))
+        set_uniform(fp, "u_fade_col", hex_rgb(st["background"]))
+        set_uniform(fp, "u_fade", float(min(1.0, max(0.0, fr.fade))))
+        set_uniform(fp, "u_flash", float(min(1.0, max(0.0, fr.flash))))
         self.quads["final"].render()
 
         # 4) labels on top
@@ -517,9 +554,9 @@ class Renderer:
                 y0 = lb.y - (h if lb.anchor == "bottom" else h / 2)
                 rect = (x0 / self.W * 2 - 1, 1 - (y0 + h) / self.H * 2, w / self.W * 2, h / self.H * 2)
                 tex.use(0)
-                self.label_prog["u_tex"].value = 0
-                self.label_prog["u_rect"].value = rect
-                self.label_prog["u_alpha"].value = float(lb.alpha)
+                set_uniform(self.label_prog, "u_tex", 0)
+                set_uniform(self.label_prog, "u_rect", rect)
+                set_uniform(self.label_prog, "u_alpha", float(lb.alpha))
                 self.quads["label"].render()
             ctx.disable(mgl.BLEND)
         data = self.out_fbo.read(components=3)
@@ -545,7 +582,8 @@ class Renderer:
                 self._part_vbo.release()
             self._part_vbo = self.ctx.buffer(reserve=max(len(data), 1 << 20), dynamic=True)
         self._part_vbo.write(data)
-        vao = self.ctx.vertex_array(self.part_prog, [(self._part_vbo, "3f 3f 3f 1f", "in_pos", "in_nrm", "in_col", "in_emi")])
+        vao = self.vertex_array(self.part_prog, self._part_vbo, [("3f", "in_pos"), ("3f", "in_nrm"), ("3f", "in_col"),
+                                                                ("1f", "in_emi")])
         self._common(self.part_prog, fr, vp, light_vp)
         vao.render(vertices=k * 24)
         vao.release()

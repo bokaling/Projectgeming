@@ -24,8 +24,6 @@ def test_generate_from_script(offline, needs_gl, capsys):
 def test_forms_friendly_messages(offline, capsys):
     forms.run("🚀 Generate from my SCRIPT", "", "Empty Show")
     assert "Paste your script" in capsys.readouterr().out
-    forms.run("🚀 Generate from my SCRIPT", SCRIPT, "", quality="480p")
-    assert "SERIES name" in capsys.readouterr().out
     forms.run("✍️ AI writes from my TOPIC", "", "Empty Show")
     assert "TOPIC" in capsys.readouterr().out
 

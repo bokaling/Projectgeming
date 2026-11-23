@@ -295,7 +295,10 @@ class Episode:
         return self.dir / "render" / f"{sid}_{fmt}_{lang}.mp4"
 
     def video_path(self, lang: str, fmt: str) -> Path:
-        return self.export_dir / f"{self.series.slug}_{self.tag}_{lang}_{fmt}.mp4"
+        """Named after the video's own title ('how-an-elevator-works_en_9x16.mp4'), never after an old series."""
+        title = slugify(str((self.load_script() or {}).get("title") or ""), "")
+        base = title if title else f"{self.series.slug}_{self.tag}"
+        return self.export_dir / f"{base}_{lang}_{fmt}.mp4"
 
     def own_voice_path(self, lang: str) -> Path | None:
         for p in sorted(self.audio_dir(lang).glob("own_voice.*")):

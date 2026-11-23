@@ -19,6 +19,7 @@ from .. import formats
 from .theme import CSS, HEAD, build_theme
 
 NEW = "__new__"
+AUTO = "__auto__"  # no series picked: one is made from the topic's format ("How it works")
 TAB_IDS = ["script", "plan", "voice", "export"]
 LANG_CHOICES = [("English", "en"), ("Farsi · فارسی", "fa")]
 MOOD_CHOICES = [("Auto (from the script)", "auto")] + [(m.title(), m) for m in
@@ -140,7 +141,7 @@ def checklist_html(summary) -> str:
 
 def series_choices():
     items = [(s.name, s.slug) for s in list_series() if s.slug != "quick-test"]
-    return items + [("➕ New series", NEW)]
+    return [("✨ Auto (a series from the topic)", AUTO)] + items + [("➕ New series", NEW)]
 
 
 def opts_from(text, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_card, final, qc, fmt="auto",
@@ -282,8 +283,9 @@ def build_app():
                     with gr.Column(scale=2):
                         with gr.Group(elem_classes="sf-card"):
                             gr.HTML('<div class="sf-card-title">Series &amp; episode</div>'
-                                    '<div class="sf-card-sub">Same series = same voice, numbering and end card.</div>')
-                            series_dd = gr.Dropdown(choices=series_choices(), value=NEW, label="Series")
+                                    '<div class="sf-card-sub">✨ Auto puts each video in a series for its format (How it works…) and '
+                                    'names the file after its title. Same series = same voice and numbering.</div>')
+                            series_dd = gr.Dropdown(choices=series_choices(), value=AUTO, label="Series")
                             new_name = gr.Textbox(label="New series name", placeholder="e.g. How Things Work")
                             ep_no = gr.Number(value=1, precision=0, minimum=1, label="Episode number")
                             open_btn = gr.Button("📂 Open this episode", variant="secondary")
@@ -523,8 +525,12 @@ def build_app():
 
         r_plan.change(load_plan_json, r_plan, [plan_json, plan_info])
 
-        def resolve_series(choice, name) -> Series:
-            if choice and choice != NEW:
+        def resolve_series(choice, name, o=None) -> Series:
+            if choice == AUTO or not choice:
+                if o is None:
+                    raise FriendlyError("Pick a series first.", "Choose it in the Series list (right side).")
+                return pipeline.auto_series(o, o.script_text)
+            if choice != NEW:
                 return Series(choice)
             name = (name or "").strip()
             if not name:
@@ -542,8 +548,8 @@ def build_app():
         def on_generate(choice, name, number, *vals):
             try:
                 o = topic_or_script(opts_from(*vals))
-                s = resolve_series(choice, name)
-                n = int(number) if number else None
+                s = resolve_series(choice, name, o)
+                n = None if choice in (AUTO, None, "") else pipeline.episode_number(s, int(number) if number else None, o)
                 set_current(s.slug, n or s.next_episode_number())
                 return start_job("Making the video", lambda rep: pipeline.generate(s, o, o.script_text, rep, n),
                                  goto="export")
@@ -556,8 +562,8 @@ def build_app():
         def on_plan(choice, name, number, *vals):
             try:
                 o = topic_or_script(opts_from(*vals))
-                s = resolve_series(choice, name)
-                n = int(number) if number else None
+                s = resolve_series(choice, name, o)
+                n = None if choice in (AUTO, None, "") else pipeline.episode_number(s, int(number) if number else None, o)
                 set_current(s.slug, n or s.next_episode_number())
                 return start_job("Planning the shots", lambda rep: pipeline.prepare(s, o, o.script_text, rep, n),
                                  goto="plan")
@@ -771,7 +777,7 @@ def build_app():
             voices = series.data.get("voices", {})
             return (base + opts_to_values(o)
                     + [voices.get("en", "kokoro:am_fenrir"), voices.get("fa", "edge:fa-IR-FaridNeural"),
-                       gr.update(choices=series_choices(), value=series.slug if series.slug != "quick-test" else NEW),
+                       gr.update(choices=series_choices(), value=AUTO),  # a new topic never lands in an old series
                        ep.number, gr.update(visible=series.slug == "quick-test")]
                     + [1, 1, 1, seen_now])
 

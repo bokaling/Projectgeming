@@ -86,13 +86,12 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
             res = pipeline.quick_test(rep, script_text, opts.languages, opts.length)
             _show_videos(res["videos"])
             return
-        if not (series_name or "").strip():
-            print("❌ Type a SERIES name in the form first.")
-            return
-        series = Series.create(series_name.strip())
+        auto = (series_name or "").strip().lower() in ("", "auto")
+        series = pipeline.auto_series(opts, script_text) if auto else Series.create(series_name.strip())
         series.data.setdefault("voices", {}).update({"en": narrator_en, "fa": narrator_fa})
         series.save()
-        number = int(episode) if episode and int(episode) > 0 else None
+        number = None if auto else pipeline.episode_number(series, int(episode) if episode and int(episode) > 0
+                                                            else None, opts)
         if action.startswith("🔧"):  # change one shot of an episode you already made, render only what changed
             nums = series.episode_numbers()
             if not nums:
