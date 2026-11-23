@@ -80,7 +80,8 @@ KEYWORDS = [  # (pattern, preset): checked on the title and scene texts, the fir
     (r"\b(submarine|ocean|sea|underwater|whale|shark|coral|deep sea|diver|fish)\b", "ocean"),
     (r"\b(body|blood|stomach|intestine|liver|pancreas|insulin|cell|heart|brain|sugar)\b", "body"),
     (r"\b(pyramid|pharaoh|egypt|roman|rome|ancient|temple|colosseum)\b", "ancient"),
-    (r"\b(space|rocket|orbit|satellite|astronaut|galaxy|star)\b", "space"),
+    (r"\b(outer space|into space|in space|space station|spacecraft|spaceship|rocket|orbit|satellite|astronaut|galaxy|"
+     r"star)\b", "space"),  # not "a tiny space" inside an engine
     (r"\b(mars|moon surface|planet surface|crater)\b", "planet_surface"),
     (r"\b(desert|sand|dune|camel)\b", "desert"),
     (r"\b(snow|ice|arctic|glacier|polar)\b", "snow"),

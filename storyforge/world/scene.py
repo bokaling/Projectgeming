@@ -30,6 +30,8 @@ W_DIV = 0.68 / FILL  # a normal shot: the subject's box is 68 % of the frame wid
 H_DIV = 0.92 / FILL  # …but never more than 92 % of the safe height (captions on top, app buttons below)
 FILL_MOVES = {"close_up": 1.0, "fly_over": 0.7, "pull_out": 0.78, "top_down": 0.8}
 END_OVERVIEW = 3.6  # explainers end on an overview of the whole system, then fly back to the first shot (loop)
+FINISH_IN_SHOT = {"open", "close", "lift", "fill", "drain", "appear", "drop", "grow", "show_part", "hide_part",
+                  "light_on", "light_off", "cutaway"}
 PERSIST = {"appear", "disappear", "grow", "move", "spin", "fill", "drain", "light_on", "light_off", "float", "drop",
            "show_part", "hide_part", "lift", "open", "close"}
 DEFAULT_DUR = {"drop": 0.6, "appear": 0.45, "disappear": 0.4, "grow": 1.2, "fill": 1.6, "drain": 1.6, "light_on": 0.35,
@@ -302,6 +304,8 @@ class World:
                     dur = a.get("dur") or max(1.0, sc["end"] - t0 - 0.25)
                 else:
                     dur = a.get("dur") or DEFAULT_DUR.get(do, 0.6)
+                    if do in FINISH_IN_SHOT:  # said on the last word: start a bit earlier, so it is SEEN finishing
+                        t0 = max(sc["start"], min(t0, sc["end"] - dur - 0.35))
                 keep = bool(a.get("keep")) or do in PERSIST
                 end = math.inf if keep else sc["end"] + (0.0 if do not in ("flow", "sparks") else 0.0)
                 self.events.append(Event(do, oid, part, t0, float(dur), end, i, dict(a)))
@@ -534,10 +538,10 @@ class World:
         pts, hang = [], None
         for k in self.part_names(inst.model, name):
             p = inst.model.parts[k]
-            lo, hi = p.geo.bounds()
             local, _, _ = self.part_local(p, k, st, T)
-            c = np.array([[x, y, z, 1.0] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
-            pts.append(c @ (m0 @ local).T.astype(np.float64))
+            tri = p.geo.pos.reshape(-1, 3, 3)
+            tri = tri[:: max(1, len(tri) // 400)].reshape(-1, 3).astype(np.float64)  # whole triangles (a sample)
+            pts.append(np.hstack([tri, np.ones((len(tri), 1))]) @ (m0 @ local).T.astype(np.float64))
             mos = p.motion if isinstance(p.motion, list) else [p.motion] if p.motion else []
             if any(mo.get("type") == "stretch" for mo in mos):  # a hanging rope: its pivot end is fixed
                 hang = (m0 @ np.append(np.asarray(p.pivot, np.float32), 1.0))[:3]
@@ -547,7 +551,12 @@ class World:
             ext = hi - lo
             ax = int(np.argmax(ext))
             rest = max(float(np.sort(ext)[1]), 0.3)
-            if margin and ext[ax] > 3.5 * rest:  # a long rope / rail / cable: frame a piece of it, not 10 m of thin line
+            spans = P[:, ax].reshape(-1, 3)  # each triangle covers [min, max] along the long axis
+            bins = np.linspace(float(lo[ax]), float(hi[ax]) + 1e-6, 25)
+            mid = (bins[:-1] + bins[1:]) / 2
+            covered = ((spans.min(1)[None, :] <= mid[:, None]) & (spans.max(1)[None, :] >= mid[:, None])).any(1)
+            solid_along = float(covered.mean())  # a rope fills its length; two brake blocks 2 m apart don't
+            if margin and ext[ax] > 3.5 * rest and solid_along > 0.6:  # a long rope / rail / cable: frame a piece
                 win = max(3.0 * rest, 0.18 * float(ext[ax]))
                 if hang is not None:  # the end that holds the load (the car), away from the fixed end
                     c0 = lo[ax] + win / 2 if abs(hang[ax] - hi[ax]) < abs(hang[ax] - lo[ax]) else hi[ax] - win / 2
@@ -735,6 +744,8 @@ class World:
         el = cam.get("height", 22.0)
         ext = hi - lo
         tags = set(getattr(assets.REGISTRY.get(self.groups[tgt][0].asset), "tags", []))
+        if "cutaway" in tags and "angle" not in cam:  # a machine is designed to be seen (and cut) from its front
+            az += self.groups[tgt][0].rot
         if "symbol" in tags and not self._cam_part(i):  # counters, signs, scales, charts: read them face-on
             az = cam.get("angle", 8.0 + 6 * ((i % 3) - 1)) + self.groups[tgt][0].rot
             el = min(cam.get("height", 12.0), 16.0)
@@ -814,6 +825,10 @@ class World:
         ids = [o["id"] for o in self.plan["objects"] if o["area"] not in micro and o["id"] in self.groups]
         real = [o for o in ids if "symbol" not in getattr(assets.REGISTRY.get(self.groups[o][0].asset), "tags", [])]
         ids = real or ids  # counters, scales and arrows are not "the system"
+        shots = [self._target(k) for k in range(len(self.scenes))]
+        main = [o for o in ids if shots.count(o) >= max(2, len(shots) // 4)]
+        if main and all(o in self.mounts for o in main):
+            ids = main  # the engine the video is about, not the whole car it sits in
         boxes = [self.group_box(o, self.total) for o in ids] or [(np.zeros(3), np.ones(3))]
         lo, hi = np.min([b[0] for b in boxes], 0), np.max([b[1] for b in boxes], 0)
         if len({self.groups[o][0].area for o in ids}) <= 1:  # one machine: the whole of it, working, 3/4 view
@@ -935,9 +950,12 @@ class World:
                     continue  # a prop in front of the subject: leave it out
                 if any(p.shell for p in inst.model.parts):  # a roof or wall in the way: leave out exactly the
                     hidden_parts = self._blocking_parts(inst, st, eye, tgt)  # parts that block (no ghost lines)
+            see_through = set()
             if inst.oid == focus_id and self._cam_part(i):  # its own walls/panels in front of the part we film
                 keep = set(self.part_names(inst.model, self._cam_part(i)))
-                hidden_parts |= self._blocking_parts(inst, st, eye, tgt, any_part=True) - keep
+                blocking = self._blocking_parts(inst, st, eye, tgt, any_part=True, liquids=True) - keep
+                see_through = {k for k in blocking if inst.model.parts[k].kind == "liquid"}  # water: see through it
+                hidden_parts |= blocking - see_through
             parent_of_focus = any(self.mounts.get(f, (None,))[0] is inst for f in self._focus[i])
             if parent_of_focus:  # an engine inside its car: the car is a ghost, nothing of it in front of the engine
                 hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i, any_size=True, any_part=True)
@@ -951,8 +969,19 @@ class World:
                 n[1] = 0
                 n /= max(np.linalg.norm(n), 1e-6)
                 c = st["pos"]  # remove the half that faces the camera
+                if inst.oid == focus_id and self._cam_part(i):  # filming one part: cut right through THAT part
+                    pb = self.part_box(inst.oid, self._cam_part(i), T, margin=False)
+                    if pb is not None:
+                        c = (pb[0] + pb[1]) / 2
                 clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.2 - 0.02))
             has_shell = clip is not None and any(p.shell for p in inst.model.parts)
+            own_cut = {}  # a shell part the camera films (a compressor's dome): cut through ITS centre, not removed
+            if clip is not None and inst.oid == focus_id and self._cam_part(i):
+                for k in self.part_names(inst.model, self._cam_part(i)):
+                    if inst.model.parts[k].shell:
+                        plo, phi = inst.model.parts[k].geo.bounds()
+                        pc = (m0 @ np.append((plo + phi) / 2, 1.0))[:3]
+                        own_cut[k] = (clip[0], clip[1], clip[2], float(np.dot(clip[:3], pc)))
             for k, part in enumerate(inst.model.parts):
                 vis = st["parts"].get(part.name, 1.0)
                 if vis <= 0.01 or k in hidden_parts:
@@ -990,12 +1019,17 @@ class World:
                 inner = tuple(max(0.05, x * 0.45) for x in color)
                 xr = (st["xray"] and part.shell) or parent_of_focus  # the car around a filmed engine: a ghost
                 part_clip = clip if (part.shell or not has_shell) else None  # cut the outside, keep the works whole
-                draws.append(Draw(inst.keys[k], m, color, emi, part.opacity, part_clip, inner, xr,
+                part_clip = own_cut.get(k, part_clip)
+                op = min(part.opacity, 0.3) if k in see_through else part.opacity
+                draws.append(Draw(inst.keys[k], m, color, emi, op, part_clip, inner, xr,
                                   shadow=part.opacity > 0.5 and inst.asset not in NO_SHADOW,
                                   shine=SHINE.get(part.material, 0.0)))
         parts = self.particles(i, T)
+        near = 0.3 * float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt)))  # right in front of the lens: big blobs
+        if parts is not None and len(parts):
+            parts = parts[np.linalg.norm(parts[:, :3] - np.asarray(eye, np.float32), axis=1) > near]
         draws += self.puffs(i, T)
-        draws += self.arrows(i, T)
+        draws += [d for d in self.arrows(i, T) if float(np.linalg.norm(d.model[:3, 3] - np.asarray(eye))) > near]
         c = np.asarray(tgt, np.float64)
         dist = float(np.linalg.norm(np.asarray(eye) - c))
         labels = self.labels(i, T, eye, tgt, fov, label_tex) if label_tex and t <= sc["dur"] else []
@@ -1205,7 +1239,7 @@ class World:
                 out.append(Draw("__puff", m, color, 0.0, 0.55 * (1 - h) ** 0.7, shadow=False))
         return out
 
-    def _blocking_parts(self, inst: Inst, st: dict, eye, tgt, any_part: bool = False) -> set:
+    def _blocking_parts(self, inst: Inst, st: dict, eye, tgt, any_part: bool = False, liquids: bool = False) -> set:
         """Indexes of the shell parts (walls, posts, roofs) that are between the camera and the subject."""
         m = self.inst_matrix(inst, {**st, "vis": 1.0})
         try:
@@ -1217,7 +1251,7 @@ class World:
         for k, part in enumerate(inst.model.parts):
             if not part.shell and not any_part:
                 continue
-            if any_part and not part.shell and _works(part):
+            if any_part and not part.shell and _works(part) and not (liquids and part.kind == "liquid"):
                 continue  # never hide a working part (pistons, gears, valves: what the viewer should see)
             for tp in self._aim_points(tgt):
                 t = (inv @ np.append(tp, 1.0))[:3]
@@ -1243,7 +1277,9 @@ class World:
             return p[:, 0].min(), p[:, 0].max(), p[:, 1].min(), p[:, 1].max(), (p[:, 2] > 0).all()
         px0, px1, py0, py1, ok1 = rect(lo, hi)
         sx0, sx1, sy0, sy1, ok2 = rect(slo, shi)
-        return bool(ok1 and ok2 and px0 < sx1 and px1 > sx0 and py0 < sy1 and py1 > sy0)
+        W, H = self.size
+        big = ok1 and (min(px1, W) - max(px0, 0)) * (min(py1, H) - max(py0, 0)) > 0.12 * W * H  # a big blob up front
+        return bool(ok1 and ok2 and (px0 < sx1 and px1 > sx0 and py0 < sy1 and py1 > sy0 or big))
 
     def _shell_parts_over_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int, any_size: bool = False,
                                   any_part: bool = False) -> set:

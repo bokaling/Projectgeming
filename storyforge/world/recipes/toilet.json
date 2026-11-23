@@ -1,0 +1,561 @@
+{
+ "name": "toilet",
+ "about": "a flush toilet (0.4 x 0.85 m) cut open: ceramic bowl and tank, tank water, bowl water, handle, lever, chain, flapper, fill valve with float, overflow tube, S-shaped siphon",
+ "tags": [
+  "machine",
+  "bathroom",
+  "cutaway"
+ ],
+ "aliases": [
+  "wc",
+  "lavatory",
+  "flush_toilet",
+  "loo"
+ ],
+ "parts": [
+  {
+   "name": "pedestal",
+   "shape": "box",
+   "size": [
+    0.24,
+    0.24,
+    0.36
+   ],
+   "pos": [
+    0,
+    0.12,
+    0.04
+   ],
+   "color": "#f7f7f4",
+   "material": "ceramic",
+   "shell": true
+  },
+  {
+   "name": "bowl",
+   "shape": "cylinder",
+   "size": [
+    0.2,
+    0.17
+   ],
+   "pos": [
+    0,
+    0.33,
+    0.12
+   ],
+   "color": "#f7f7f4",
+   "material": "ceramic",
+   "shell": true
+  },
+  {
+   "name": "rim",
+   "shape": "torus",
+   "size": [
+    0.2,
+    0.025
+   ],
+   "pos": [
+    0,
+    0.415,
+    0.12
+   ],
+   "color": "#f7f7f4",
+   "material": "ceramic",
+   "shell": true
+  },
+  {
+   "name": "seat",
+   "shape": "torus",
+   "size": [
+    0.19,
+    0.022
+   ],
+   "pos": [
+    0,
+    0.445,
+    0.12
+   ],
+   "color": "#e9ecee",
+   "material": "plastic"
+  },
+  {
+   "name": "lid",
+   "shape": "box",
+   "size": [
+    0.38,
+    0.4,
+    0.025
+   ],
+   "pos": [
+    0,
+    0.66,
+    -0.095
+   ],
+   "rot": [
+    -8,
+    0,
+    0
+   ],
+   "color": "#e9ecee",
+   "material": "plastic",
+   "shell": true
+  },
+  {
+   "name": "bowl_water",
+   "shape": "cylinder",
+   "size": [
+    0.13,
+    0.08
+   ],
+   "pos": [
+    0,
+    0.28,
+    0.12
+   ],
+   "color": "#4fb3ff",
+   "kind": "liquid",
+   "opacity": 0.75,
+   "material": "water"
+  },
+  {
+   "name": "siphon",
+   "shape": "tube",
+   "points": [
+    [
+     0,
+     0.25,
+     0.08
+    ],
+    [
+     0,
+     0.13,
+     0.02
+    ],
+    [
+     0,
+     0.29,
+     -0.05
+    ],
+    [
+     0,
+     0.08,
+     -0.12
+    ],
+    [
+     0,
+     0.0,
+     -0.12
+    ]
+   ],
+   "size": [
+    0.035
+   ],
+   "color": "#dfe9ee",
+   "opacity": 0.45,
+   "material": "ceramic"
+  },
+  {
+   "name": "tank",
+   "shape": "box",
+   "size": [
+    0.42,
+    0.38,
+    0.19
+   ],
+   "pos": [
+    0,
+    0.64,
+    -0.22
+   ],
+   "color": "#f7f7f4",
+   "material": "ceramic",
+   "shell": true
+  },
+  {
+   "name": "tank_lid",
+   "shape": "box",
+   "size": [
+    0.44,
+    0.03,
+    0.21
+   ],
+   "pos": [
+    0,
+    0.845,
+    -0.22
+   ],
+   "color": "#f7f7f4",
+   "material": "ceramic",
+   "shell": true
+  },
+  {
+   "name": "tank_water",
+   "shape": "box",
+   "size": [
+    0.38,
+    0.27,
+    0.15
+   ],
+   "pos": [
+    0,
+    0.595,
+    -0.22
+   ],
+   "color": "#4fb3ff",
+   "kind": "liquid",
+   "opacity": 0.75,
+   "material": "water"
+  },
+  {
+   "name": "flush_valve",
+   "shape": "torus",
+   "size": [
+    0.04,
+    0.01
+   ],
+   "pos": [
+    0,
+    0.455,
+    -0.2
+   ],
+   "color": "#9aa2aa",
+   "material": "plastic"
+  },
+  {
+   "name": "flapper",
+   "shape": "cylinder",
+   "size": [
+    0.038,
+    0.016
+   ],
+   "pos": [
+    0,
+    0.468,
+    -0.2
+   ],
+   "color": "#c0392b",
+   "material": "rubber",
+   "pivot": [
+    0,
+    0.468,
+    -0.238
+   ],
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": -70
+   }
+  },
+  {
+   "name": "overflow_tube",
+   "shape": "cylinder",
+   "size": [
+    0.012,
+    0.3
+   ],
+   "pos": [
+    0.07,
+    0.6,
+    -0.26
+   ],
+   "color": "#e9ecee",
+   "material": "plastic"
+  },
+  {
+   "name": "chain",
+   "shape": "tube",
+   "points": [
+    [
+     0.0,
+     0.73,
+     -0.17
+    ],
+    [
+     0.0,
+     0.6,
+     -0.18
+    ],
+    [
+     0.0,
+     0.48,
+     -0.19
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#9aa2aa",
+   "material": "metal"
+  },
+  {
+   "name": "handle",
+   "shape": "box",
+   "size": [
+    0.07,
+    0.02,
+    0.03
+   ],
+   "pos": [
+    -0.19,
+    0.76,
+    -0.11
+   ],
+   "color": "#c7cdd3",
+   "material": "metal",
+   "pivot": [
+    -0.16,
+    0.76,
+    -0.11
+   ],
+   "motion": {
+    "type": "swing",
+    "axis": "z",
+    "deg": -25,
+    "drive": "open"
+   }
+  },
+  {
+   "name": "lever_arm",
+   "shape": "box",
+   "size": [
+    0.2,
+    0.012,
+    0.012
+   ],
+   "pos": [
+    -0.06,
+    0.745,
+    -0.16
+   ],
+   "color": "#9aa2aa",
+   "material": "plastic",
+   "pivot": [
+    -0.16,
+    0.76,
+    -0.16
+   ],
+   "motion": {
+    "type": "swing",
+    "axis": "z",
+    "deg": 25,
+    "drive": "open"
+   }
+  },
+  {
+   "name": "fill_valve",
+   "shape": "cylinder",
+   "size": [
+    0.02,
+    0.3
+   ],
+   "pos": [
+    -0.15,
+    0.6,
+    -0.25
+   ],
+   "color": "#7d8790",
+   "material": "plastic"
+  },
+  {
+   "name": "float",
+   "shape": "cylinder",
+   "size": [
+    0.035,
+    0.05
+   ],
+   "pos": [
+    -0.15,
+    0.68,
+    -0.25
+   ],
+   "color": "#4aa564",
+   "material": "plastic",
+   "motion": {
+    "type": "level",
+    "of": "tank_water",
+    "axis": "y",
+    "amp": 0.2
+   }
+  },
+  {
+   "name": "supply_pipe",
+   "shape": "tube",
+   "points": [
+    [
+     -0.15,
+     0.15,
+     -0.34
+    ],
+    [
+     -0.15,
+     0.4,
+     -0.3
+    ],
+    [
+     -0.15,
+     0.45,
+     -0.27
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#c7cdd3",
+   "material": "metal"
+  },
+  {
+   "name": "shutoff_valve",
+   "shape": "cylinder",
+   "size": [
+    0.025,
+    0.04
+   ],
+   "pos": [
+    -0.15,
+    0.15,
+    -0.34
+   ],
+   "color": "#c7cdd3",
+   "material": "metal"
+  }
+ ],
+ "paths": {
+  "rinse": [
+   [
+    0,
+    0.5,
+    -0.2
+   ],
+   [
+    0,
+    0.43,
+    -0.12
+   ],
+   [
+    0.15,
+    0.4,
+    0.0
+   ],
+   [
+    0.17,
+    0.38,
+    0.2
+   ],
+   [
+    0.05,
+    0.32,
+    0.26
+   ],
+   [
+    0,
+    0.26,
+    0.14
+   ]
+  ],
+  "siphon": [
+   [
+    0,
+    0.3,
+    0.12
+   ],
+   [
+    0,
+    0.25,
+    0.08
+   ],
+   [
+    0,
+    0.13,
+    0.02
+   ],
+   [
+    0,
+    0.29,
+    -0.05
+   ],
+   [
+    0,
+    0.08,
+    -0.12
+   ],
+   [
+    0,
+    -0.05,
+    -0.12
+   ]
+  ],
+  "refill": [
+   [
+    -0.15,
+    0.15,
+    -0.34
+   ],
+   [
+    -0.15,
+    0.45,
+    -0.27
+   ],
+   [
+    -0.15,
+    0.77,
+    -0.25
+   ],
+   [
+    -0.1,
+    0.66,
+    -0.2
+   ],
+   [
+    -0.05,
+    0.52,
+    -0.2
+   ]
+  ]
+ },
+ "ports": {
+  "inlet": [
+   -0.15,
+   0.15,
+   -0.34
+  ],
+  "outlet": [
+   0,
+   -0.05,
+   -0.12
+  ]
+ },
+ "label": [
+  0,
+  1.0,
+  0
+ ],
+ "tour": [
+  [
+   "handle",
+   "Pushing the handle lifts a chain."
+  ],
+  [
+   "flapper",
+   "The chain pulls open a rubber flapper."
+  ],
+  [
+   "tank_water",
+   "The water in the tank rushes down into the bowl."
+  ],
+  [
+   "siphon",
+   "The bowl fills, water spills over the bend of an S-shaped pipe, and a siphon pulls it all away."
+  ],
+  [
+   "float",
+   "The float sinks with the water,"
+  ],
+  [
+   "fill_valve",
+   "and opens the fill valve, so fresh water refills the tank."
+  ],
+  [
+   "bowl_water",
+   "The water left in the bowl seals the pipe against smells."
+  ]
+ ]
+}

@@ -64,13 +64,13 @@ def resolve(name) -> str | None:
 
 
 def guess(words: list[str], names: list[str] = ()) -> str:
-    """The setting with the most keyword hits: the objects' names count 3 times, the spoken words once."""
+    """The setting with the most keyword hits: the objects' names count 6 times, the spoken words once."""
     text = " ".join(str(w) for w in words).lower().replace("_", " ")
     objs = " ".join(str(w) for w in names).lower().replace("_", " ")
     best, hits = "studio", 0
     for pattern, key in KEYWORDS:
         rx = r"\b(?:" + pattern + r")"
-        n = len(re.findall(rx, text)) + 3 * len(re.findall(rx, objs))
+        n = len(re.findall(rx, text)) + 6 * len(re.findall(rx, objs))
         if n > hits:
             best, hits = key, n
     return best

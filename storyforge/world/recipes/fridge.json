@@ -1,0 +1,1114 @@
+{
+ "name": "fridge",
+ "about": "a kitchen fridge (0.7 x 1.8 m) cut open: cabinet, door, shelves with food, light, thermostat, evaporator coils, compressor, condenser coils, capillary tube, refrigerant loop",
+ "tags": [
+  "machine",
+  "kitchen",
+  "cutaway"
+ ],
+ "aliases": [
+  "refrigerator",
+  "freezer",
+  "fridge_freezer"
+ ],
+ "parts": [
+  {
+   "name": "back_wall",
+   "shape": "box",
+   "size": [
+    0.7,
+    1.7,
+    0.04
+   ],
+   "pos": [
+    0,
+    0.95,
+    -0.33
+   ],
+   "color": "#f2f2ef",
+   "material": "paint",
+   "shell": true
+  },
+  {
+   "name": "side_wall",
+   "shape": "box",
+   "size": [
+    0.04,
+    1.7,
+    0.7
+   ],
+   "pos": [
+    -0.33,
+    0.95,
+    0
+   ],
+   "color": "#f2f2ef",
+   "material": "paint",
+   "shell": true
+  },
+  {
+   "name": "side_wall",
+   "shape": "box",
+   "size": [
+    0.04,
+    1.7,
+    0.7
+   ],
+   "pos": [
+    0.33,
+    0.95,
+    0
+   ],
+   "color": "#f2f2ef",
+   "material": "paint",
+   "shell": true
+  },
+  {
+   "name": "top",
+   "shape": "box",
+   "size": [
+    0.7,
+    0.05,
+    0.7
+   ],
+   "pos": [
+    0,
+    1.78,
+    0
+   ],
+   "color": "#f2f2ef",
+   "material": "paint",
+   "shell": true
+  },
+  {
+   "name": "base",
+   "shape": "box",
+   "size": [
+    0.7,
+    0.12,
+    0.66
+   ],
+   "pos": [
+    0,
+    0.06,
+    0.0
+   ],
+   "color": "#3a3d42",
+   "material": "plastic",
+   "shell": true
+  },
+  {
+   "name": "floor",
+   "shape": "box",
+   "size": [
+    0.62,
+    0.04,
+    0.6
+   ],
+   "pos": [
+    0,
+    0.14,
+    0
+   ],
+   "color": "#e9ecee",
+   "material": "plastic"
+  },
+  {
+   "name": "foam",
+   "shape": "box",
+   "size": [
+    0.62,
+    1.6,
+    0.03
+   ],
+   "pos": [
+    0,
+    0.95,
+    -0.3
+   ],
+   "color": "#f1dc8a",
+   "shell": true
+  },
+  {
+   "name": "freezer_floor",
+   "shape": "box",
+   "size": [
+    0.62,
+    0.05,
+    0.6
+   ],
+   "pos": [
+    0,
+    1.32,
+    0
+   ],
+   "color": "#e9ecee",
+   "material": "plastic"
+  },
+  {
+   "name": "shelf",
+   "shape": "box",
+   "size": [
+    0.6,
+    0.015,
+    0.55
+   ],
+   "pos": [
+    0,
+    0.55,
+    0.02
+   ],
+   "color": "#cfefff",
+   "opacity": 0.45,
+   "material": "glass"
+  },
+  {
+   "name": "shelf",
+   "shape": "box",
+   "size": [
+    0.6,
+    0.015,
+    0.55
+   ],
+   "pos": [
+    0,
+    0.95,
+    0.02
+   ],
+   "color": "#cfefff",
+   "opacity": 0.45,
+   "material": "glass"
+  },
+  {
+   "name": "door",
+   "shape": "box",
+   "size": [
+    0.7,
+    1.66,
+    0.06
+   ],
+   "pos": [
+    0,
+    0.96,
+    0.38
+   ],
+   "color": "#f7f7f5",
+   "material": "paint",
+   "shell": true,
+   "pivot": [
+    0.35,
+    0,
+    0.38
+   ],
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": 105
+   }
+  },
+  {
+   "name": "door_handle",
+   "shape": "box",
+   "size": [
+    0.03,
+    0.5,
+    0.04
+   ],
+   "pos": [
+    -0.29,
+    1.05,
+    0.43
+   ],
+   "color": "#b9c0c6",
+   "material": "metal",
+   "shell": true,
+   "pivot": [
+    0.35,
+    0,
+    0.38
+   ],
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": 105
+   }
+  },
+  {
+   "name": "milk",
+   "shape": "box",
+   "size": [
+    0.08,
+    0.2,
+    0.08
+   ],
+   "pos": [
+    -0.18,
+    0.67,
+    0.05
+   ],
+   "color": "#f4f7fb"
+  },
+  {
+   "name": "milk_cap",
+   "shape": "box",
+   "size": [
+    0.081,
+    0.04,
+    0.081
+   ],
+   "pos": [
+    -0.18,
+    0.75,
+    0.05
+   ],
+   "color": "#3d8fd6"
+  },
+  {
+   "name": "apples",
+   "shape": "sphere",
+   "size": [
+    0.04
+   ],
+   "pos": [
+    0.05,
+    0.6,
+    0.08
+   ],
+   "color": "#d9363e"
+  },
+  {
+   "name": "apples",
+   "shape": "sphere",
+   "size": [
+    0.04
+   ],
+   "pos": [
+    0.13,
+    0.6,
+    0.04
+   ],
+   "color": "#d9363e"
+  },
+  {
+   "name": "apples",
+   "shape": "sphere",
+   "size": [
+    0.04
+   ],
+   "pos": [
+    0.1,
+    0.6,
+    0.14
+   ],
+   "color": "#7cc243"
+  },
+  {
+   "name": "cheese",
+   "shape": "wedge",
+   "size": [
+    0.14,
+    0.07,
+    0.1
+   ],
+   "pos": [
+    -0.1,
+    1.0,
+    0.05
+   ],
+   "color": "#f4c430"
+  },
+  {
+   "name": "bottle",
+   "shape": "cylinder",
+   "size": [
+    0.035,
+    0.26
+   ],
+   "pos": [
+    0.18,
+    1.1,
+    0.0
+   ],
+   "color": "#3f9b4f",
+   "opacity": 0.8,
+   "material": "glass"
+  },
+  {
+   "name": "vegetables",
+   "shape": "sphere",
+   "size": [
+    0.06
+   ],
+   "pos": [
+    0.0,
+    0.24,
+    0.05
+   ],
+   "color": "#4aa564"
+  },
+  {
+   "name": "vegetables",
+   "shape": "sphere",
+   "size": [
+    0.05
+   ],
+   "pos": [
+    0.15,
+    0.23,
+    0.1
+   ],
+   "color": "#f28c28"
+  },
+  {
+   "name": "ice",
+   "shape": "box",
+   "size": [
+    0.2,
+    0.06,
+    0.15
+   ],
+   "pos": [
+    0.1,
+    1.38,
+    0.05
+   ],
+   "color": "#dff4ff",
+   "material": "glass"
+  },
+  {
+   "name": "light",
+   "shape": "box",
+   "size": [
+    0.12,
+    0.03,
+    0.06
+   ],
+   "pos": [
+    0,
+    1.27,
+    -0.15
+   ],
+   "color": "#fff4d6",
+   "kind": "light"
+  },
+  {
+   "name": "thermostat",
+   "shape": "box",
+   "size": [
+    0.1,
+    0.06,
+    0.06
+   ],
+   "pos": [
+    0.2,
+    1.26,
+    -0.24
+   ],
+   "color": "#d8dde2",
+   "material": "plastic"
+  },
+  {
+   "name": "thermostat_dial",
+   "shape": "cylinder",
+   "size": [
+    0.022,
+    0.02
+   ],
+   "pos": [
+    0.2,
+    1.26,
+    -0.2
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "color": "#3d8fd6",
+   "material": "plastic"
+  },
+  {
+   "name": "evaporator",
+   "shape": "tube",
+   "points": [
+    [
+     0.26,
+     1.68,
+     -0.29
+    ],
+    [
+     -0.26,
+     1.68,
+     -0.29
+    ],
+    [
+     -0.26,
+     1.61,
+     -0.29
+    ],
+    [
+     0.26,
+     1.61,
+     -0.29
+    ],
+    [
+     0.26,
+     1.54,
+     -0.29
+    ],
+    [
+     -0.26,
+     1.54,
+     -0.29
+    ],
+    [
+     -0.26,
+     1.47,
+     -0.29
+    ],
+    [
+     0.26,
+     1.47,
+     -0.29
+    ],
+    [
+     0.26,
+     1.4,
+     -0.29
+    ],
+    [
+     -0.26,
+     1.4,
+     -0.29
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#9fe0ff",
+   "emissive": 0.25,
+   "material": "metal"
+  },
+  {
+   "name": "suction_pipe",
+   "shape": "tube",
+   "points": [
+    [
+     -0.26,
+     1.4,
+     -0.29
+    ],
+    [
+     -0.28,
+     1.0,
+     -0.33
+    ],
+    [
+     -0.2,
+     0.3,
+     -0.4
+    ],
+    [
+     -0.12,
+     0.2,
+     -0.45
+    ]
+   ],
+   "size": [
+    0.01
+   ],
+   "color": "#c8763c",
+   "material": "metal"
+  },
+  {
+   "name": "compressor",
+   "shape": "sphere",
+   "size": [
+    0.12
+   ],
+   "pos": [
+    -0.12,
+    0.16,
+    -0.47
+   ],
+   "color": "#26292d",
+   "material": "metal",
+   "shell": true
+  },
+  {
+   "name": "compressor_piston",
+   "shape": "cylinder",
+   "size": [
+    0.04,
+    0.05
+   ],
+   "pos": [
+    -0.12,
+    0.2,
+    -0.47
+   ],
+   "color": "#c7cdd3",
+   "material": "metal",
+   "motion": {
+    "type": "slide",
+    "axis": "y",
+    "amp": 0.025
+   }
+  },
+  {
+   "name": "compressor_motor",
+   "shape": "cylinder",
+   "size": [
+    0.06,
+    0.08
+   ],
+   "pos": [
+    -0.12,
+    0.08,
+    -0.47
+   ],
+   "color": "#c8763c",
+   "material": "metal",
+   "pivot": [
+    -0.12,
+    0.08,
+    -0.47
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 2
+   }
+  },
+  {
+   "name": "discharge_pipe",
+   "shape": "tube",
+   "points": [
+    [
+     -0.12,
+     0.26,
+     -0.45
+    ],
+    [
+     -0.29,
+     0.6,
+     -0.41
+    ],
+    [
+     -0.29,
+     1.62,
+     -0.4
+    ],
+    [
+     -0.27,
+     1.62,
+     -0.39
+    ]
+   ],
+   "size": [
+    0.01
+   ],
+   "color": "#c8763c",
+   "material": "metal"
+  },
+  {
+   "name": "condenser",
+   "shape": "tube",
+   "points": [
+    [
+     -0.27,
+     1.62,
+     -0.39
+    ],
+    [
+     0.27,
+     1.62,
+     -0.39
+    ],
+    [
+     0.27,
+     1.49,
+     -0.39
+    ],
+    [
+     -0.27,
+     1.49,
+     -0.39
+    ],
+    [
+     -0.27,
+     1.36,
+     -0.39
+    ],
+    [
+     0.27,
+     1.36,
+     -0.39
+    ],
+    [
+     0.27,
+     1.23,
+     -0.39
+    ],
+    [
+     -0.27,
+     1.23,
+     -0.39
+    ],
+    [
+     -0.27,
+     1.1,
+     -0.39
+    ],
+    [
+     0.27,
+     1.1,
+     -0.39
+    ],
+    [
+     0.27,
+     0.97,
+     -0.39
+    ],
+    [
+     -0.27,
+     0.97,
+     -0.39
+    ],
+    [
+     -0.27,
+     0.84,
+     -0.39
+    ],
+    [
+     0.27,
+     0.84,
+     -0.39
+    ],
+    [
+     0.27,
+     0.71,
+     -0.39
+    ],
+    [
+     -0.27,
+     0.71,
+     -0.39
+    ],
+    [
+     -0.27,
+     0.58,
+     -0.39
+    ],
+    [
+     0.27,
+     0.58,
+     -0.39
+    ],
+    [
+     0.27,
+     0.45,
+     -0.39
+    ],
+    [
+     -0.27,
+     0.45,
+     -0.39
+    ]
+   ],
+   "size": [
+    0.009
+   ],
+   "color": "#c8763c",
+   "material": "metal"
+  },
+  {
+   "name": "condenser_wires",
+   "shape": "box",
+   "size": [
+    0.56,
+    1.3,
+    0.01
+   ],
+   "pos": [
+    0,
+    0.97,
+    -0.395
+   ],
+   "color": "#2a2d31",
+   "opacity": 0.35
+  },
+  {
+   "name": "capillary",
+   "shape": "tube",
+   "points": [
+    [
+     0.27,
+     0.4500000000000002,
+     -0.39
+    ],
+    [
+     0.3,
+     0.3,
+     -0.36
+    ],
+    [
+     0.3,
+     0.6,
+     -0.34
+    ],
+    [
+     0.3,
+     1.0,
+     -0.33
+    ],
+    [
+     0.3,
+     1.4,
+     -0.32
+    ],
+    [
+     0.26,
+     1.68,
+     -0.29
+    ]
+   ],
+   "size": [
+    0.005
+   ],
+   "color": "#e0a050",
+   "material": "metal"
+  },
+  {
+   "name": "fan",
+   "shape": "box",
+   "size": [
+    0.16,
+    0.03,
+    0.02
+   ],
+   "pos": [
+    0.12,
+    0.16,
+    -0.45
+   ],
+   "color": "#3a3f47",
+   "material": "plastic",
+   "pivot": [
+    0.12,
+    0.16,
+    -0.45
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 3
+   }
+  }
+ ],
+ "paths": {
+  "loop": [
+   [
+    0.26,
+    1.68,
+    -0.29
+   ],
+   [
+    0.26,
+    1.68,
+    -0.29
+   ],
+   [
+    -0.26,
+    1.68,
+    -0.29
+   ],
+   [
+    -0.26,
+    1.61,
+    -0.29
+   ],
+   [
+    0.26,
+    1.61,
+    -0.29
+   ],
+   [
+    0.26,
+    1.54,
+    -0.29
+   ],
+   [
+    -0.26,
+    1.54,
+    -0.29
+   ],
+   [
+    -0.26,
+    1.47,
+    -0.29
+   ],
+   [
+    0.26,
+    1.47,
+    -0.29
+   ],
+   [
+    0.26,
+    1.4,
+    -0.29
+   ],
+   [
+    -0.26,
+    1.4,
+    -0.29
+   ],
+   [
+    -0.26,
+    1.4,
+    -0.29
+   ],
+   [
+    -0.28,
+    1.0,
+    -0.33
+   ],
+   [
+    -0.2,
+    0.3,
+    -0.4
+   ],
+   [
+    -0.12,
+    0.2,
+    -0.45
+   ],
+   [
+    -0.29,
+    0.6,
+    -0.41
+   ],
+   [
+    -0.29,
+    1.62,
+    -0.4
+   ],
+   [
+    -0.27,
+    1.62,
+    -0.39
+   ],
+   [
+    -0.27,
+    1.62,
+    -0.39
+   ],
+   [
+    0.27,
+    1.62,
+    -0.39
+   ],
+   [
+    0.27,
+    1.49,
+    -0.39
+   ],
+   [
+    -0.27,
+    1.49,
+    -0.39
+   ],
+   [
+    -0.27,
+    1.36,
+    -0.39
+   ],
+   [
+    0.27,
+    1.36,
+    -0.39
+   ],
+   [
+    0.27,
+    1.23,
+    -0.39
+   ],
+   [
+    -0.27,
+    1.23,
+    -0.39
+   ],
+   [
+    -0.27,
+    1.1,
+    -0.39
+   ],
+   [
+    0.27,
+    1.1,
+    -0.39
+   ],
+   [
+    0.27,
+    0.97,
+    -0.39
+   ],
+   [
+    -0.27,
+    0.97,
+    -0.39
+   ],
+   [
+    -0.27,
+    0.84,
+    -0.39
+   ],
+   [
+    0.27,
+    0.84,
+    -0.39
+   ],
+   [
+    0.27,
+    0.71,
+    -0.39
+   ],
+   [
+    -0.27,
+    0.71,
+    -0.39
+   ],
+   [
+    -0.27,
+    0.58,
+    -0.39
+   ],
+   [
+    0.27,
+    0.58,
+    -0.39
+   ],
+   [
+    0.27,
+    0.45,
+    -0.39
+   ],
+   [
+    -0.27,
+    0.45,
+    -0.39
+   ],
+   [
+    0.3,
+    0.3,
+    -0.36
+   ],
+   [
+    0.3,
+    0.6,
+    -0.34
+   ],
+   [
+    0.3,
+    1.0,
+    -0.33
+   ],
+   [
+    0.3,
+    1.4,
+    -0.32
+   ],
+   [
+    0.26,
+    1.68,
+    -0.29
+   ]
+  ],
+  "heat": [
+   [
+    0,
+    0.5,
+    -0.42
+   ],
+   [
+    0,
+    1.0,
+    -0.46
+   ],
+   [
+    0,
+    1.6,
+    -0.48
+   ],
+   [
+    0,
+    2.1,
+    -0.4
+   ]
+  ],
+  "cold": [
+   [
+    0.0,
+    0.75,
+    0.1
+   ],
+   [
+    0.0,
+    1.1,
+    0.0
+   ],
+   [
+    0.0,
+    1.35,
+    -0.2
+   ],
+   [
+    0.0,
+    1.5,
+    -0.27
+   ]
+  ]
+ },
+ "ports": {
+  "power": [
+   0.2,
+   0.1,
+   -0.4
+  ]
+ },
+ "label": [
+  0,
+  2.0,
+  0
+ ],
+ "tour": [
+  [
+   "evaporator",
+   "Inside, cold coils soak up the heat of your food."
+  ],
+  [
+   "suction_pipe",
+   "The warm gas flows down a pipe,"
+  ],
+  [
+   "compressor",
+   "and a compressor squeezes it until it gets hot."
+  ],
+  [
+   "condenser",
+   "Coils on the back give that heat away to your kitchen."
+  ],
+  [
+   "capillary",
+   "A thin tube lets the pressure drop, and the liquid turns cold again."
+  ],
+  [
+   "thermostat",
+   "A thermostat switches the compressor on and off."
+  ],
+  [
+   "door",
+   "And the light turns off when the door closes."
+  ]
+ ]
+}

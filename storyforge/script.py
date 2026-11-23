@@ -81,7 +81,51 @@ def write_from_topic(topic: str, length: str = "short", language: str = "en", no
         return template_script(topic), "Template (no AI)"
 
 
+VERBS = {"spin": "It turns, around and around.", "slide": "It slides up and down, again and again.",
+         "rod": "It turns pushing into spinning.", "valve": "It opens and closes at exactly the right moment.",
+         "pulse": "It fires a tiny spark.", "chamber": "Here gas is squeezed, burned and pushed out.",
+         "open": "It opens and closes.", "lift": "It travels up and down.", "stretch": "It holds the weight.",
+         "level": "It floats on the water and rises with it.", "swing": "It swings back and forth."}
+
+
+def machine_template(topic: str) -> str | None:
+    """No AI: a machine from the library named in the topic → one shot per real working part (no invented facts)."""
+    from .world import assets, planner  # noqa: PLC0415
+
+    found = [a for a in planner.find_assets(topic) if {"machine", "cutaway"} & set(assets.REGISTRY[a].tags)]
+    if not found:
+        return None
+    name = found[0]
+    model = assets.build(name)
+    t = topic.strip().rstrip("?.!")
+    nice = name.replace("_", " ")
+    lines = [f"[TITLE] {t[:1].upper() + t[1:]}",
+             f"[SCENE] close on the {nice}", "NARRATOR: You use it all the time. But have you seen inside?",
+             f"[SCENE] the {nice} cut open", f"NARRATOR: Here is the {nice}, cut open."]
+    if model.tour:  # the machine's own tour: its key parts in working order, one plain sentence each
+        for part, sentence in model.tour[:9]:
+            lines += [f"[SCENE] close on the {part.replace('_', ' ')}", f"NARRATOR: {sentence}"]
+    else:
+        done = 0
+        for part in assets.focus_points(name):
+            ks = [p for p in model.parts if p.name == part or p.name.startswith(part + "_") or
+                  p.name.rstrip("0123456789") == part]
+            mos = [m for p in ks for m in (p.motion if isinstance(p.motion, list) else [p.motion] if p.motion else [])]
+            kind = next((m.get("type") for m in mos if m.get("type") in VERBS and m.get("type") != "lift"), None)
+            if kind is None or done >= 7:
+                continue
+            words = part.replace("_", " ")
+            lines += [f"[SCENE] close on the {words}", f"NARRATOR: Here is the {words}. {VERBS[kind]}"]
+            done += 1
+    lines += [f"[SCENE] the whole {nice} working", "NARRATOR: Every part works together, every single time.",
+              f"[SCENE] close on the {nice}", "NARRATOR: Next: what happens when one of these parts fails?"]
+    return "\n".join(lines) + "\n"
+
+
 def template_script(topic: str) -> str:
+    known = machine_template(topic)
+    if known:
+        return known
     t = topic.strip().rstrip("?.!")
     title = t[:1].upper() + t[1:]
     return (f"[TITLE] {title}\n"

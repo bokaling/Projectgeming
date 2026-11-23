@@ -51,7 +51,10 @@ glass, rubber, ceramic, water), "opacity" (glass 0.3, water 0.75), "emissive" (0
 "paths": named polylines that flows travel along (refrigerant loop, water from tank to bowl, air in, gas out):
   {"loop": [[x,y,z],…], "water": [[x,y,z],…]}. "ports": named points other things connect to (inlet, outlet, power).
 Believable colours (metal grey, copper coils, white enamel, black rubber), not toy colours.
-Reply with JSON only: {"name", "about", "tags", "aliases", "parts": [...], "paths": {...}, "ports": {...}, "label": [x,y,z]}"""
+"tour": the key working parts in the order they work, each with one plain, true sentence of what it does
+([["compressor", "A compressor squeezes the gas, and it gets hot."], …]); no numbers.
+Reply with JSON only: {"name", "about", "tags", "aliases", "parts": [...], "paths": {...}, "ports": {...},
+"tour": [...], "label": [x,y,z]}"""
 
 
 def _num(v, default, lo, hi) -> float:
@@ -140,6 +143,9 @@ def model_from_recipe(recipe: dict) -> Model:
         m.anchors[str(name)] = tuple(_vec(pt))
     if recipe.get("label"):
         m.anchors["label"] = tuple(_vec(recipe["label"]))
+    for item in (recipe.get("tour") or [])[:10]:  # the key parts in working order, one plain sentence each
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            m.tour.append((re.sub(r"[^a-z0-9_]+", "_", str(item[0]).lower())[:24], str(item[1])[:120]))
     for name, pts in (recipe.get("paths") or {}).items():  # e.g. "flow": blood through a vessel
         if isinstance(pts, list) and len(pts) >= 2:
             m.paths[str(name)] = [tuple(_vec(q)) for q in pts[:40]]

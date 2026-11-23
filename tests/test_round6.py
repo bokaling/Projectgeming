@@ -410,3 +410,73 @@ def test_how_it_works_is_the_default_format_and_scripts_are_fact_safe():
     assert project.EpisodeOptions().video_format == "how_it_works"
     assert formats.CHOICES[0][1] == "how_it_works"
     assert "engineers estimate" in script.SCRIPT_SYSTEM and "Never invent" in script.SCRIPT_SYSTEM
+
+
+# ---------------------------------------------------------------- loop 2-3 engine fixes
+def test_find_assets_takes_the_longest_name_only():
+    from storyforge.world import planner
+
+    assert planner.find_assets("close on the car engine") == ["car_engine"]  # not also a car
+    assert "car" not in planner.find_assets("the elevator car rises")[1:]
+
+
+def test_offline_plan_aims_at_machine_parts_and_adds_no_strays():
+    from storyforge import paste, project, script
+    from storyforge.world import plan as P
+    from storyforge.world import planner
+
+    txt = script.template_script("How an elevator works")
+    assert "sheave" in txt and "counterweight" in txt  # the machine's own tour, not a generic template
+    parsed = paste.parse_lines(txt)
+    sc = script.normalize_script({"title": parsed["title"], "language": "en",
+                                  "scenes": paste.to_scenes(parsed, "short")}, project.EpisodeOptions())
+    p, _ = P.validate(planner.offline_plan(sc), [s["narration"] for s in sc["scenes"]])
+    assert [o["asset"] for o in p["objects"]] == ["elevator"]  # its motor is its own, not a new electric motor
+    parts = [s["camera"].get("part") for s in p["scenes"]]
+    assert "sheave" in parts and "counterweight" in parts and p["areas"][0]["setting"] == "street"
+    assert any(a["do"] == "lift" for s in p["scenes"] for a in s["actions"])
+
+
+def test_fridge_and_toilet_are_library_machines_with_tours():
+    from storyforge.world import assets, builder
+
+    builder.load_all()
+    for name, part in (("fridge", "compressor"), ("toilet", "flapper")):
+        m = assets.build(name)
+        assert m.tour and {"machine", "cutaway"} <= set(assets.REGISTRY[name].tags)
+        assert part in assets.focus_points(name)
+    assert "fill_valve" in [p for p, _ in assets.build("toilet").tour]
+
+
+def test_visible_changes_finish_inside_their_shot():
+    w, p, _ = _world({"areas": [{"id": "g"}], "objects": [{"id": "car1", "asset": "car", "area": "g"}],
+                      "scenes": [{"camera": {"move": "orbit", "target": "car1"},
+                                  "actions": [{"do": "open", "target": "car1", "at": 0.99}]}]})
+    ev = next(e for e in w.events if e.do == "open")
+    assert ev.start + ev.dur <= w.scenes[0]["end"] - 0.3  # said on the last word, still seen finishing
+
+
+def test_cut_goes_through_the_filmed_part_and_water_turns_see_through():
+    from storyforge.world import builder
+
+    builder.load_all()
+    w, p, _ = _world({"areas": [{"id": "b", "setting": "bathroom"}], "objects": [
+        {"id": "t1", "asset": "toilet", "area": "b"}],
+        "scenes": [{"camera": {"move": "close_up", "target": "t1.flapper"},
+                    "actions": [{"do": "cutaway", "target": "t1", "at": 0.0, "keep": True}]}]})
+    fr = w.frame(3.5)
+    inst = w.groups["t1"][0]
+    by = {inst.keys[k]: pt for k, pt in enumerate(inst.model.parts)}
+    tank = [d for d in fr.draws if d.key in by and by[d.key].name == "tank"]
+    assert not tank or tank[0].clip is not None  # the tank itself is cut (the plane runs through the flapper)
+    water = [d for d in fr.draws if d.key in by and by[d.key].name == "tank_water"]
+    assert water and water[0].opacity <= 0.3  # the water in front of the flapper: see-through
+
+
+def test_ending_shows_the_main_machine_not_its_car():
+    w, p, _ = _world({"areas": [{"id": "g"}], "objects": [
+        {"id": "car1", "asset": "car", "area": "g"},
+        {"id": "eng", "asset": "car_engine", "area": "g", "mount": "car1.engine_bay"}],
+        "scenes": [{"camera": {"move": "orbit", "target": "eng"}} for _ in range(4)]})
+    eye, tgt = w._overview()
+    assert float(np.linalg.norm(eye - tgt)) < 4.0  # close on the 0.6 m engine, not 10 m away for the whole car

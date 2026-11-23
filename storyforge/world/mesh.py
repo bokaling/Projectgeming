@@ -366,6 +366,7 @@ class Model:
     parts: list[Part] = field(default_factory=list)
     anchors: dict = field(default_factory=dict)  # named points: "top", "inlet", "outlet", "label"
     paths: dict = field(default_factory=dict)  # named polylines (pipes: flow goes along them)
+    tour: list = field(default_factory=list)  # [(part, what it does in one plain sentence)], in working order
 
     def add(self, name, g: Geo, color="#cccccc", **kw) -> "Model":
         self.parts.append(Part(name, g, color, **kw))

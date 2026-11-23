@@ -120,7 +120,8 @@ def focus_points(name: str) -> list[str]:
 
         try:
             m = build(name)
-            stems = [re.sub(r"\d+$", "", p.name) for p in m.parts if p.motion or p.kind]  # the works first
+            stems = [t for t, _ in m.tour]  # the machine's key parts, in working order
+            stems += [re.sub(r"\d+$", "", p.name) for p in m.parts if p.motion or p.kind]  # then the works
             stems += [a for a in m.anchors if a not in ("label", "top", "center", "inside")]
             stems += [re.sub(r"\d+$", "", p.name) for p in m.parts if p.shell]
             stems = list(dict.fromkeys(s for s in stems if s))

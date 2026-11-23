@@ -164,6 +164,14 @@ def car_engine(cylinders=4, color="#c0392b"):
     m.paths["fuel"] = [(-half + 0.04, port_y + 0.075, -0.14), (x1, port_y + 0.075, -0.14), (x1, port_y + 0.045, -0.13),
                        (x1, roof - 0.005, -0.04)]
     m.paths["flow"] = m.paths["intake"]
+    m.tour = [("piston", "Inside each cylinder, a metal piston slides up and down."),
+              ("intake", "First, a valve opens and the piston sucks in air and fuel."),
+              ("gas", "Then the piston squeezes that mix into a tiny space."),
+              ("spark", "A spark plug sets it on fire, and the blast pushes the piston down."),
+              ("exhaust", "Then another valve opens and the burnt gas is pushed out."),
+              ("rod", "Rods connect every piston to the crankshaft,"),
+              ("crankshaft", "and turn all that pushing into spinning."),
+              ("flywheel", "A heavy flywheel keeps it spinning smoothly.")]
     return m
 
 
@@ -341,6 +349,14 @@ def elevator(floors=4, color="#e9eef1"):
                       "sheave": (0.0, sheave_y, cz), "motor": (0.8, sheave_y, cz), "counterweight": (0.0, cw_top - 1.0, -0.95),
                       "power": (-1.6, mr + 1.4, -0.7), "top": (0.0, mr + 2.6, 0.0)})
     m.paths["power"] = [(-1.6, mr + 1.4, -0.7), (-1.6, mr + 1.6, cz), (0.3, sheave_y + 0.45, cz), (0.8, sheave_y, cz)]
+    m.tour = [("ropes", "The car hangs from strong steel ropes."),
+              ("sheave", "On the roof, the ropes run over a grooved wheel called the sheave."),
+              ("counterweight", "On the other side hangs a heavy counterweight."),
+              ("motor", "A motor turns the sheave,"),
+              ("car", "and the car rides up the shaft while the counterweight goes down."),
+              ("safety_brakes", "Safety brakes wait right beside the rails."),
+              ("governor", "If the car ever goes too fast, the governor trips the brakes."),
+              ("car_door", "At the floor, the doors slide open.")]
     return m
 
 

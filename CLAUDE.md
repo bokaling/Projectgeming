@@ -54,7 +54,7 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 * **Shapes** (`mesh.py`): box, cylinder, cone, lathe, icosphere, torus, capsule, tube, extrude, roof, gear,
   plane, arrow, bolt; `Part(name, geo, color, emissive, opacity, shell, pivot, axis, kind)`, `Model(parts,
   anchors, paths)`.
-* **Asset library** (`assets.py` + `assets_more.py`, 135 objects + 16 recipes): `@asset(name, about, tags, aliases)` functions
+* **Asset library** (`assets.py` + `assets_more.py` + `machines.py`, ~140 objects + 19 recipes): `@asset(name, about, tags, aliases)` functions
   with parameters (size, color, level…). `resolve()` maps any name the AI uses (aliases, plurals, last word,
   difflib) and falls back to `crate`. `catalog()` is what the planner AI sees. Part kinds the world animates:
   `liquid` (fill/drain), `crust`, `blade` (spin), `wheel` (rolls when moving), `piston` and `rocker` (while
@@ -298,6 +298,12 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
 - [x] Phase 2: asset library 126 objects (piston/rocker/flame kinds), long videos planned in parts with one
       shared world, frozen area layout + per-shot fingerprints, 🔧 fix one shot (AI + rules, app + backup form),
       🔍 quality check (local + Gemini vision), see-through liquids drawn correctly
+- [x] Round 6 (How it works first): T4 crash (`in_nrm`) fixed (only bind inputs a shader has), flows need a target,
+      auto series per format + files named by title, vision QC with real errors; two-step planner (visual ideas →
+      plan) + literal check + one AI retry; machines with real working parts (engine, elevator, car, fridge, toilet,
+      piston pump), motion system, settings per area, real size, camera on a part, numbers as visuals, fact-safe
+      scripts, machine tours for the no-AI script; How it works is the default format. Test loop: 4 topics × 3 loops
+      (elevator, car engine, fridge, toilet), all rendered end to end on CPU with the Kokoro ONNX voice
 - [x] Phase 5 C (UI): job buttons go purple "Working…" (spinner, disabled) → green ✅ Done / red ❌ Failed (ticker,
       `JOB_BUTTONS`, `job.button`); quick buttons use `sync_click`. Always-visible panel: friendly step ("Rendering
       shot 4 of 13"), bar + %, time passed + left, live checklist ⏳🔄✅❌⏭️, last 10 clean log lines, red error box
@@ -319,10 +325,40 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
       steam hiss for smoke, pour for fill/drain, whoosh on cutaways), one loop of each kind per shot
 
 ### Verified only on CPU (needs a real Colab run)
-NVIDIA EGL rendering on a T4/L4, NVENC, Kokoro (torch), Edge TTS, Gemini/Groq calls (script + plan),
-wav2vec2 alignment, the Colab port link (`serve_kernel_port_as_window`). Every one of these has a tested fallback.
+NVIDIA EGL rendering on a T4/L4 (the `in_nrm` fix is tested with a Mesa program that drops the input, not on
+NVIDIA), NVENC, Kokoro (torch), Edge TTS, Gemini/Groq calls (script, visual ideas, plan, object designs, vision QC:
+the round-6 test loop used replies written by Claude from the exact prompts, not real Gemini), wav2vec2 alignment,
+the Colab port link (`serve_kernel_port_as_window`). Every one of these has a tested fallback.
+
+### Round 6 test loop: problems not fixed (after 3 loops)
+* Toilet hook: the plan's first shot is a literal close-up of the flush handle: correct, but not striking. The
+  prompt now asks that what the first line says HAPPENS on screen; the engine can't make a dull action exciting.
+* After a cutaway, doors and lids on the cut side vanish with the shell; "the door closes" is only visible when that
+  shot aims the camera at the door (then the cut runs through the door itself).
+* Close-ups of an inner part hide the machine's own parts in the way; around the toilet's S-pipe this can make the
+  toilet look taken apart (tank pieces hanging in the air).
+* Whole-engine shots frame its full box (manifolds, flywheel, plenum): the visible engine is ~50 % of the width,
+  not 60-75 %.
+* Flow particles right next to a small part (fridge capillary tube) can still look like big diamonds.
+* Recipe shapes are basic: the AI-designed toilet bowl is a cylinder, not a curved bowl.
+* Room settings are open on two sides (dollhouse): shots from behind a machine look past the room into the studio.
+* The engine runs slowed down (0.5 turns/s) so strokes can be followed; each cylinder's flash is short, so a still
+  frame can miss it (the hook adds a glow on the spark).
+* Not tested against the real Gemini: its replies may be weaker than the recorded ones; the validator, literal
+  check, retry, library machines and the no-AI tours are the safety net.
 
 ### Lessons learned (keep these)
+* GPU drivers remove shader inputs and uniforms a shader never uses (NVIDIA: `in_nrm` of the grid floor). Bind
+  attributes through `Renderer.vertex_array` (padding for missing ones) and set uniforms with `set_uniform`.
+* Machines: frame the PART the line is about (`obj.part`), cut through that part, hide the machine's own walls in the
+  way (never its working parts), see through water in front of it; a mounted machine's parent becomes a ghost.
+* A long thin part (rope) is cropped to its load end, but only if it fills its length (two brake blocks 2 m apart
+  are not a rope): measure coverage with triangle spans, not vertices (a cylinder has vertices only at its ends).
+* `put(..., y=...)` style helpers must not swallow an asset parameter of the same name (the tool wall's `y`).
+* Word matching for the no-AI planner: the longest name wins ("car engine" is not also a car), verb-like aliases
+  ("lifts a chain", "to scale") are skipped, and words naming a part of a machine already present stay that part.
+* Preset keywords must be unambiguous: "a tiny space" in an engine made the whole video outer space.
+* A visible change said on the line's last word must still finish inside the shot (`FINISH_IN_SHOT`).
 * libass needs `Encoding: -1` in the Farsi style, or Persian word order comes out mirrored whenever a
   word is highlighted (regression test in test_captions.py).
 * Gradio 6: theme/css/head go to `launch()`; `elem_classes` lands on two nested elements; Tabs keep a

@@ -69,7 +69,11 @@ Rules:
   0-2 labels (1-3 words, the part's name, next to it); 0-2 keywords (only the important words, max 3 words).
 - Kinds: problem (red) for problems/dangers, part (orange) for names of parts, number (white) for numbers, info (teal).
 - Vary the camera (never the same move 3 times in a row). Scene 1 is the hook: CLOSE and striking (close_up or
-  push_in on the part the first line names). Never start wide. The last scene shows the whole machine working.
+  push_in on the part the first line names) and the thing it says HAPPENS on screen (add that action: the spark
+  "glow"s, the cable "alarm"s and "shake"s, the door "open"s). Never start wide. The last scene shows the whole
+  machine working.
+- An action said on a word happens on that word: put visible changes (open, lift, fill) on an early word of the
+  line, so the viewer sees them finish.
 - Exactly one plan scene per script scene, same order. Don't invent facts in labels: only words from the narration.
 Reply with JSON only.""".replace("PRESETS", ", ".join(presets.PRESETS)).replace("SETTINGS", ", ".join(settings_mod.SETTINGS))
 
@@ -356,8 +360,13 @@ def _second_try(script: dict, length: str, rep, ideas: list, raw: dict, texts: l
 # ---------------------------------------------------------------------------
 
 MOVES = ["orbit", "push_in", "fly_over", "close_up", "pull_out", "low_angle", "orbit", "top_down", "push_in"]
+PART_MOVES = ["close_up", "orbit", "push_in", "orbit", "low_angle", "push_in"]
 GROUPS = {"house", "tree", "person", "bacteria", "methane", "manure", "car", "coin", "molecule", "blood_cell", "virus",
           "cell", "solar_panel", "wind_turbine", "barrel", "rock", "cloud", "skyscraper", "atom"}
+
+
+VERBISH = {"lift", "scale", "display", "float", "sink", "drill", "tap", "run", "drive", "fan", "light"}  # usually
+# verbs in a sentence ("the handle lifts a chain"): never turned into objects by the built-in planner
 
 
 def find_assets(text: str) -> list[str]:
@@ -365,19 +374,39 @@ def find_assets(text: str) -> list[str]:
     found = []
     low = re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower())
     words = low.split()
-    names = set(assets.REGISTRY) | set(assets.ALIASES)
-    for k in range(len(words)):
-        for n in (3, 2, 1):
+    names = (set(assets.REGISTRY) | set(assets.ALIASES)) - VERBISH
+    k = 0
+    while k < len(words):
+        step = 1
+        for n in (3, 2, 1):  # the longest name wins: "car engine" is the engine, not also a car
             phrase = "_".join(words[k:k + n])
-            for cand in (phrase, phrase.rstrip("s"), phrase[:-2] if phrase.endswith("es") else ""):
-                if cand and cand in names:
-                    name = assets.ALIASES.get(cand, cand)
-                    tags = set(assets.REGISTRY[name].tags) if name in assets.REGISTRY else set()
-                    if name not in found and name not in ("ground", "platform", "crate") and not tags & {
-                            "helper", "terrain", "set"}:
-                        found.append(name)
-                    break
+            hit = next((c for c in (phrase, phrase.rstrip("s"), phrase[:-2] if phrase.endswith("es") else "")
+                        if c and c in names), None)
+            if hit:
+                name = assets.ALIASES.get(hit, hit)
+                tags = set(assets.REGISTRY[name].tags) if name in assets.REGISTRY else set()
+                if name not in found and name not in ("ground", "platform", "crate") and not tags & {
+                        "helper", "terrain", "set"}:
+                    found.append(name)
+                step = n
+                break
+        k += step
     return found
+
+
+def _strip_part_words(text: str, machines: list) -> str:
+    """Remove the words that name parts of these machines ("the elevator's motor" is not a separate motor)."""
+    words = set()
+    for m in machines:  # every part of the machine (its pipes, coils, tubes too), not only the moving ones
+        model = assets.build(m)
+        names = list(assets.focus_points(m)) + [re.sub(r"\d+$", "", p.name) for p in model.parts]
+        for f in names:
+            words |= {w for w in f.split("_") if len(w) > 2}
+        words |= {"tube", "pipe", "coil", "wire", "cable"} if any("pipe" in n or "capillary" in n or "coil" in n
+                                                                  for n in names) else set()
+    words -= {"power", "light", "oil", "wall", "side", "top", "base", "floor"}
+    return " ".join(w for w in re.split(r"(\W+)", text or "") if w.lower().rstrip("s") not in words and
+                    w.lower() not in words)
 
 
 def offline_plan(script: dict) -> dict:
@@ -386,12 +415,13 @@ def offline_plan(script: dict) -> dict:
     by_asset: dict[str, str] = {}
     last = None
     for i, (sc, text) in enumerate(zip(script["scenes"], texts)):
-        found = find_assets(sc.get("visual", "") + " " + text)[:3]
-        machines = [a for a in list(by_asset) + found if {"machine", "cutaway"} & set(assets.REGISTRY[a].tags)]
-        parts_of = [m for m in machines for a in found if a != m and a in assets.focus_points(m)]
-        found = [a for a in found if not any(a != m and a in assets.focus_points(m) for m in machines)]  # "the
-        # elevator car" is the elevator's car, not a sedan
-        found = list(dict.fromkeys(parts_of + found))
+        line = sc.get("visual", "") + " " + text
+        present = [a for a in by_asset if {"machine", "cutaway"} & set(assets.REGISTRY[a].tags)]
+        first = find_assets(_strip_part_words(line, present))  # "the motor" of the elevator is not a new motor
+        new_m = [a for a in first if {"machine", "cutaway"} & set(assets.REGISTRY[a].tags)]
+        about = [m for m in present if _named_part(m, line)]  # a part of a machine we already have
+        rest = [] if about else [a for a in find_assets(_strip_part_words(line, present + new_m)) if a not in new_m]
+        found = list(dict.fromkeys(about + new_m + rest))[:3]  # "the elevator car" is the elevator's car
         if not found and last is None:
             found = ["sign_number"]
         new = [a for a in found if a not in by_asset]
@@ -443,10 +473,11 @@ def offline_plan(script: dict) -> dict:
             elif obj["asset"] == "manure":
                 actions.append({"do": "grow", "target": oid, "at": word})
         cam = {"move": MOVES[i % len(MOVES)], "target": target}
-        part = _named_part(next(o for o in objects if o["id"] == target)["asset"], text)
+        part = _named_part(next(o for o in objects if o["id"] == target)["asset"], sc.get("visual", "") + ". " + text)
         label = next(o for o in objects if o["id"] == target)["asset"].replace("_", " ")
         if part:  # the line names a part of the machine ("the sheave", "the pistons"): look at it
             cam["target"] = f"{target}.{part}"
+            cam["move"] = PART_MOVES[i % len(PART_MOVES)]  # close moves on a part (no top-down on a piston)
             label = part.replace("_", " ")
         labels = [{"target": target, "text": label, "kind": "part", "at": 0.2}]
         scenes.append({"camera": cam,
