@@ -24,7 +24,12 @@ Retention rules:
 - The first line is a shocking statement or question, max 10 words. No slow intros ("Have you ever wondered", "In this video", "Once upon a time").
 - Something new every 5 seconds: a new step, object, number or twist. Short, punchy, spoken sentences.
 - Use specific, true numbers (tons, degrees, days, kilowatt hours, percent) - never vague words.
+- Facts must be safe: only well-known, accurate facts that an engineer would agree with. If a number is an estimate or
+  varies, say so ("about", "up to", "engineers estimate", "a typical fridge"). Never invent technologies, records,
+  studies or quotes. If you are not sure of a number, leave it out.
 - Every shot can be shown in 3D: objects, machines, liquids, gas, particles, cutaways, zooming into tiny things.
+- Machines: name the REAL parts (piston, valve, compressor, float, sheave…) and show each one working in its own shot,
+  in the order things really happen. [SCENE] says literally what we see (the part, what moves, where it flows).
 - End with a satisfying payoff, then a cliffhanger line for the next episode.
 Format (exactly):
 [TITLE] title

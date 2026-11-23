@@ -90,6 +90,7 @@ class Draw:
     inner: tuple = (0.12, 0.1, 0.1)  # colour of the inside when cut open
     xray: bool = False
     shadow: bool = True
+    shine: float = 0.0  # 0 = matte, 1 = shiny metal / glass (specular highlight + sky reflection)
 
 
 @dataclass
@@ -179,7 +180,7 @@ vec3 fogged(vec3 col, vec3 world){  // far things melt into the background: no h
 
 FRAG = """#version 330
 uniform vec3 u_color; uniform float u_emissive; uniform float u_opacity; uniform vec4 u_clip; uniform int u_clip_on;
-uniform vec3 u_inner; uniform int u_xray;
+uniform vec3 u_inner; uniform int u_xray; uniform float u_shine;
 in vec3 v_world; in vec3 v_n; in vec4 v_light; out vec4 f_color;
 """ + LIT + """
 void main(){
@@ -189,7 +190,14 @@ void main(){
   if (!gl_FrontFacing) { n = -n; if (u_clip_on == 1) base = u_inner; }
   vec3 V = normalize(u_eye - v_world);
   float rim = pow(1.0 - max(dot(n, V), 0.0), 3.0);
-  vec3 col = light(base, n, v_world, v_light) + rim * 0.2 * u_sky + base * u_emissive * 1.6;
+  vec3 col = light(base * (1.0 - 0.25 * u_shine), n, v_world, v_light) + rim * 0.2 * u_sky + base * u_emissive * 1.6;
+  if (u_shine > 0.0) {  // metal, paint and glass: a sun highlight on each facet + the sky reflected in it
+    vec3 H = normalize(u_sun_dir + V);
+    float sh = shadow_at(v_light, n);
+    float spec = pow(max(dot(n, H), 0.0), mix(10.0, 60.0, u_shine)) * (0.25 + 0.75 * sh);
+    vec3 R = reflect(-V, n);
+    col += u_sun_col * spec * u_shine * 0.9 + mix(u_ground, u_sky, 0.5 + 0.5 * R.y) * u_shine * 0.22 * (0.4 + 0.6 * rim);
+  }
   float a = u_opacity;
   if (u_xray == 1) { a = 0.06 + 0.22 * rim; col = mix(col, u_color * 1.2 + 0.1, 0.4); }  // a faint ghost
   f_color = vec4(fogged(col, v_world), a);
@@ -364,6 +372,9 @@ class Renderer:
         from .mesh import sphere  # noqa: PLC0415
 
         self.upload("__puff", sphere(1.0, 1))  # smoke puffs
+        from .mesh import arrow2d, xf  # noqa: PLC0415
+
+        self.upload("__arrow", xf(arrow2d(1.0, 0.32, 0.42, 0.12), (0, -0.06, 0), (90, 0, 0)))  # flow arrows (+x)
         floor = np.array([[-1, 0, -1], [1, 0, 1], [1, 0, -1], [-1, 0, -1], [-1, 0, 1], [1, 0, 1]], np.float32) * 400
         fn = np.tile([0, 1, 0], (6, 1)).astype(np.float32)
         self._floor = self._vao(self.grid_prog, floor, fn)
@@ -500,6 +511,7 @@ class Renderer:
                 set_uniform(p, "u_emissive", float(d.emissive))
                 set_uniform(p, "u_opacity", float(d.opacity))
                 set_uniform(p, "u_xray", 1 if d.xray else 0)
+                set_uniform(p, "u_shine", float(d.shine))
                 set_uniform(p, "u_clip_on", 1 if d.clip is not None else 0)
                 if d.clip is not None:
                     set_uniform(p, "u_clip", tuple(float(x) for x in d.clip))

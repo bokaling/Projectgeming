@@ -104,7 +104,7 @@ COW_POOP_PLAN = {
                       {"text": "gas trapped", "kind": "problem", "at": "trapped"}]},
         {"camera": {"move": "close_up", "target": "mixer1", "angle": 40, "height": 30},
          "actions": [{"do": "spin", "target": "mixer1", "at": "spins", "speed": 1.6},
-                     {"do": "bubbles", "target": "tank1", "at": "spins"},
+                     {"do": "bubbles", "target": "tank1", "at": "spins", "color": "#bff299"},
                      {"do": "hide_part", "target": "tank1.crust", "at": "mixed"}],
          "labels": [{"target": "mixer1", "text": "Agitator", "kind": "part", "at": "agitator"}],
          "keywords": [{"text": "the agitator", "kind": "part", "at": "agitator"},
@@ -117,7 +117,7 @@ COW_POOP_PLAN = {
                       {"text": "38 °C", "kind": "number", "at": "38"}]},
         {"camera": {"move": "zoom_into", "target": "dig1", "angle": 15, "height": 18},
          "actions": [{"do": "cutaway", "target": "dig1", "at": 0.0},
-                     {"do": "bubbles", "target": "dig1", "at": 0.1}],
+                     {"do": "bubbles", "target": "dig1", "at": 0.1, "color": "#bff299"}],
          "labels": [{"target": "dig1", "text": "Bacteria inside", "kind": "info", "at": "bacteria"}],
          "keywords": [{"text": "21 days", "kind": "number", "at": "21"}]},
         {"camera": {"move": "orbit", "target": "germs", "angle": 10, "to_angle": 50, "height": 14, "zoom": 1.6},
@@ -188,9 +188,9 @@ SUB_PLAN = {
         {"id": "sub1", "asset": "submarine", "area": "sea", "pos": [-6, 0], "y": 7.0},
         {"id": "surface", "asset": "sea_surface", "area": "sea", "pos": [4, 0], "y": 9.9},
         {"id": "fish1", "asset": "fish", "area": "sea", "pos": [9, 3.5], "y": 3.0, "count": 6, "layout": "scatter",
-         "spacing": 1.6},
+         "spacing": 1.6, "scale": 0.39},
         {"id": "fish2", "asset": "fish", "area": "sea", "pos": [-2, -4], "y": 5.0, "count": 4, "layout": "scatter",
-         "spacing": 1.8, "params": {"color": "#f4c430"}},
+         "spacing": 1.8, "params": {"color": "#f4c430"}, "scale": 0.39},
         {"id": "rocks", "asset": "rock", "area": "sea", "pos": [6, -3.5], "count": 5, "layout": "scatter",
          "spacing": 2.6, "params": {"size": 1.6}},
         {"id": "weed", "asset": "grass_patch", "area": "sea", "pos": [2, 4], "count": 4, "layout": "scatter",
@@ -501,3 +501,32 @@ PYRAMID_PLAN = {
 
 EXAMPLES = [(COW_POOP_SCRIPT, COW_POOP_PLAN), (SUB_SCRIPT, SUB_PLAN), (SUGAR_SCRIPT, SUGAR_PLAN),
             (PYRAMID_SCRIPT, PYRAMID_PLAN)]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# A small machine plan: the example the planner AI sees for "how it works" videos (settings, parts, cutaways, paths).
+MACHINE_EXAMPLE_PLAN = {
+    "title": "How a Water Pump Works", "preset": "studio",
+    "areas": [{"id": "shop", "setting": "garage"}, {"id": "numbers", "setting": "studio"}],
+    "objects": [
+        {"id": "pump1", "asset": "piston_pump", "area": "shop", "pos": [0, 0]},
+        {"id": "worker", "asset": "person", "area": "shop", "pos": [1.2, 0.4], "rot": -110},
+        {"id": "ctr", "asset": "counter", "area": "numbers", "pos": [0, 0]},
+    ],
+    "scenes": [
+        {"camera": {"move": "close_up", "target": "pump1.inlet_valve"},
+         "actions": [{"do": "spin", "target": "pump1", "at": "pump", "speed": 0.6}],
+         "labels": [{"target": "pump1", "text": "Valve", "kind": "part", "at": "valve"}],
+         "keywords": [{"text": "one-way valve", "kind": "part", "at": "valve"}]},
+        {"camera": {"move": "orbit", "target": "pump1.piston", "angle": 30, "height": 18},
+         "actions": [{"do": "cutaway", "target": "pump1", "at": 0.0, "keep": True},
+                     {"do": "flow", "target": "pump1", "path": "water", "at": "water", "color": "#3aa6d9",
+                      "color2": "#7fe3ff"}],
+         "labels": [{"target": "pump1", "text": "Piston", "kind": "part", "at": "piston"}],
+         "keywords": [{"text": "the piston", "kind": "part", "at": "piston"}]},
+        {"camera": {"move": "push_in", "target": "ctr"},
+         "actions": [{"do": "appear", "target": "ctr", "at": 0.05}],
+         "labels": [{"target": "ctr", "text": "{n} liters a minute", "kind": "number", "from": 0, "to": 40, "at": "40"}],
+         "keywords": [{"text": "40 liters", "kind": "number", "at": "40"}]},
+    ],
+}

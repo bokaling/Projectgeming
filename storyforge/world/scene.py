@@ -15,20 +15,28 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import assets
+from . import assets, motion
 from .gl import Draw, Frame, Label, hex_rgb, project_points
 from .mesh import rot_matrix
 
+NO_SHADOW = {"wall", "tool_wall", "city_block"}
+FLOORS = {"pad", "ground_plate", "ground", "rail", "fence", "railing", "pipe_stand", "slab", "floor_tiles", "planks",
+          "street_road", "turntable"}  # never "in front of" the subject: they are under it  # a room's walls don't throw big shadows over the machine
+SHINE = {"metal": 0.85, "paint": 0.55, "glass": 0.9, "plastic": 0.3, "water": 0.7, "rubber": 0.05, "ceramic": 0.45}
+
 SAFE_TOP, SAFE_BOTTOM = 0.15, 0.20  # keep the top 15 % for captions and the bottom 20 % clear for app buttons
-FILL = 0.78  # the subject fills this much of the safe area (its larger side)
+FILL = 0.78  # how big the subject is (1 = as big as allowed): see W_DIV / H_DIV
+W_DIV = 0.68 / FILL  # a normal shot: the subject's box is 68 % of the frame width (the rule: 60-75 %)
+H_DIV = 0.92 / FILL  # …but never more than 92 % of the safe height (captions on top, app buttons below)
 FILL_MOVES = {"close_up": 1.0, "fly_over": 0.7, "pull_out": 0.78, "top_down": 0.8}
 END_OVERVIEW = 3.6  # explainers end on an overview of the whole system, then fly back to the first shot (loop)
 PERSIST = {"appear", "disappear", "grow", "move", "spin", "fill", "drain", "light_on", "light_off", "float", "drop",
-           "show_part", "hide_part"}
+           "show_part", "hide_part", "lift", "open", "close"}
 DEFAULT_DUR = {"drop": 0.6, "appear": 0.45, "disappear": 0.4, "grow": 1.2, "fill": 1.6, "drain": 1.6, "light_on": 0.35,
-               "light_off": 0.3, "shake": 0.7, "cutaway": 0.8, "xray": 0.5, "show_part": 0.5, "hide_part": 0.4}
+               "light_off": 0.3, "shake": 0.7, "cutaway": 0.8, "xray": 0.5, "show_part": 0.5, "hide_part": 0.4,
+               "lift": 2.6, "open": 0.8, "close": 0.7}
 STAGGER = {"appear": 0.16, "disappear": 0.12, "light_on": 0.28, "grow": 0.1, "light_off": 0.15, "show_part": 0.1}
-FLOW_COLORS = {"flow": (0.42, 0.29, 0.17), "bubbles": (0.75, 0.95, 0.6), "smoke": (0.72, 0.76, 0.8),
+FLOW_COLORS = {"flow": (0.42, 0.29, 0.17), "bubbles": (0.82, 0.94, 1.0), "smoke": (0.72, 0.76, 0.8),
                "sparks": (1.0, 0.85, 0.35)}
 
 
@@ -210,6 +218,21 @@ class World:
                 group.append(inst)
                 self.insts.append(inst)
             self.groups[o["id"]] = group
+        self.mounts = {}
+        for o in self.plan["objects"]:  # sits on / inside another object: at its anchor point ("car1.engine_bay")
+            if not o.get("mount"):
+                continue
+            base, _, anchor = o["mount"].partition(".")
+            if base not in self.groups or o["id"] not in self.groups:
+                continue
+            parent = self.groups[base][0]
+            a = np.asarray(parent.model.anchors.get(anchor or "top", (0.0, 0.0, 0.0)), np.float32)
+            self.mounts[o["id"]] = (parent, a)
+            m = self.inst_matrix(parent, {"pos": parent.pos, "yaw": parent.rot, "scale": 1.0, "vis": 1.0,
+                                          "shake": np.zeros(3), "bob": 0.0})
+            for inst in self.groups[o["id"]]:
+                inst.pos = ((m @ np.append(a, 1.0))[:3] + (inst.pos - self.groups[o["id"]][0].pos)).astype(np.float32)
+                inst.rot = parent.rot + o["rot"]
 
     def _build_env(self) -> None:
         """The set dressing around every area (pads, props, people, lamps, pipe stands): see decor.py."""
@@ -310,7 +333,8 @@ class World:
     def state(self, inst: Inst, T: float) -> dict:
         st = {"vis": 0.0 if inst.oid in self.hidden_at_start else 1.0, "scale": 1.0, "pos": inst.pos.copy(),
               "yaw": inst.rot, "spin": 0.0, "spin_on": False, "fill": 1.0, "light": 0.0, "glow": 0.0, "alarm": 0.0,
-              "shake": np.zeros(3), "drop": 0.0, "cut": 0.0, "cut_dir": None, "xray": False, "parts": {}, "travel": 0.0, "bob": 0.0}
+              "shake": np.zeros(3), "drop": 0.0, "cut": 0.0, "cut_dir": None, "xray": False, "parts": {}, "travel": 0.0, "bob": 0.0,
+              "lift": 0.0, "open": 0.0, "opens": {}, "fills": {}}
         for part in [p for (o, p) in self.hidden_parts if o == inst.oid]:
             st["parts"][part] = 0.0
         n_group = len(self.groups[inst.oid])
@@ -350,19 +374,44 @@ class World:
                 st["spin_on"] = True
                 st["spin"] += 2 * math.pi * e.params.get("speed", 1.2) * t
             elif e.do in ("fill", "drain"):
-                a = e.params.get("from", st["fill"] if e.do == "fill" else 1.0)
+                now = st["fills"].get(e.part, st["fill"]) if e.part else st["fill"]
+                a = e.params.get("from", now if e.do == "fill" else 1.0)
                 b = e.params.get("to_value", 1.0 if e.do == "fill" else 0.25)
-                if e.do == "fill" and "from" not in e.params and st["fill"] >= 0.99:
+                if e.do == "fill" and "from" not in e.params and now >= 0.99:
                     a = 0.15
-                st["fill"] = a + (b - a) * ease(p)
+                if e.do == "drain" and "from" not in e.params:
+                    a = now
+                level = a + (b - a) * ease(p)
+                if e.part:  # one liquid of the machine (the toilet's tank, not its bowl)
+                    st["fills"][e.part] = level
+                else:
+                    st["fill"] = level
+            elif e.do == "lift":  # the machine's lifting part: 0 = bottom, 1 = top (elevator car, counterweight…)
+                a = e.params.get("from", st["lift"])
+                b = e.params.get("to_value", 0.0 if st["lift"] > 0.5 else 1.0)
+                st["lift"] = a + (b - a) * ease(p)
+            elif e.do in ("open", "close"):
+                u = ease(p) if e.do == "open" else 1 - ease(p)
+                if e.part:
+                    st["opens"][e.part] = u
+                else:
+                    st["open"] = u
             elif e.do == "light_on":
                 st["light"] = ease(p)
             elif e.do == "light_off":
                 st["light"] = 1 - ease(p)
             elif e.do == "glow" and active:
-                st["glow"] = 0.12 + 0.12 * math.sin(t * 5.0)
+                g = (0.12 + 0.12 * math.sin(t * 5.0)) if not e.part else (0.55 + 0.25 * math.sin(t * 4.0)) * min(1.0, p * 2)
+                if e.part:  # one part glows (hot coils, a heating element), not the whole machine
+                    st.setdefault("glows", {})[e.part] = g
+                else:
+                    st["glow"] = g
             elif e.do == "alarm" and active:
-                st["alarm"] = 0.5 + 0.5 * math.sin(t * 7.0)
+                part = e.part or self._scene_part(e.scene, inst.oid)
+                if part:  # a huge machine: only the part in the picture turns red (the ropes, not the building)
+                    st.setdefault("alarms", {})[part] = 0.5 + 0.5 * math.sin(t * 7.0)
+                else:
+                    st["alarm"] = 0.5 + 0.5 * math.sin(t * 7.0)
             elif e.do == "shake" and p < 1:
                 k = (1 - p) * 0.08 * max(1.0, inst.radius * 0.3)
                 st["shake"] = np.array([math.sin(t * 61), math.sin(t * 47) * 0.4, math.sin(t * 53)]) * k
@@ -379,6 +428,13 @@ class World:
                 st["parts"][e.part] = pop(p)
             elif e.do == "hide_part":
                 st["parts"][e.part] = 1 - ease(p)
+        if inst.oid in getattr(self, "mounts", {}):  # riding on its parent (an engine in a car that drives away)
+            parent, a = self.mounts[inst.oid]
+            pst = self.state(parent, T)
+            if np.linalg.norm(pst["pos"] - parent.pos) > 1e-4 or abs(pst["yaw"] - parent.rot) > 1e-3:
+                pm = self.inst_matrix(parent, {**pst, "vis": 1.0, "scale": 1.0})
+                st["pos"] = (pm @ np.append(a, 1.0))[:3].astype(np.float32)
+                st["yaw"] = pst["yaw"] + (inst.rot - parent.rot)
         if getattr(self, "push", None) and (inst.oid, inst.index) in self.push:
             from .logic import pushed_state  # noqa: PLC0415
 
@@ -407,6 +463,143 @@ class World:
         return inst.pos
 
     # ------------------------------------------------------------------ geometry helpers
+    def part_local(self, part, k: int, st: dict, T: float) -> tuple[np.ndarray, float, tuple | None]:
+        """How one part moves inside its object right now: (local 4x4, extra glow, colour override)."""
+        local = np.eye(4, dtype=np.float32)
+        extra_glow, recolor = 0.0, None
+        if part.motion:  # real working parts: pistons, rods, valves, doors, ropes, floats…
+            for mo in (part.motion if isinstance(part.motion, list) else [part.motion]):
+                mat, g, c2 = motion.evaluate(part, st, T, mo)
+                if mat is not None:
+                    local = mat @ local
+                extra_glow += g
+                recolor = c2 or recolor
+        if part.kind in ("blade", "wheel") and st["spin_on"] or (part.kind == "wheel" and st["travel"]):
+            ang = st["spin"] if part.kind == "blade" else (st["travel"] / 0.6 + st["spin"])
+            axis = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[part.axis]
+            deg = math.degrees(ang) * (-1 if part.kind == "wheel" else 1)
+            r = rot_matrix(*(np.array(axis) * deg))
+            pv = np.asarray(part.pivot, np.float32)
+            local[:3, :3] = r
+            local[:3, 3] = pv - r @ pv
+        if part.kind == "piston" and st["spin_on"]:  # engines: pistons go up and down in turn
+            local[1, 3] += 0.22 * math.sin(st["spin"] * 2.0 + k * 1.9)
+        if part.kind == "rocker" and st["spin_on"]:  # pumpjacks, arms, wings, needles: swing back and forth
+            axis = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[part.axis]
+            r = rot_matrix(*(np.array(axis) * 18.0 * math.sin(st["spin"])))
+            pv = np.asarray(part.pivot, np.float32)
+            local[:3, :3] = r
+            local[:3, 3] = pv - r @ pv
+        if part.kind == "flame":  # fire flickers all the time (a pure function of T)
+            lo, hi = part.geo.bounds()
+            f = 1.0 + 0.14 * math.sin(T * 11.0 + k * 1.7) + 0.06 * math.sin(T * 23.0 + k)
+            sm = np.eye(4, dtype=np.float32)
+            sm[1, 1] = f
+            sm[1, 3] = float(lo[1]) * (1 - f)
+            local = local @ sm
+        level = st["fills"].get(part.name, st["fill"])
+        if part.kind == "liquid" and level != 1.0:  # the level drops inside its own container
+            lo, hi = part.geo.bounds()
+            f = max(0.02, level)
+            sm = np.diag([1, f, 1, 1]).astype(np.float32)
+            sm[1, 3] = float(lo[1]) * (1 - f)
+            local = local @ sm
+        if part.kind == "crust" and st["fill"] != 1.0:
+            lo, hi = part.geo.bounds()
+            local[1, 3] += (st["fill"] - 1) * float(lo[1])
+        return local, extra_glow, recolor
+
+    @staticmethod
+    def part_names(model, name: str) -> list[int]:
+        """The parts a name means: 'piston' → piston1..piston4, 'car' → car_floor, car_walls, car_door…
+        An exact name wins ('governor' is the wheel, not also the 16 m governor_rope)."""
+        exact = [k for k, p in enumerate(model.parts) if p.name == name]
+        if exact:
+            return exact
+        out = []
+        for k, p in enumerate(model.parts):
+            n = p.name
+            if n.startswith(name + "_") or (n.startswith(name) and n[len(name):].isdigit()):
+                out.append(k)
+        return out
+
+    def part_box(self, oid: str, name: str, T: float, margin: bool = True) -> tuple[np.ndarray, np.ndarray] | None:
+        """World box of a machine's part (where it is NOW, moving parts included) or of a named anchor point."""
+        insts = self.groups.get(oid)
+        if not insts:
+            return None
+        inst = insts[0]
+        st = self.state(inst, T)
+        m0 = self.inst_matrix(inst, {**st, "vis": 1.0})
+        pts, hang = [], None
+        for k in self.part_names(inst.model, name):
+            p = inst.model.parts[k]
+            lo, hi = p.geo.bounds()
+            local, _, _ = self.part_local(p, k, st, T)
+            c = np.array([[x, y, z, 1.0] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+            pts.append(c @ (m0 @ local).T.astype(np.float64))
+            mos = p.motion if isinstance(p.motion, list) else [p.motion] if p.motion else []
+            if any(mo.get("type") == "stretch" for mo in mos):  # a hanging rope: its pivot end is fixed
+                hang = (m0 @ np.append(np.asarray(p.pivot, np.float32), 1.0))[:3]
+        if pts:
+            P = np.concatenate(pts)[:, :3]
+            lo, hi = P.min(0), P.max(0)
+            ext = hi - lo
+            ax = int(np.argmax(ext))
+            rest = max(float(np.sort(ext)[1]), 0.3)
+            if margin and ext[ax] > 3.5 * rest:  # a long rope / rail / cable: frame a piece of it, not 10 m of thin line
+                win = max(3.0 * rest, 0.18 * float(ext[ax]))
+                if hang is not None:  # the end that holds the load (the car), away from the fixed end
+                    c0 = lo[ax] + win / 2 if abs(hang[ax] - hi[ax]) < abs(hang[ax] - lo[ax]) else hi[ax] - win / 2
+                else:
+                    c0 = (lo[ax] + hi[ax]) / 2
+                lo, hi = lo.copy(), hi.copy()
+                lo[ax], hi[ax] = c0 - win / 2, c0 + win / 2
+        elif name in inst.model.anchors:
+            a = self.anchor(oid, name, T)
+            r = max(0.08, inst.radius * 0.18)
+            lo, hi = a - r, a + r
+        else:
+            return None
+        if not margin:
+            return lo, hi
+        c, half = (lo + hi) / 2, (hi - lo) / 2  # room around it: the part and what it works with stay readable
+        floor = min(inst.radius * 0.22, 0.35 + 0.6 * float(np.max(half)))  # thin parts get some context, not a whole wall
+        half = np.maximum(half * 1.6, max(0.06, floor))
+        return c - half, c + half
+
+    def label_point(self, i: int, lb: dict, T: float) -> np.ndarray:
+        """Where a label points: at its part (named in the label, or the part the camera is on), else the object."""
+        oid = lb["target"]
+        insts = self.groups.get(oid)
+        part = lb.get("part", "")
+        if insts and not part:
+            model = insts[0].model
+            words = {w.lower().rstrip("s") for w in str(lb.get("text", "")).replace("-", " ").split() if len(w) > 2}
+            for p in model.parts:  # "Sheave" → the sheave, "Spark plug" → spark1
+                stem = p.name.rstrip("0123456789").lower()
+                if stem and (stem in words or stem.rstrip("s") in words or stem.split("_")[0] in words):
+                    part = stem
+                    break
+            if not part and self._target(i) == oid and self._cam_part(i):
+                part = self._cam_part(i)
+        if part and insts:
+            box = self.part_box(oid, part, T, margin=False)
+            if box is not None:
+                lo, hi = box
+                return np.array([(lo[0] + hi[0]) / 2, hi[1] + max(0.03, 0.06 * float(np.max(hi - lo))), (lo[2] + hi[2]) / 2])
+        return self.anchor(oid, "label", T)
+
+    def _cam_part(self, i: int) -> str:
+        return str(self.scenes[i]["plan"]["camera"].get("part") or "")
+
+    def _scene_part(self, i: int, oid: str) -> str:
+        """The part shot i's camera is on, if it looks at this object."""
+        if not 0 <= i < len(self.scenes):
+            return ""
+        cam = self.scenes[i]["plan"]["camera"]
+        return str(cam.get("part") or "") if cam.get("target") == oid else ""
+
     def inst_matrix(self, inst: Inst, st: dict) -> np.ndarray:
         m = np.eye(4, dtype=np.float32)
         s = inst.scale * st["scale"] * max(0.0, st["vis"])
@@ -444,6 +637,8 @@ class World:
         sc = self.scenes[i]
         tgt = self._target(i)
         ids = [tgt]
+        if self._cam_part(i):
+            return ids
         T = sc["start"] + sc["dur"] * 0.6
         lo, hi = self._sub_box(tgt, T)
         c = (lo + hi) / 2
@@ -463,6 +658,11 @@ class World:
         return ids
 
     def focus_box(self, i: int, T: float) -> tuple[np.ndarray, np.ndarray]:
+        part = self._cam_part(i)
+        if part:  # the camera looks at one part of the machine (the car of an elevator, a piston, the sheave)
+            box = self.part_box(self._target(i), part, T)
+            if box is not None:
+                return box
         boxes = [self._sub_box(oid, T) for oid in self._focus[i]]
         return np.min([b[0] for b in boxes], 0), np.max([b[1] for b in boxes], 0)
 
@@ -488,10 +688,10 @@ class World:
         half_h = 1 - SAFE_TOP - SAFE_BOTTOM  # usable half height in screen units (-1..1)
         y_mid = 1 - 2 * (SAFE_TOP + half_h / 2)
 
-        def size(d):
+        def size(d):  # at fill = FILL: 68 % of the width (60-75 %), at most 92 % of the safe height
             depth = d + rz
             x, y = rx / (depth * th), ry / (depth * tv)
-            return max((x.max() - x.min()) / 2 / 0.94, (y.max() - y.min()) / 2 / half_h), x, y
+            return max((x.max() - x.min()) / 2 / W_DIV, (y.max() - y.min()) / 2 / (half_h * H_DIV)), x, y
 
         a, b = float(max(-rz.min(), 0.0) + 0.3), 600.0
         for _ in range(40):  # bigger distance = smaller subject
@@ -517,9 +717,9 @@ class World:
         a = np.asarray(inst.model.anchors.get(name, inst.model.anchors.get("center", (0, 1, 0))), np.float32)
         return (self.inst_matrix(inst, {**st, "vis": 1.0}) @ np.append(a, 1.0))[:3]
 
-    def path_world(self, oid: str, T: float) -> list | None:
+    def path_world(self, oid: str, T: float, name: str = "flow") -> list | None:
         inst = self.groups[oid][0]
-        path = inst.model.paths.get("flow")
+        path = inst.model.paths.get(name)
         if not path:
             return None
         m = self.inst_matrix(inst, {**self.state(inst, T), "vis": 1.0})
@@ -535,6 +735,9 @@ class World:
         el = cam.get("height", 22.0)
         ext = hi - lo
         tags = set(getattr(assets.REGISTRY.get(self.groups[tgt][0].asset), "tags", []))
+        if "symbol" in tags and not self._cam_part(i):  # counters, signs, scales, charts: read them face-on
+            az = cam.get("angle", 8.0 + 6 * ((i % 3) - 1)) + self.groups[tgt][0].rot
+            el = min(cam.get("height", 12.0), 16.0)
         if tags & {"animal", "people"}:
             el = min(max(el, 6.0), 20.0)  # animals and people: from the side or 3/4, never from above
         elif "vehicle" in tags:
@@ -609,8 +812,13 @@ class World:
         """The whole system, all normal areas at once (for the ending)."""
         micro = {a["id"] for a in self.plan["areas"] if a.get("micro")}
         ids = [o["id"] for o in self.plan["objects"] if o["area"] not in micro and o["id"] in self.groups]
+        real = [o for o in ids if "symbol" not in getattr(assets.REGISTRY.get(self.groups[o][0].asset), "tags", [])]
+        ids = real or ids  # counters, scales and arrows are not "the system"
         boxes = [self.group_box(o, self.total) for o in ids] or [(np.zeros(3), np.ones(3))]
         lo, hi = np.min([b[0] for b in boxes], 0), np.max([b[1] for b in boxes], 0)
+        if len({self.groups[o][0].area for o in ids}) <= 1:  # one machine: the whole of it, working, 3/4 view
+            az = float(self._cams[-1]["az"]) + 25.0 if self._cams else 30.0
+            return self.fit(lo, hi, az, 24.0, self.fov, 0.9)
         long_x = (hi[0] - lo[0]) > (hi[2] - lo[2])
         tall = self.size[1] > self.size[0]
         az = (-90.0 if long_x else 0.0) if tall else (20.0 if long_x else -70.0)  # along the chain in a tall frame
@@ -727,7 +935,14 @@ class World:
                     continue  # a prop in front of the subject: leave it out
                 if any(p.shell for p in inst.model.parts):  # a roof or wall in the way: leave out exactly the
                     hidden_parts = self._blocking_parts(inst, st, eye, tgt)  # parts that block (no ghost lines)
-            if inst.oid not in self._focus[i] and any(p.shell for p in inst.model.parts):
+            if inst.oid == focus_id and self._cam_part(i):  # its own walls/panels in front of the part we film
+                keep = set(self.part_names(inst.model, self._cam_part(i)))
+                hidden_parts |= self._blocking_parts(inst, st, eye, tgt, any_part=True) - keep
+            parent_of_focus = any(self.mounts.get(f, (None,))[0] is inst for f in self._focus[i])
+            if parent_of_focus:  # an engine inside its car: the car is a ghost, nothing of it in front of the engine
+                hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i, any_size=True, any_part=True)
+                hidden_parts |= self._blocking_parts(inst, st, eye, tgt, any_part=True)
+            elif inst.oid not in self._focus[i] and any(p.shell for p in inst.model.parts):
                 hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i)
             m0 = self.inst_matrix(inst, st)
             clip = None
@@ -737,44 +952,13 @@ class World:
                 n /= max(np.linalg.norm(n), 1e-6)
                 c = st["pos"]  # remove the half that faces the camera
                 clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.2 - 0.02))
+            has_shell = clip is not None and any(p.shell for p in inst.model.parts)
             for k, part in enumerate(inst.model.parts):
                 vis = st["parts"].get(part.name, 1.0)
                 if vis <= 0.01 or k in hidden_parts:
                     continue
                 m = m0
-                local = np.eye(4, dtype=np.float32)
-                if part.kind in ("blade", "wheel") and st["spin_on"] or (part.kind == "wheel" and st["travel"]):
-                    ang = st["spin"] if part.kind == "blade" else (st["travel"] / 0.6 + st["spin"])
-                    axis = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[part.axis]
-                    deg = math.degrees(ang) * (-1 if part.kind == "wheel" else 1)
-                    r = rot_matrix(*(np.array(axis) * deg))
-                    pv = np.asarray(part.pivot, np.float32)
-                    local[:3, :3] = r
-                    local[:3, 3] = pv - r @ pv
-                if part.kind == "piston" and st["spin_on"]:  # engines: pistons go up and down in turn
-                    local[1, 3] += 0.22 * math.sin(st["spin"] * 2.0 + k * 1.9)
-                if part.kind == "rocker" and st["spin_on"]:  # pumpjacks, arms, wings, needles: swing back and forth
-                    axis = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[part.axis]
-                    r = rot_matrix(*(np.array(axis) * 18.0 * math.sin(st["spin"])))
-                    pv = np.asarray(part.pivot, np.float32)
-                    local[:3, :3] = r
-                    local[:3, 3] = pv - r @ pv
-                if part.kind == "flame":  # fire flickers all the time (a pure function of T)
-                    lo, hi = part.geo.bounds()
-                    f = 1.0 + 0.14 * math.sin(T * 11.0 + k * 1.7) + 0.06 * math.sin(T * 23.0 + k)
-                    sm = np.eye(4, dtype=np.float32)
-                    sm[1, 1] = f
-                    sm[1, 3] = float(lo[1]) * (1 - f)
-                    local = local @ sm
-                if part.kind == "liquid" and st["fill"] != 1.0:  # the level drops inside its own container
-                    lo, hi = part.geo.bounds()
-                    f = max(0.02, st["fill"])
-                    sm = np.diag([1, f, 1, 1]).astype(np.float32)
-                    sm[1, 3] = float(lo[1]) * (1 - f)
-                    local = local @ sm
-                if part.kind == "crust" and st["fill"] != 1.0:
-                    lo, hi = part.geo.bounds()
-                    local[1, 3] += (st["fill"] - 1) * float(lo[1])
+                local, extra_glow, recolor = self.part_local(part, k, st, T)
                 if vis < 0.999:
                     lo, hi = part.geo.bounds()
                     pc = (lo + hi) / 2
@@ -784,23 +968,34 @@ class World:
                     local = local @ sm
                 if not np.allclose(local, np.eye(4)):
                     m = m0 @ local
-                color = hex_rgb(part.color)
-                emi = part.emissive
+                color = recolor or hex_rgb(part.color)
+                emi = part.emissive + extra_glow
                 if part.kind == "light":
                     emi = max(emi, st["light"])
                     if st["light"] > 0:
                         lamp = (1.0, 0.85, 0.42)
                         color = tuple(a + (b - a) * st["light"] for a, b in zip(color, lamp))
                 emi += st["glow"]
-                if st["alarm"]:
-                    color = tuple(a + (b - a) * (0.55 + 0.35 * st["alarm"]) for a, b in zip(color, (0.95, 0.12, 0.08)))
-                    emi += 0.25 + 0.35 * st["alarm"]
+                for name, g in st.get("glows", {}).items():
+                    if part.name == name or part.name.startswith(name + "_") or (
+                            part.name.startswith(name) and part.name[len(name):].isdigit()):
+                        emi += g
+                al = st["alarm"]
+                for name, g in st.get("alarms", {}).items():
+                    if k in self.part_names(inst.model, name):
+                        al = max(al, g)
+                if al:
+                    color = tuple(a + (b - a) * (0.55 + 0.35 * al) for a, b in zip(color, (0.95, 0.12, 0.08)))
+                    emi += 0.25 + 0.35 * al
                 inner = tuple(max(0.05, x * 0.45) for x in color)
-                xr = st["xray"] and part.shell
-                draws.append(Draw(inst.keys[k], m, color, emi, part.opacity, clip, inner, xr,
-                                  shadow=part.opacity > 0.5))
+                xr = (st["xray"] and part.shell) or parent_of_focus  # the car around a filmed engine: a ghost
+                part_clip = clip if (part.shell or not has_shell) else None  # cut the outside, keep the works whole
+                draws.append(Draw(inst.keys[k], m, color, emi, part.opacity, part_clip, inner, xr,
+                                  shadow=part.opacity > 0.5 and inst.asset not in NO_SHADOW,
+                                  shine=SHINE.get(part.material, 0.0)))
         parts = self.particles(i, T)
         draws += self.puffs(i, T)
+        draws += self.arrows(i, T)
         c = np.asarray(tgt, np.float64)
         dist = float(np.linalg.norm(np.asarray(eye) - c))
         labels = self.labels(i, T, eye, tgt, fov, label_tex) if label_tex and t <= sc["dur"] else []
@@ -848,10 +1043,12 @@ class World:
                 path = self._flow_path(e, T)
                 if path is None:
                     continue
-                n = int(e.params.get("count", 18 if e.do == "flow" else 14))
                 lengths = np.linalg.norm(np.diff(path, axis=0), axis=1)
                 total = float(lengths.sum()) or 1.0
-                speed = e.params.get("speed", 2.2 if e.do == "flow" else 7.0)
+                k_size = self._flow_scale(e)  # small machines get small particles (an engine is 0.6 m)
+                n = int(e.params.get("count", max(18, min(60, int(total / (0.55 * k_size)))) if e.do == "flow" else 14))
+                speed = e.params.get("speed", (2.2 if e.do == "flow" else 7.0) * max(0.25, k_size))
+                c2 = hex_rgb(e.params["color2"]) if e.params.get("color2") else None
                 ph = rng.random(n)
                 for k in range(n):
                     s = ((ph[k] + speed * t / total) % 1.0) * total
@@ -859,11 +1056,14 @@ class World:
                         continue
                     p = _along(path, lengths, s)
                     if e.do == "sparks":
-                        p = p + rng.normal(0, 0.05, 3)
-                    size = (0.16 if e.do == "flow" else 0.1) * fade
-                    out.append([*p, size, *color, 0.5 if e.do == "flow" else 1.2])
+                        p = p + rng.normal(0, 0.05 * k_size, 3)
+                    size = (0.16 if e.do == "flow" else 0.1) * fade * k_size
+                    col = color if c2 is None else tuple(a + (b - a) * (s / total) for a, b in zip(color, c2))
+                    out.append([*p, size, *col, 0.5 if e.do == "flow" else 1.2])
             elif e.do == "cutaway":  # the cut-open tank shows what lives inside: drifting bacteria
                 inst = self.groups[e.oid][0]
+                if inst.asset not in ("tank", "digester") and not e.params.get("bacteria"):
+                    continue  # a machine cut open shows its own working parts, not germs
                 lo, hi = self.group_box(e.oid, T)
                 c = (lo + hi) / 2
                 surf = self.anchor(e.oid, "surface", T) if "surface" in inst.model.anchors else \
@@ -881,12 +1081,62 @@ class World:
                 c = (lo + hi) / 2
                 surf = self.anchor(e.oid, "surface", T) if "surface" in inst.model.anchors else np.array([c[0], hi[1], c[2]])
                 r = min(hi[0] - lo[0], hi[2] - lo[2]) * 0.35
+                kb = float(min(1.0, max(0.08, inst.radius / 4.0)))  # bubbles in a toilet bowl are small
                 for k in range(int(e.params.get("count", 26))):
                     a, rr, ph = rng.random() * 6.283, math.sqrt(rng.random()) * r, rng.random()
                     h = ((ph + t * 0.45) % 1.0)
-                    y = float(lo[1]) + 0.3 + h * (float(surf[1]) - float(lo[1]) + 1.2)
-                    out.append([c[0] + rr * math.cos(a), y, c[2] + rr * math.sin(a), 0.1 + 0.08 * h, *color, 0.35])
+                    y = float(lo[1]) + 0.3 * kb + h * (float(surf[1]) - float(lo[1]) + 1.2 * kb)
+                    out.append([c[0] + rr * math.cos(a), y, c[2] + rr * math.sin(a), (0.1 + 0.08 * h) * kb, *color, 0.35])
         return np.asarray(out, np.float32) if out else None
+
+    def _flow_scale(self, e: Event) -> float:
+        """Particle size for a flow: 1 for big plants (tanks, pipes), smaller for small machines."""
+        inst = self.groups[e.oid][0]
+        r = inst.radius
+        if inst.asset in ("pipe", "wire", "cable", "chain") and e.params.get("to"):
+            to = str(e.params["to"]).split(".")[0]
+            r = self.groups[to][0].radius if to in self.groups else r
+        return float(min(1.0, max(0.1, r / 4.0)))
+
+    def arrows(self, i: int, T: float) -> list:
+        """Glowing arrows that travel along every flow: the viewer sees where things go."""
+        out = []
+        for e in self.events:
+            if e.do not in ("flow", "sparks") or not (e.start <= T < e.end) or abs(e.scene - i) > 0:
+                continue
+            if e.params.get("arrows") is False:
+                continue
+            path = self._flow_path(e, T)
+            if path is None or len(path) < 2:
+                continue
+            lengths = np.linalg.norm(np.diff(path, axis=0), axis=1)
+            total = float(lengths.sum())
+            k = self._flow_scale(e)
+            if total < 1.5 * k:
+                continue
+            t = T - e.start
+            color = hex_rgb(e.params["color"]) if e.params.get("color") else FLOW_COLORS.get(e.do, (0.45, 0.86, 0.36))
+            c2 = hex_rgb(e.params["color2"]) if e.params.get("color2") else None
+            n = max(1, min(4, int(total / (2.2 * k))))
+            speed = 0.6 * max(0.25, k) * (2.0 if e.do == "sparks" else 1.0)
+            for a in range(n):
+                s = ((a / n + speed * t / total) % 1.0) * total
+                p = _along(path, lengths, s)
+                q = _along(path, lengths, min(total, s + 0.05 * total))
+                d = q - p
+                if float(np.linalg.norm(d)) < 1e-6:
+                    continue
+                d /= np.linalg.norm(d)
+                yaw = math.degrees(math.atan2(-d[2], d[0]))
+                pitch = math.degrees(math.asin(max(-1.0, min(1.0, d[1]))))
+                m = np.eye(4, dtype=np.float32)
+                m[:3, :3] = rot_matrix(0, yaw, pitch) * (0.45 * k)
+                m[:3, 3] = p
+                col = color if c2 is None else tuple(x + (y - x) * (s / total) for x, y in zip(color, c2))
+                fade = min(1.0, t / 0.4) * min(1.0, s / (0.3 * k + 1e-6), (total - s) / (0.3 * k + 1e-6))
+                out.append(Draw("__arrow", m, tuple(min(1.0, c * 1.1 + 0.08) for c in col), 0.9, 0.95 * fade,
+                                shadow=False))
+        return out
 
     def _air(self, i: int, T: float) -> list:
         """Ambient particles of the place: bubbles under water, dust, snow, stars, blood cells."""
@@ -936,20 +1186,26 @@ class World:
                 continue
             t = T - e.start
             src = self.anchor(e.oid, "exhaust" if "exhaust" in self.groups[e.oid][0].model.anchors else "top", T)
+            part = self._scene_part(e.scene, e.oid)
+            if part and "exhaust" not in self.groups[e.oid][0].model.anchors:  # mist from the opened door, steam
+                box = self.part_box(e.oid, part, T, margin=False)  # from the valve: where the shot is
+                if box is not None:
+                    src = (box[0] + box[1]) / 2
             color = hex_rgb(e.params["color"]) if e.params.get("color") else FLOW_COLORS["smoke"]
             for k in range(8):
                 h = (k / 8 + t * 0.32) % 1.0
                 if h > t * 0.32 + 0.02:
                     continue
-                drift = np.array([0.9 * h + 0.2 * math.sin(k * 2.1 + t), 3.2 * h, 0.35 * math.sin(k * 1.3)])
-                s = 0.25 + 0.75 * h
+                kk = float(min(1.0, max(0.15, self.groups[e.oid][0].radius / 3.0)))  # a fridge's mist is small
+                drift = np.array([0.9 * h + 0.2 * math.sin(k * 2.1 + t), 3.2 * h, 0.35 * math.sin(k * 1.3)]) * kk
+                s = (0.25 + 0.75 * h) * kk
                 m = np.eye(4, dtype=np.float32)
                 m[:3, :3] *= s
                 m[:3, 3] = src + drift
                 out.append(Draw("__puff", m, color, 0.0, 0.55 * (1 - h) ** 0.7, shadow=False))
         return out
 
-    def _blocking_parts(self, inst: Inst, st: dict, eye, tgt) -> set:
+    def _blocking_parts(self, inst: Inst, st: dict, eye, tgt, any_part: bool = False) -> set:
         """Indexes of the shell parts (walls, posts, roofs) that are between the camera and the subject."""
         m = self.inst_matrix(inst, {**st, "vis": 1.0})
         try:
@@ -959,8 +1215,10 @@ class World:
         e = (inv @ np.append(np.asarray(eye, np.float64), 1.0))[:3]
         out = set()
         for k, part in enumerate(inst.model.parts):
-            if not part.shell:
+            if not part.shell and not any_part:
                 continue
+            if any_part and not part.shell and _works(part):
+                continue  # never hide a working part (pistons, gears, valves: what the viewer should see)
             for tp in self._aim_points(tgt):
                 t = (inv @ np.append(tp, 1.0))[:3]
                 if any(_seg_box(e, t, a, b) for a, b in (part.boxes or [part.geo.bounds()])):
@@ -970,7 +1228,7 @@ class World:
 
     def _in_front_of_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int) -> bool:
         """A prop that is nearer than the subject and overlaps it on screen."""
-        if inst.asset in ("pad", "ground_plate", "ground", "rail", "fence", "railing", "pipe_stand"):
+        if inst.asset in FLOORS:
             return False
         from .decor import inst_box  # noqa: PLC0415
 
@@ -987,7 +1245,8 @@ class World:
         sx0, sx1, sy0, sy1, ok2 = rect(slo, shi)
         return bool(ok1 and ok2 and px0 < sx1 and px1 > sx0 and py0 < sy1 and py1 > sy0)
 
-    def _shell_parts_over_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int) -> set:
+    def _shell_parts_over_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int, any_size: bool = False,
+                                  any_part: bool = False) -> set:
         """Posts, walls and roof parts that are nearer than the subject and cover it on screen."""
         m = self.inst_matrix(inst, {**st, "vis": 1.0})
         slo, shi = self._cams[i]["lo"], self._cams[i]["hi"]
@@ -1000,10 +1259,10 @@ class World:
         sx0, sx1, sy0, sy1 = sp[:, 0].min(), sp[:, 0].max(), sp[:, 1].min(), sp[:, 1].max()
         out = set()
         for k, part in enumerate(inst.model.parts):
-            if not part.shell:
+            if not part.shell and not any_part:
                 continue
             for a, b in (part.boxes or [part.geo.bounds()]):
-                if sorted(np.asarray(b) - np.asarray(a))[1] > 0.5:
+                if sorted(np.asarray(b) - np.asarray(a))[1] > 0.5 and not any_size:
                     continue  # only thin posts and beams; walls and domes stay (no hollow tanks)
                 c = np.array([[x, y, z, 1.0] for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])])
                 w = (c @ m.T.astype(np.float64))[:, :3]
@@ -1052,6 +1311,10 @@ class World:
         return True
 
     def _flow_path(self, e: Event, T: float):
+        if e.params.get("path"):  # one of the machine's own paths (intake, exhaust, refrigerant loop…)
+            own = self.path_world(e.oid, T, e.params["path"])
+            if own is not None:
+                return np.asarray(own)
         own = self.path_world(e.oid, T)
         if own is not None and not e.params.get("to"):
             return np.asarray(own)
@@ -1082,7 +1345,7 @@ class World:
             t0 = self.at_time(i, lb.get("at"), 0.15)
             if t < t0 or lb["target"] not in self.groups:
                 continue
-            p = self.anchor(lb["target"], "label", T)
+            p = self.label_point(i, lb, T)
             x, y, w = project_points(eye, tgt, fov, self.size, [p])[0]
             if w <= 0.1:
                 continue
@@ -1106,6 +1369,14 @@ class World:
                         abs(la.y - lb2.y) < la.image.shape[0] * 1.05:
                     la.y = lb2.y + la.image.shape[0] * 1.08
         return out
+
+
+WORKS = {"spin", "slide", "rod", "valve", "swing", "pulse", "chamber", "level", "stretch"}
+
+
+def _works(part) -> bool:
+    mos = part.motion if isinstance(part.motion, list) else [part.motion] if part.motion else []
+    return any(m.get("type") in WORKS for m in mos) or part.kind in ("blade", "piston", "rocker", "liquid")
 
 
 def _along(path: np.ndarray, lengths: np.ndarray, s: float) -> np.ndarray:

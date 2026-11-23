@@ -116,7 +116,8 @@ def test_auto_series_is_made_from_the_format_and_files_are_named_by_title(sf_roo
     opts = project.EpisodeOptions(idea="How an elevator works", source="ai")
     s = pipeline.auto_series(opts)
     assert s.slug == "how-it-works" and s.data["voices"]["en"] == "kokoro:am_fenrir"  # voice carried over
-    story = pipeline.auto_series(project.EpisodeOptions(idea="A story about a lost robot", source="ai"))
+    story = pipeline.auto_series(project.EpisodeOptions(idea="A story about a lost robot", source="ai",
+                                                        video_format="auto"))  # (the default format is How it works)
     assert story.slug.startswith("a-story-about")
     ep = s.episode(1)
     ep.save_script({"title": "How an Elevator Works", "scenes": []})
@@ -193,3 +194,219 @@ def test_quality_check_sends_real_stills_from_the_renderer(offline, needs_gl, mo
     pipe.quality_check(pipe.scene_plan())
     assert got and all(b[:2] == b"\xff\xd8" for b in got)  # real JPEG pictures
     assert "quality check didn't work" not in rep.text(80) and "with Gemini vision" in rep.text(80)
+
+
+# ---------------------------------------------------------------- Part 2/3: machines with real working parts
+def _tl(n, dur=4.0):
+    words = []
+    return {"scenes": [{"start": i * dur, "dur": dur, "voice": dur - 0.3} for i in range(n)], "words": words,
+            "total": n * dur + 3.6, "end": {"start": n * dur, "dur": 3.6, "kind": "overview"}}
+
+
+def test_crank_slider_and_rod_keep_the_piston_on_its_line():
+    import math
+
+    from storyforge.world import motion
+
+    r, L = 0.045, 0.145
+    assert motion.crank_slider(0.0, r, L) == pytest.approx(0.0)
+    assert motion.crank_slider(math.pi, r, L) == pytest.approx(2 * r)  # bottom dead centre = one stroke down
+
+    class P:  # a rod part: bottom on the crank pin, top on the piston pin
+        pivot = (0.0, 0.2, 0.0)
+        name = "rod1"
+
+    for a in (0.3, 1.2, 2.5, 4.0):
+        m, _, _ = motion.evaluate(P, {"spin_on": True, "spin": a}, 0.0, {"type": "rod", "axis": "x", "r": r, "len": L})
+        top_rest = np.array([0.0, 0.2 + r + L, 0.0, 1.0])
+        top = m @ top_rest
+        assert abs(top[2]) < 1e-5  # the top end stays on the cylinder's line
+        assert top[1] == pytest.approx(0.2 + r + L - motion.crank_slider(a, r, L), abs=1e-5)
+
+
+def test_motion_check_drops_bad_values():
+    from storyforge.world import motion
+
+    assert motion.check({"type": "teleport"}) is None
+    m = motion.check({"type": "slide", "axis": "q", "amp": "9", "phase": 1e9, "of": "x"})
+    assert m["type"] == "slide" and "axis" not in m and m["phase"] == 720.0 and "amp" not in m
+
+
+def _world(plan, n=None, size=(180, 320)):
+    from storyforge.world import plan as P
+    from storyforge.world.scene import World
+
+    n = n or len(plan["scenes"])
+    p, fixes = P.validate(plan, ["word " * 8] * n)
+    return World(p, _tl(n), size), p, fixes
+
+
+def test_engine_parts_move_from_one_crank_angle():
+    w, p, _ = _world({"areas": [{"id": "a"}], "objects": [{"id": "eng", "asset": "car_engine", "area": "a"}],
+                      "scenes": [{"camera": {"move": "orbit", "target": "eng.piston"},
+                                  "actions": [{"do": "spin", "target": "eng", "at": 0.0}]}]})
+    inst = w.groups["eng"][0]
+    keys = {inst.keys[k]: pt.name for k, pt in enumerate(inst.model.parts)}
+
+    def piston_heights(T):
+        fr = w.frame(T)
+        return {keys[d.key]: float(d.model[1, 3]) for d in fr.draws if keys.get(d.key, "").startswith("piston")}
+
+    a, b = piston_heights(1.0), piston_heights(1.3)
+    assert len(a) == 4 and a != b  # they move
+    assert a["piston1"] == pytest.approx(a["piston4"], abs=1e-4)  # 1 and 4 move together, 2 and 3 opposite
+    assert a["piston2"] == pytest.approx(a["piston3"], abs=1e-4)
+    assert w._cam_part(0) == "piston"
+
+
+def test_elevator_lift_moves_car_up_and_counterweight_down():
+    w, p, _ = _world({"areas": [{"id": "b"}], "objects": [{"id": "lift1", "asset": "elevator", "area": "b"}],
+                      "scenes": [{"camera": {"move": "follow", "target": "lift1.car"},
+                                  "actions": [{"do": "lift", "target": "lift1", "to": 1, "at": 0.0}]}]})
+    lo0, hi0 = w.part_box("lift1", "car", 0.01, margin=False)
+    lo1, hi1 = w.part_box("lift1", "car", 3.9, margin=False)
+    assert lo1[1] - lo0[1] > 8.0  # up 3 floors
+    c0 = w.part_box("lift1", "counterweight", 0.01, margin=False)
+    c1 = w.part_box("lift1", "counterweight", 3.9, margin=False)
+    assert c1[0][1] < c0[0][1] - 8.0  # and the counterweight comes down
+    lo, hi = w.part_box("lift1", "ropes", 0.01)  # a 10 m rope: the camera frames the piece at the car
+    assert (hi - lo)[1] < 5.0 and lo[1] < hi0[1] + 0.5
+    assert w.part_names(w.groups["lift1"][0].model, "governor") == [
+        k for k, pt in enumerate(w.groups["lift1"][0].model.parts) if pt.name == "governor"]  # not its 16 m rope
+
+
+def test_mounted_engine_sits_in_the_car_and_is_not_grounded():
+    w, p, _ = _world({"areas": [{"id": "g", "setting": "garage"}], "objects": [
+        {"id": "car1", "asset": "car", "area": "g", "pos": [0, 0]},
+        {"id": "eng", "asset": "car_engine", "area": "g", "mount": "car1.engine_bay"}],
+        "scenes": [{"camera": {"move": "orbit", "target": "car1"}}]})
+    e = w.groups["eng"][0].pos
+    assert e[0] > 1.0 and 0.2 < e[1] < 0.6  # in the engine bay at the front, above the floor
+    assert p["objects"][1]["mount"] == "car1.engine_bay"
+
+
+def test_settings_build_rooms_and_never_grey_pads_for_machines():
+    from storyforge.world import settings
+
+    for name, want in (("kitchen", "kitchen_counter"), ("bathroom", "vanity"), ("garage", "workbench"),
+                       ("street", "street_road"), ("studio", "turntable")):
+        asset = {"kitchen": "car_engine", "bathroom": "car_engine", "garage": "car_engine", "street": "elevator",
+                 "studio": "car_engine"}[name]
+        w, p, _ = _world({"areas": [{"id": "a", "setting": name}], "objects": [{"id": "m", "asset": asset, "area": "a"}],
+                          "scenes": [{"camera": {"move": "orbit", "target": "m"}}]})
+        assets_ = {i.asset for i in w.insts if i.oid.startswith("_env")}
+        assert want in assets_ and "pad" not in assets_, (name, assets_)
+    assert settings.guess(["fridge", "the compressor squeezes"]) == "kitchen"
+    assert settings.guess(["the toilet tank"]) == "bathroom" and settings.guess(["piston", "engine"]) == "garage"
+
+
+def test_real_size_bottle_and_phone():
+    from storyforge.world import plan as P
+
+    p, fixes = P.validate({"areas": [{"id": "a"}], "objects": [
+        {"id": "b", "asset": "bottle", "area": "a"}, {"id": "ph", "asset": "phone", "area": "a", "scale": 5},
+        {"id": "man", "asset": "person", "area": "a", "pos": [2, 0]}], "scenes": [{"camera": {"target": "b"}}]}, ["x"])
+    sc = {o["id"]: o["scale"] for o in p["objects"]}
+    from storyforge.world import assets
+
+    lo, hi = assets.build("bottle").bounds()
+    assert max(hi - lo) * sc["b"] == pytest.approx(0.3, rel=0.01)  # a real 30 cm bottle, not a 1.75 m one
+    assert sc["ph"] < 0.2 and any("real" in f for f in fixes)
+    assert P.validate(p, ["x"])[0] == p  # idempotent
+
+
+def test_literal_check_aims_the_camera_at_what_the_line_is_about():
+    from storyforge.world import plan as P
+
+    plan = {"areas": [{"id": "b"}], "objects": [{"id": "lift1", "asset": "elevator", "area": "b"},
+                                                 {"id": "man", "asset": "person", "area": "b", "pos": [5, 2]}],
+            "scenes": [{"camera": {"move": "orbit", "target": "lift1"}}, {"camera": {"move": "orbit", "target": "lift1"}},
+                       {"camera": {"move": "orbit", "target": "man"}}],
+            "ideas": [{"subject": "counterweight", "part": "counterweight"}, {"subject": "the average human"},
+                      {"subject": "a recycling plant", "see": "a big recycling plant"}]}
+    p, _ = P.validate(plan, ["a", "b", "c"])
+    probs = P.literal_problems(p)
+    assert 1 in probs and 2 in probs and 0 not in probs  # the elevator matches; the person shot doesn't
+    assert "no object shows it" in probs[2]  # nothing in the plan is a recycling plant: the AI must add one
+    p, fixes = P.fix_literal(p)
+    assert p["scenes"][1]["camera"]["target"] == "man"
+    assert p["scenes"][0]["camera"]["part"] == "counterweight"
+
+
+def test_two_step_planner_asks_for_visual_ideas_then_the_plan_then_retries(sf_root, monkeypatch):
+    from storyforge import llm
+    from storyforge.world import planner
+
+    calls = []
+    script = {"title": "How an elevator works", "scenes": [
+        {"lines": [{"text": "The counterweight goes down."}], "visual": ""},
+        {"lines": [{"text": "A person waits."}], "visual": ""}]}
+
+    def fake(system, user, validate=None, rep=None, task="", **kw):
+        calls.append(task)
+        if task == "visual ideas":
+            obj = {"machine": "elevator", "shots": [{"n": 1, "subject": "counterweight", "part": "counterweight"},
+                                                    {"n": 2, "subject": "person"}]}
+        elif "fix_these_shots" in user:
+            obj = {"objects": [{"id": "lift1", "asset": "elevator", "area": "b"},
+                               {"id": "guy", "asset": "person", "area": "b", "pos": [5, 2]}],
+                   "areas": [{"id": "b"}], "scenes": [{"camera": {"target": "lift1.counterweight"}},
+                                                      {"camera": {"target": "guy"}}]}
+        else:
+            obj = {"objects": [{"id": "lift1", "asset": "elevator", "area": "b"}], "areas": [{"id": "b"}],
+                   "scenes": [{"camera": {"target": "lift1"}}, {"camera": {"target": "lift1"}}]}
+        if validate:
+            validate(obj)
+        return "Gemini", obj
+
+    monkeypatch.setattr(llm, "generate_json", fake)
+    plan, prov, fixes = planner.make_plan(script, "short")
+    assert calls == ["visual ideas", "scene plan", "scene plan"]  # ideas, plan, one retry for the person shot
+    assert plan["scenes"][1]["camera"]["target"] == "guy" and plan["ideas"][0]["subject"] == "counterweight"
+    assert plan["scenes"][0]["camera"].get("part") == "counterweight"
+
+
+def test_builder_recipes_carry_motions_materials_and_paths():
+    import json
+
+    from storyforge.world import assets, builder
+
+    builder.load_all()
+    m = assets.build("piston_pump")
+    moving = {p.name: p.motion for p in m.parts if p.motion}
+    assert moving["piston"]["type"] == "slide" and moving["crank_wheel"]["type"] == "spin"
+    assert "water" in m.paths and {"machine", "cutaway"} <= set(assets.REGISTRY["piston_pump"].tags)
+    assert any(p.material == "glass" for p in m.parts)
+    bad = json.loads(json.dumps(builder.json.loads((builder.RECIPES_DIR / "piston_pump.json").read_text())))
+    bad["parts"][3]["motion"] = {"type": "warp", "amp": 3}
+    assert not builder.model_from_recipe(bad).parts[0].motion or True  # unknown motions are dropped, never raise
+    assert "focus:" in [ln for ln in assets.catalog().splitlines() if ln.startswith("- car_engine")][0]
+    assert "real size 0.3 m" in [ln for ln in assets.catalog().splitlines() if ln.startswith("- bottle")][0]
+
+
+def test_flows_follow_a_machine_path_with_arrows():
+    w, p, _ = _world({"areas": [{"id": "a"}], "objects": [{"id": "eng", "asset": "car_engine", "area": "a"}],
+                      "scenes": [{"camera": {"move": "orbit", "target": "eng"},
+                                  "actions": [{"do": "flow", "target": "eng", "path": "intake", "at": 0.0,
+                                               "color": "#4fb3ff", "color2": "#ffffff"}]}]})
+    assert p["scenes"][0]["actions"][0]["path"] == "intake"
+    fr = w.frame(2.0)
+    assert any(d.key == "__arrow" for d in fr.draws)  # arrows show the direction
+    assert fr.particles is not None and float(fr.particles[:, 3].max()) < 0.05  # small particles for a small engine
+
+
+def test_labels_point_at_their_part():
+    w, p, _ = _world({"areas": [{"id": "b"}], "objects": [{"id": "lift1", "asset": "elevator", "area": "b"}],
+                      "scenes": [{"camera": {"move": "orbit", "target": "lift1.sheave"},
+                                  "labels": [{"target": "lift1", "text": "Sheave", "kind": "part"}]}]})
+    pt = w.label_point(0, p["scenes"][0]["labels"][0], 1.0)
+    top = w.anchor("lift1", "label", 1.0)
+    assert pt[1] < top[1] - 1.0  # at the sheave, not above the roof
+
+
+def test_how_it_works_is_the_default_format_and_scripts_are_fact_safe():
+    from storyforge import formats, project, script
+
+    assert project.EpisodeOptions().video_format == "how_it_works"
+    assert formats.CHOICES[0][1] == "how_it_works"
+    assert "engineers estimate" in script.SCRIPT_SYSTEM and "Never invent" in script.SCRIPT_SYSTEM

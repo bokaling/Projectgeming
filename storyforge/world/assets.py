@@ -50,7 +50,11 @@ def asset(name: str, about: str, tags=(), aliases=()):
 def build(name: str, **params) -> Model:
     info = REGISTRY[resolve(name)]
     ok = {k: v for k, v in params.items() if k in info.params}
-    model = _merge_static(info.fn(**ok))
+    model = info.fn(**ok)
+    for p in model.parts:  # the old library's steel, gold and copper parts look like metal
+        if not p.material and str(p.color).lower() in METALS:
+            p.material = "metal"
+    model = _merge_static(model)
     lo, hi = model.bounds()
     model.anchors.setdefault("top", (0.0, float(hi[1]), 0.0))
     model.anchors.setdefault("label", (0.0, float(hi[1]) + 0.35, 0.0))
@@ -62,10 +66,10 @@ def _merge_static(model: Model) -> Model:
     """Plain parts (no animation, not a shell) with the same look become one mesh: far fewer draws, same picture."""
     keep, groups = [], {}
     for p in model.parts:
-        if p.kind or p.shell:  # moving parts and shells (walls, posts: hidden one by one when they block) stay apart
+        if p.kind or p.shell or p.motion:  # moving parts and shells (walls: hidden one by one when they block) stay apart
             keep.append(p)
             continue
-        key = (str(p.color).lower(), round(float(p.opacity), 3), round(float(p.emissive), 3))
+        key = (str(p.color).lower(), round(float(p.opacity), 3), round(float(p.emissive), 3), p.material)
         groups.setdefault(key, []).append(p)
     merged = []
     for parts in groups.values():
@@ -73,7 +77,7 @@ def _merge_static(model: Model) -> Model:
         if len(parts) > 1:
             boxes = [b for p in parts for b in (p.boxes or [p.geo.bounds()])]
             first = M.Part(first.name, M.merge(*[p.geo for p in parts]), first.color, first.emissive, first.opacity,
-                           first.shell, boxes=boxes)
+                           first.shell, boxes=boxes, material=first.material)
         merged.append(first)
     model.parts = merged + keep
     return model
@@ -106,13 +110,46 @@ def resolve(name: str) -> str:
     return "crate"
 
 
+_FOCUS: dict = {}
+
+
+def focus_points(name: str) -> list[str]:
+    """The parts of a machine the camera can aim at ("eng1.piston"): its part names and anchor points."""
+    if name not in _FOCUS:
+        import re  # noqa: PLC0415
+
+        try:
+            m = build(name)
+            stems = [re.sub(r"\d+$", "", p.name) for p in m.parts if p.motion or p.kind]  # the works first
+            stems += [a for a in m.anchors if a not in ("label", "top", "center", "inside")]
+            stems += [re.sub(r"\d+$", "", p.name) for p in m.parts if p.shell]
+            stems = list(dict.fromkeys(s for s in stems if s))
+            heads = [s.split("_")[0] for s in stems if "_" in s]
+            for h in {h for h in heads if heads.count(h) >= 3}:  # car_floor, car_back, car_door… → "car"
+                k = next(i for i, s in enumerate(stems) if s.startswith(h + "_"))
+                stems = stems[:k] + [h] + [s for s in stems[k:] if not s.startswith(h + "_")]
+            _FOCUS[name] = list(dict.fromkeys(stems))[:14]
+        except Exception:  # noqa: BLE001
+            _FOCUS[name] = []
+    return _FOCUS[name]
+
+
 def catalog(compact: bool = True) -> str:
-    """The list the AI sees: name(params): what it is."""
+    """The list the AI sees: name: what it is [real size] [params] [focus: parts the camera can aim at]."""
     lines = []
     for info in sorted(REGISTRY.values(), key=lambda i: i.name):
+        if "set" in info.tags:  # walls, counters, tiles: the settings place them
+            continue
         ps = ", ".join(f"{k}={v!r}" for k, v in info.params.items() if k not in ("seed",))
-        lines.append(f"- {info.name}({ps}): {info.about}" if not compact else f"- {info.name}: {info.about}"
-                     + (f" [params: {ps}]" if ps else ""))
+        line = f"- {info.name}({ps}): {info.about}" if not compact else f"- {info.name}: {info.about}" + (
+            f" [params: {ps}]" if ps else "")
+        if info.name in REAL_SIZE:
+            line += f" [real size {REAL_SIZE[info.name]} m]"
+        if {"machine", "cutaway"} & set(info.tags):
+            pts = focus_points(info.name)
+            if pts:
+                line += " [focus: " + ", ".join(pts) + "]"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -129,6 +166,9 @@ C = {
     "purple": "#9a6ad6", "teal": "#2cc7b8", "gray": "#9aa3ab", "skin": "#f1c7a0", "sand": "#e2c98f",
     "grass": "#6cbf4f", "fire": "#ff7a1a", "smoke": "#b9c2c9", "gold": "#f6c445", "copper": "#c8763c",
 }
+
+
+METALS = {C["steel"], C["dark_steel"], C["gold"], C["copper"]}
 
 
 def col(c, default):
@@ -649,11 +689,36 @@ def person(shirt="#d9534f", pants="#2f5fa8", skin="skin", hat="", hair="#5a3a22"
     return m
 
 
+# Real sizes (largest side, meters) of objects whose library model is drawn bigger or smaller than life. The plan
+# checker scales them to real size, so a bottle is never bigger than the person holding it.
+REAL_SIZE = {
+    "bottle": 0.3, "phone": 0.15, "laptop": 0.35, "coin": 0.025, "coin_stack": 0.04, "cash": 0.16, "hammer": 0.33,
+    "wrench": 0.25, "lightbulb": 0.12, "beaker": 0.22, "sugar_cube": 0.016, "money_bag": 0.5, "gold_bar": 0.25,
+    "chicken": 0.45, "dog": 0.9, "bird": 0.3, "fish": 0.4, "bus": 12.0, "truck": 9.0, "airplane": 37.0,
+    "helicopter": 13.0, "fan": 0.6, "electric_motor": 0.6, "valve": 0.4, "battery": 0.3, "thermometer": 0.35,
+}  # (close-to-life models like people, cows, trees and tractors are left as they are)
+
+
+def real_scale(name: str, params: dict | None = None) -> float | None:
+    """The scale that makes this object its real size (None = the model is already real, or it is a symbol)."""
+    name = resolve(name)
+    if name not in REAL_SIZE:
+        return None
+    lo, hi = build(name, **(params or {})).bounds()
+    size = float(max(hi - lo))
+    return REAL_SIZE[name] / size if size > 1e-6 else None
+
+
 def names() -> list[str]:
-    return sorted(REGISTRY)
+    """The objects the planner can use (set pieces like walls and counters are placed by the settings)."""
+    return sorted(n for n, i in REGISTRY.items() if "set" not in i.tags)
 
 
 from . import assets_more  # noqa: E402,F401  (registers the rest of the library)
+from . import machines  # noqa: E402,F401  (machines with real working parts: engine, elevator, car…)
+from . import settings as _settings  # noqa: E402,F401  (set pieces: walls, counters, tiles… not in the catalog)
+
+REGISTRY.pop("engine", None)  # the old toy engine: "engine" now means the real car_engine (alias)
 from . import builder as _builder  # noqa: E402  (built-in recipes: objects made of basic parts)
 
 _builder.load_dir(_builder.RECIPES_DIR)

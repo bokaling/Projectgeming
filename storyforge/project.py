@@ -126,7 +126,7 @@ class EpisodeOptions:
     creator_note: str = ""
     quick_test: bool = False
     end_card: bool = False  # "Part X 👀" is for story series; explainers end on an overview that loops
-    video_format: str = "auto"  # how_it_works, what_if, how_made, history, top_list, story (formats.py)  # last frame "Part X 👀" (X = next episode)
+    video_format: str = "how_it_works"  # the channel's format (default); auto, what_if, how_made, history, top_list, story
     final_episode: bool = False  # end card says "The End" instead
     quality_check: bool = True  # check one still per scene (Gemini vision if you have a key) and fix
 

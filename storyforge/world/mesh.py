@@ -357,6 +357,8 @@ class Part:
     axis: str = "y"  # spin axis
     kind: str = ""  # "liquid" (fill level), "light" (turns on), "blade" (spins), "screen", …
     boxes: list = field(default_factory=list)  # boxes of the pieces merged into this part (for "camera inside" checks)
+    motion: object = None  # how a working part moves (dict or list of dicts, see motion.py): pistons, doors, ropes…
+    material: str = ""  # metal, paint, glass, plastic, rubber, water: how shiny it looks
 
 
 @dataclass

@@ -13,26 +13,65 @@ import re
 from .. import beats, llm
 from . import assets, examples, presets
 from . import plan as P
+from . import settings as settings_mod
 
-PLAN_SYSTEM = """You are the 3D director of a viral low poly "how it works" explainer channel (think clean low poly 3D, dark teal studio, glowing grid floor).
-You turn a narrated script into ONE continuous 3D world and a shot plan. The camera flies smoothly from area to area.
+VISUAL_SYSTEM = """You are the visual director of a viral 3D "how it works" channel (machines and everyday things: engines, elevators,
+fridges, toilets, planes, phones). Step 1 of 2: for EVERY narration line, decide what the viewer must SEE so the line is
+obvious with the sound off. Plain English, concrete objects only.
 Rules:
-- Set "preset" (the place): one of PRESETS. It picks the ground, props, light, background and air (ocean = under water, body = inside the body).
-- Use assets from the catalog (exact names). If the story's main object is missing (a submarine, a pyramid), use a short new
-  snake_case name and add "about": "what it looks like"; it will be designed as a new low poly object. Smaller things:
-  compose from simple ones (crate, cylinder_block, ball, pipe, arrow…) with params, color and scale.
-- Things in water, air or space can have "y" (height). A "move" can have "y" too: dive, rise, climb a ramp.
-- Put the story's places in areas, in story order. Objects stay in their area. Reuse objects in later scenes instead of making copies.
-- pos is [x, z] in meters inside the area (x to the right, z toward the viewer), ground is y = 0. Keep objects within 12 m of the area centre and don't overlap them. Use count + layout + spacing for groups (5 cows in a row).
-- Tiny things (bacteria, cells, molecules, atoms) go in their own area with "micro": true; reach it with camera "zoom_into" on the container in the scene before.
-- Every scene: one camera move with a target object; 1-3 actions that happen ON a spoken word ("at": a word from that scene's text); 0-2 labels (1-3 words, next to an object); 0-2 keywords (only the important words, max 3 words).
-- Kinds: problem (red) for problems/dangers, part (orange) for names of parts, number (white) for numbers, info (teal) otherwise.
-- Vary the camera (never the same move 3 times in a row). Scene 1 is the hook: CLOSE, funny or shocking, showing the
-  first line directly (e.g. close_up of one cow dropping a huge poop with a "50 kg" label). Never start wide.
-- The camera frames its target automatically (it fills the picture); add the things the line talks about as actions or
-  labels in the same area so they are framed together. Use close_up for details, wide moves only for overviews.
-- Exactly one plan scene per script scene, same order.
-Reply with JSON only.""".replace("PRESETS", ", ".join(presets.PRESETS))
+- The subject is the LITERAL thing the line talks about. A line about a human shows a person; a line about a fridge's
+  compressor shows the compressor (inside the fridge); "the car" shows a car. Never a random shape for an idea.
+- Machines: show the INSIDE with the real working parts moving (cut open / see-through): pistons, valves, cables,
+  pulleys, gears, compressor, coils, floats, flappers, motors. Name the exact part in focus ("part").
+- Abstract ideas become a clear visual metaphor made of real objects: "heat leaves the fridge" = glowing red arrows and
+  hot coils at the back; "pressure" = a gauge needle swinging; "the fuel explodes" = an orange flash in the cylinder.
+- Every number becomes a visual: a counter counting up, a stack or pile of N things, a gauge needle, a balance scale,
+  a bar chart, a thermometer. Say which one in "number_visual" (or "" when the line has no number).
+- Real scale: things keep their real size. Tiny things (molecules, bacteria, electrons, atoms) need a zoomed-in world
+  ("micro": true) reached by zooming into the thing that contains them.
+- The place fits the machine ("setting"): kitchen (fridge, oven), bathroom (toilet, shower), garage (car engine),
+  street (elevator building, cars), living_room, office, desk (small things: phones, chips), lab, factory, outdoors,
+  studio (dark studio, when no place fits).
+- Shot 1 is the hook: CLOSE and striking, showing the first line directly (a cable snapping, a fridge door opening in
+  slow motion, a spark lighting up a cylinder). The last shot shows the whole machine working (a satisfying overview).
+- Keep the narration's facts; never add new numbers or claims.
+Reply with JSON only:
+{"machine": "the main machine/thing", "shots": [{"n": 1, "see": "what we see, one sentence", "subject": "a noun",
+  "part": "the machine part in focus or ''", "objects": ["the nouns in the picture"], "moves": "what moves",
+  "number_visual": "", "setting": "garage", "inside": true}]}"""
+
+PLAN_SYSTEM = """You are the 3D director of a viral low poly "how it works" explainer channel (clean low poly 3D, dark teal studio,
+glowing grid floor). Step 2 of 2: you turn the narration AND its visual ideas (step 1) into ONE continuous 3D world and
+a shot plan. The camera flies smoothly from area to area.
+Rules:
+- Follow each shot's visual idea EXACTLY: the camera target is the idea's subject (or the part in focus, as
+  "obj.part", e.g. "eng1.piston", "lift1.car", "lift1.sheave"; machines list their parts in the catalog under focus).
+  A shot whose picture doesn't show its line is rejected.
+- Set "preset" (the look): one of PRESETS. Give every area a "setting" (the place around it): one of SETTINGS.
+- Use assets from the catalog (exact names). If the thing a line needs is missing (a fridge, a toilet, a washing
+  machine), use a short new snake_case asset name and add "about": what it looks like AND its real working parts
+  (compressor, coils, float, flapper, valves, pistons, cables, pulleys…) with their real size; it will be built as a
+  new 3D object with those parts. Never use an unrelated object as a stand-in.
+- Real scale: every object keeps its real size (scale 1 = real size; don't make a bottle giant or a man tiny). Put
+  small things in close-ups, big things in wide shots. Tiny things (molecules, bacteria, atoms) go in their own area
+  with "micro": true, reached by camera "zoom_into" on the thing that holds them.
+- Machines are cut open: add a "cutaway" action (keep: true) on the first shot that shows the inside; then "spin" to
+  run an engine/motor/compressor, "lift" (to 0-1) for an elevator car, "open"/"close" for doors, lids, flappers and
+  valves, "fill"/"drain" for liquids (a part like "toilet1.tank_water" fills just that liquid).
+- Flows show cause and effect: a flow/sparks ALWAYS has "to" (the object id it goes into) or "path" (one of the
+  object's own paths, e.g. "intake", "exhaust", "loop"). Use "color" and "color2" (start/end colour: hot red → cold blue).
+- Numbers are visuals: a "counter" (label with "from"/"to" counts up, text like "{n} kg"), a stack/pile of N things
+  (count + layout), a "gauge", a "balance_scale", a "bar_chart", a "thermometer".
+- Put the story's places in areas, in story order. Objects stay in their area. Reuse objects instead of copies.
+- pos is [x, z] in meters inside the area (x right, z toward the viewer), ground is y = 0. Keep objects within 12 m of
+  the area centre and don't overlap them. Things on a machine or inside a car: "mount": "car1.engine_bay".
+- Every scene: one camera move with a target; 1-3 actions ON a spoken word ("at": a word from that scene's text);
+  0-2 labels (1-3 words, the part's name, next to it); 0-2 keywords (only the important words, max 3 words).
+- Kinds: problem (red) for problems/dangers, part (orange) for names of parts, number (white) for numbers, info (teal).
+- Vary the camera (never the same move 3 times in a row). Scene 1 is the hook: CLOSE and striking (close_up or
+  push_in on the part the first line names). Never start wide. The last scene shows the whole machine working.
+- Exactly one plan scene per script scene, same order. Don't invent facts in labels: only words from the narration.
+Reply with JSON only.""".replace("PRESETS", ", ".join(presets.PRESETS)).replace("SETTINGS", ", ".join(settings_mod.SETTINGS))
 
 
 def _scene_texts(script: dict) -> list[str]:
@@ -61,11 +100,51 @@ def example_for(script: dict) -> dict | None:
 CHUNK = 14  # long videos are planned in parts of this many shots (one request each)
 
 
-def ai_plan(script: dict, length: str, rep=None) -> tuple[str, dict]:
+def visual_ideas(script: dict, length: str, rep=None) -> list[dict] | None:
+    """Step 1: what the viewer must SEE in every shot (plain English). None when no AI answers."""
+    texts = _scene_texts(script)
+    out: list[dict] = []
+    for a in range(0, len(texts), 30):
+        b = min(len(texts), a + 30)
+        payload = {"title": script.get("title", ""), "format": "YouTube Short 9:16" if length == "short" else "16:9",
+                   "lines": [{"n": i + 1, "text": texts[i], "writer_hint": script["scenes"][i].get("visual", "")}
+                             for i in range(a, b)],
+                   "reply_format": {"machine": "…", "shots": [f"exactly {b - a}, n = {a + 1}..{b}"]}}
+
+        def validate(obj, n=b - a):
+            if not isinstance(obj, dict) or not isinstance(obj.get("shots"), list) or len(obj["shots"]) < max(1, n // 2):
+                raise ValueError(f"need {n} shots with what we see")
+
+        try:
+            _, obj = llm.generate_json(VISUAL_SYSTEM, json.dumps(payload, ensure_ascii=False), validate=validate,
+                                       rep=rep, task="visual ideas", temperature=0.5, max_tokens=6000, strong=True)
+        except Exception as exc:  # noqa: BLE001
+            from ..messages import StopRequested  # noqa: PLC0415
+
+            if isinstance(exc, StopRequested):
+                raise
+            return None
+        got = {}
+        for sh in obj["shots"]:
+            try:
+                got[int(sh.get("n")) - 1] = sh
+            except (TypeError, ValueError, AttributeError):
+                continue
+        for i in range(a, b):
+            sh = got.get(i) or {}
+            out.append({k: str(sh.get(k) or "")[:200] for k in ("see", "subject", "part", "number_visual", "setting")}
+                       | {"objects": [str(x)[:40] for x in (sh.get("objects") or [])][:6] if isinstance(
+                           sh.get("objects"), list) else [], "inside": bool(sh.get("inside")),
+                          "machine": str(obj.get("machine") or "")[:60]})
+    return out
+
+
+def ai_plan(script: dict, length: str, rep=None, ideas: list | None = None, feedback: dict | None = None
+            ) -> tuple[str, dict]:
     """Shorts: one request. Long videos: one request per CHUNK shots, every request sees the world so far."""
     texts = _scene_texts(script)
     if len(texts) <= CHUNK + 2:
-        return _ai_request(script, texts, 0, len(texts), None, length, rep)
+        return _ai_request(script, texts, 0, len(texts), None, length, rep, ideas, feedback)
     from ..messages import StopRequested  # noqa: PLC0415
 
     merged = {"title": script.get("title", ""), "areas": [], "objects": [], "scenes": []}
@@ -78,7 +157,7 @@ def ai_plan(script: dict, length: str, rep=None) -> tuple[str, dict]:
         if rep is not None:
             rep.info(f"🧭 Planning shots {a + 1}-{b} of {len(texts)} (part {k + 1}/{len(starts)})")
         try:
-            prov, part = _ai_request(script, texts, a, b, merged if k else None, length, rep)
+            prov, part = _ai_request(script, texts, a, b, merged if k else None, length, rep, ideas)
         except StopRequested:
             raise
         except Exception:  # noqa: BLE001  (this part only: the built-in planner, the rest stays AI)
@@ -92,7 +171,8 @@ def ai_plan(script: dict, length: str, rep=None) -> tuple[str, dict]:
     return " + ".join(names) + f" ({len(starts)} parts)", merged
 
 
-def _ai_request(script: dict, texts: list[str], a: int, b: int, world: dict | None, length: str, rep) -> tuple[str, dict]:
+def _ai_request(script: dict, texts: list[str], a: int, b: int, world: dict | None, length: str, rep,
+                ideas: list | None = None, feedback: dict | None = None) -> tuple[str, dict]:
     n = b - a
     payload = {
         "title": script.get("title", ""),
@@ -100,13 +180,20 @@ def _ai_request(script: dict, texts: list[str], a: int, b: int, world: dict | No
         else "long YouTube video, horizontal 16:9",
         "style": script.get("style", ""),
         "scenes": [{"n": i + 1, "text": texts[i], "picture": script["scenes"][i].get("visual", ""),
+                    **({"visual_idea": {k: v for k, v in ideas[i].items() if v not in ("", [], False)}}
+                       if ideas and i < len(ideas) else {}),
                     **({"chapter": script["scenes"][i]["chapter"]} if script["scenes"][i].get("chapter") else {})}
                    for i in range(a, b)],
         "asset_catalog": assets.catalog(),
+        "settings": settings_mod.SETTINGS,
         "schema": P.schema_text(),
-        "example_plan": examples.COW_POOP_PLAN,
+        "example_plan": examples.MACHINE_EXAMPLE_PLAN,
         "reply_format": {"title": "…", "areas": [{"id": "…"}], "objects": ["…"], "scenes": ["one per script scene"]},
     }
+    if feedback:  # a second try: these shots didn't show their line
+        payload["fix_these_shots"] = feedback
+        payload["previous_plan"] = feedback.get("_plan")
+        feedback.pop("_plan", None)
     if world is not None:  # a later part of a long video
         payload["world_so_far"] = {
             "areas": [x["id"] + (" (micro)" if x.get("micro") else "") for x in world["areas"]],
@@ -208,10 +295,16 @@ def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str,
     builder.load_all()  # objects designed before (Drive library)
     texts = _scene_texts(script)
     raw, provider = example_for(script), "Built-in example plan"
+    ideas = None
     if raw is None:
         try:
-            provider, raw = ai_plan(script, length, rep)
+            ideas = visual_ideas(script, length, rep)  # step 1: what we must SEE in every shot
+            if rep is not None and ideas:
+                rep.info(f"👁️ Visual idea for every shot ({len(ideas)}): e.g. “{ideas[0].get('see', '')[:90]}”")
+            provider, raw = ai_plan(script, length, rep, ideas)  # step 2: objects, camera, actions
             builder.ensure_objects(raw, rep)  # objects the library doesn't have: designed by the AI as recipes
+            if ideas:
+                raw = _second_try(script, length, rep, ideas, raw, texts)
         except Exception as exc:  # noqa: BLE001
             from ..messages import StopRequested  # noqa: PLC0415
 
@@ -221,9 +314,41 @@ def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str,
                 rep.warn("The AI planner is busy, so I made a simple plan from the words of your script "
                          "(add a free GEMINI_API_KEY for much better scenes).")
             raw, provider = offline_plan(script), "Built-in planner (no AI)"
+    if ideas:
+        raw["ideas"] = ideas
     plan, fixes = P.validate(raw, texts)
+    plan, more = P.fix_literal(plan, texts)  # a shot that still doesn't show its line: aim at the thing it names
+    fixes += more
     plan["title"] = plan.get("title") or script.get("title", "")
     return plan, provider, fixes
+
+
+def _second_try(script: dict, length: str, rep, ideas: list, raw: dict, texts: list) -> dict:
+    """Shots whose camera subject doesn't literally show the line go back to the AI once, with the reasons."""
+    from . import builder  # noqa: PLC0415
+
+    trial = dict(raw, ideas=ideas)
+    checked, _ = P.validate(trial, texts)
+    bad = P.literal_problems(checked, texts)
+    if not bad:
+        return raw
+    if rep is not None:
+        rep.info(f"🔁 {len(bad)} shot(s) didn't show their line ({', '.join(str(k + 1) for k in sorted(bad))}): "
+                 "asking the AI to fix them")
+    feedback = {f"shot {k + 1}": why for k, why in sorted(bad.items())}
+    feedback["_plan"] = raw
+    try:
+        _, again = ai_plan(script, length, rep, ideas, feedback)
+        builder.ensure_objects(again, rep)
+    except Exception as exc:  # noqa: BLE001
+        from ..messages import StopRequested  # noqa: PLC0415
+
+        if isinstance(exc, StopRequested):
+            raise
+        return raw
+    trial2 = dict(again, ideas=ideas)
+    checked2, _ = P.validate(trial2, texts)
+    return again if len(P.literal_problems(checked2, texts)) < len(bad) else raw
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +372,9 @@ def find_assets(text: str) -> list[str]:
             for cand in (phrase, phrase.rstrip("s"), phrase[:-2] if phrase.endswith("es") else ""):
                 if cand and cand in names:
                     name = assets.ALIASES.get(cand, cand)
-                    if name not in found and name not in ("ground", "platform", "crate"):
+                    tags = set(assets.REGISTRY[name].tags) if name in assets.REGISTRY else set()
+                    if name not in found and name not in ("ground", "platform", "crate") and not tags & {
+                            "helper", "terrain", "set"}:
                         found.append(name)
                     break
     return found
@@ -260,6 +387,11 @@ def offline_plan(script: dict) -> dict:
     last = None
     for i, (sc, text) in enumerate(zip(script["scenes"], texts)):
         found = find_assets(sc.get("visual", "") + " " + text)[:3]
+        machines = [a for a in list(by_asset) + found if {"machine", "cutaway"} & set(assets.REGISTRY[a].tags)]
+        parts_of = [m for m in machines for a in found if a != m and a in assets.focus_points(m)]
+        found = [a for a in found if not any(a != m and a in assets.focus_points(m) for m in machines)]  # "the
+        # elevator car" is the elevator's car, not a sedan
+        found = list(dict.fromkeys(parts_of + found))
         if not found and last is None:
             found = ["sign_number"]
         new = [a for a in found if a not in by_asset]
@@ -283,10 +415,17 @@ def offline_plan(script: dict) -> dict:
             obj = next(o for o in objects if o["id"] == oid)
             model = assets.build(obj["asset"])
             kinds = {p.kind for p in model.parts}
+            drives = _drives(model)
             word = _first_word(text)
             if oid in [by_asset.get(a) for a in new]:
                 actions.append({"do": "appear", "target": oid, "at": 0.08})
-            if kinds & {"blade", "piston", "rocker"}:
+            if "lift" in drives and re.search(r"\b(up|rise|rises|lift|top|climb|down|floor)", text.lower()):
+                actions.append({"do": "lift", "target": oid, "at": word})
+            elif "open" in drives and re.search(r"\b(open|opens|door|lid|flush|pull)", text.lower()):
+                actions.append({"do": "open", "target": oid, "at": word})
+            elif "run" in drives:
+                actions.append({"do": "spin", "target": oid, "at": 0.0, "speed": 0.6})
+            elif kinds & {"blade", "piston", "rocker"}:
                 actions.append({"do": "spin", "target": oid, "at": word})
             elif "light" in kinds:
                 actions.append({"do": "light_on", "target": oid, "at": word})
@@ -303,11 +442,45 @@ def offline_plan(script: dict) -> dict:
                 actions.append({"do": "smoke", "target": oid, "at": word})
             elif obj["asset"] == "manure":
                 actions.append({"do": "grow", "target": oid, "at": word})
-        labels = [{"target": target, "text": next(o for o in objects if o["id"] == target)["asset"].replace("_", " "),
-                   "kind": "part", "at": 0.2}]
-        scenes.append({"camera": {"move": MOVES[i % len(MOVES)], "target": target},
+        cam = {"move": MOVES[i % len(MOVES)], "target": target}
+        part = _named_part(next(o for o in objects if o["id"] == target)["asset"], text)
+        label = next(o for o in objects if o["id"] == target)["asset"].replace("_", " ")
+        if part:  # the line names a part of the machine ("the sheave", "the pistons"): look at it
+            cam["target"] = f"{target}.{part}"
+            label = part.replace("_", " ")
+        labels = [{"target": target, "text": label, "kind": "part", "at": 0.2}]
+        scenes.append({"camera": cam,
                        "actions": actions[:3], "labels": labels, "keywords": _keywords(text)})
     return {"title": script.get("title", ""), "areas": areas, "objects": objects, "scenes": scenes}
+
+
+def _drives(model) -> set:
+    """How a machine is worked: run (spin), lift (elevator) or open (doors, flappers)."""
+    out = set()
+    for p in model.parts:
+        for m in (p.motion if isinstance(p.motion, list) else [p.motion] if p.motion else []):
+            t = m.get("type")
+            if t in ("lift", "stretch") or m.get("drive") == "lift":
+                out.add("lift")
+            elif t == "open" or m.get("drive") == "open":
+                out.add("open")
+            elif t in ("spin", "slide", "rod", "valve", "pulse", "chamber", "swing"):
+                out.add("run")
+    return out
+
+
+def _named_part(asset: str, text: str) -> str:
+    """A focus part of this machine that the line names (plural or not)."""
+    seq = [P._stem(w) for w in re.split(r"[^A-Za-z0-9']+", text or "") if w]
+    best, at = "", len(seq) + 1
+    for name in assets.focus_points(asset):  # the part named FIRST in the line is what it's about
+        if name in ("power", "inlet", "outlet"):
+            continue
+        ws = P.words_of(name.replace("_", " "))
+        pos = next((k for k, w in enumerate(seq) if w in ws), None)
+        if pos is not None and pos < at:
+            best, at = name, pos
+    return best
 
 
 def _first_word(text: str) -> float | str:

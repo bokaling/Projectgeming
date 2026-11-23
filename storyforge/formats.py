@@ -10,8 +10,11 @@ import re
 
 FORMATS = {
     "how_it_works": dict(label="How it works", captions="keywords", ending="overview", mood="explainer",
-                         rules="Follow the thing step by step from start to finish; every shot = one step that you can see "
-                               "happen (machines move, liquid flows, lights turn on). End with the whole system working."),
+                         rules="Open on one striking, close moment (a cable snapping, a door opening in slow motion, a "
+                               "spark in a cylinder). Then follow the thing step by step from start to finish: cut it "
+                               "open and name each real working part as it does its job (pistons move, valves open, "
+                               "liquid flows, lights turn on), one step per shot, in the real order. Use numbers people "
+                               "can picture. End with the whole machine working, then a cliffhanger."),
     "what_if": dict(label="What happens if", captions="keywords", ending="overview", mood="tense",
                     rules="Start with the most shocking consequence, then go back and escalate step by step with time "
                           "stamps and numbers (after 1 second, after 1 hour, after 1 day…). End with the final outcome."),
@@ -28,7 +31,8 @@ FORMATS = {
                   rules="Original blocky characters with names, emotions on their faces (happy, sad, angry, surprised, "
                         "scared), short dialog lines, a twist and a cliffhanger. Captions are single big words."),
 }
-CHOICES = [("Auto (from the topic)", "auto")] + [(f["label"], k) for k, f in FORMATS.items()]
+CHOICES = [(FORMATS["how_it_works"]["label"] + " (default)", "how_it_works"), ("Auto (from the topic)", "auto")] + [
+    (f["label"], k) for k, f in FORMATS.items() if k != "how_it_works"]
 PATTERNS = [
     (r"\bwhat (would )?happens? (if|to|inside|when)\b|\bwhat if\b", "what_if"),
     (r"\bhow\b.{0,40}\b(are|is|were|was|get|gets) (made|built|produced|manufactured|created)\b|\bhow .{0,30}\bmade\b",

@@ -1,0 +1,28 @@
+{
+ "name": "piston_pump",
+ "about": "a piston water pump cut open: a motor turns a crank wheel, the rod pushes a piston up and down in a glass cylinder, two valves let water in and out (~1.2 m)",
+ "tags": ["machine", "water", "cutaway"],
+ "aliases": ["water_pump", "reciprocating_pump", "hand_pump", "well_pump"],
+ "parts": [
+  {"name": "base", "shape": "box", "size": [0.9, 0.08, 0.5], "pos": [0, 0.04, 0], "color": "#4a5058", "material": "metal"},
+  {"name": "cylinder", "shape": "cylinder", "size": [0.12, 0.5], "pos": [0, 0.45, 0], "color": "#bfe6ff", "opacity": 0.3, "material": "glass", "shell": true},
+  {"name": "water", "shape": "cylinder", "size": [0.11, 0.3], "pos": [0, 0.35, 0], "color": "#3aa6d9", "kind": "liquid", "opacity": 0.75, "material": "water"},
+  {"name": "piston", "shape": "cylinder", "size": [0.115, 0.06], "pos": [0, 0.62, 0], "color": "#c7cdd3", "material": "metal",
+   "motion": {"type": "slide", "axis": "y", "amp": 0.08, "len": 0.3}},
+  {"name": "rod", "shape": "box", "size": [0.025, 0.3, 0.025], "pos": [0, 0.8, 0], "color": "#8a9199", "material": "metal",
+   "pivot": [0, 0.95, 0], "motion": {"type": "rod", "axis": "z", "r": 0.08, "len": 0.3}},
+  {"name": "crank_wheel", "shape": "cylinder", "size": [0.16, 0.03], "pos": [0, 1.03, 0.05], "rot": [90, 0, 0], "color": "#2f6fb5", "material": "metal",
+   "pivot": [0, 1.03, 0.05], "motion": {"type": "spin", "axis": "z", "speed": 1}},
+  {"name": "frame", "shape": "box", "size": [0.06, 1.1, 0.06], "pos": [0.3, 0.6, 0], "color": "#4a5058", "material": "metal"},
+  {"name": "motor", "shape": "cylinder", "size": [0.1, 0.22], "pos": [0.3, 1.03, -0.1], "rot": [90, 0, 0], "color": "#2cc7b8", "material": "paint"},
+  {"name": "inlet_valve", "shape": "cylinder", "size": [0.05, 0.02], "pos": [-0.04, 0.22, 0], "color": "#e0b12a", "material": "metal",
+   "motion": {"type": "valve", "axis": "y", "amp": 0.02, "speed": 1, "phase": 180}},
+  {"name": "outlet_valve", "shape": "cylinder", "size": [0.05, 0.02], "pos": [0.04, 0.22, 0], "color": "#d9534f", "material": "metal",
+   "motion": {"type": "valve", "axis": "y", "amp": -0.02, "speed": 1, "phase": 0}},
+  {"name": "pipe_in", "shape": "tube", "points": [[-0.45, 0.15, 0], [-0.1, 0.15, 0], [-0.04, 0.2, 0]], "size": [0.03], "color": "#8e979f", "material": "metal"},
+  {"name": "pipe_out", "shape": "tube", "points": [[0.04, 0.2, 0], [0.1, 0.15, 0], [0.45, 0.15, 0]], "size": [0.03], "color": "#8e979f", "material": "metal"}
+ ],
+ "paths": {"water": [[-0.45, 0.15, 0], [-0.1, 0.15, 0], [-0.04, 0.25, 0], [0, 0.45, 0], [0.04, 0.25, 0], [0.1, 0.15, 0], [0.45, 0.15, 0]]},
+ "ports": {"inlet": [-0.45, 0.15, 0], "outlet": [0.45, 0.15, 0], "power": [0.3, 1.03, -0.21]},
+ "label": [0, 1.35, 0]
+}

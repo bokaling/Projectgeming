@@ -13,7 +13,7 @@ import zlib
 
 import numpy as np
 
-from . import assets
+from . import assets, settings
 
 FARM = {"cow", "pig", "sheep", "chicken", "horse", "barn", "manure", "tractor", "scraper", "hay_bale", "crops", "silo"}
 TOWN = {"house", "skyscraper", "tree", "car", "bus"}
@@ -78,11 +78,18 @@ def dress(world) -> list[dict]:
         insts = [i for i in world.insts if i.area == aid and i.asset not in NO_PAD]
         if not insts:
             continue
+        setting = area.get("setting")
+        look0 = getattr(world, "look", {}) or {}
+        if setting and setting not in settings.OLD_STYLE and not look0.get("natural") and look0.get("base", "x") is not None:
+            # a real place around the machine (kitchen, garage…); open nature (sea floor, sand, flesh) stays as it is
+            out += settings.dress(world, area, setting, insts)
+            continue
         boxes = [inst_box(i) for i in insts]
         lo = np.min([b[0] for b in boxes], 0)
         hi = np.max([b[1] for b in boxes], 0)
         names = {i.asset for i in insts}
         kind = "farm" if names & FARM else ("town" if names & TOWN else "industry")
+        kind = {"farm": "farm", "town": "town", "site": "industry"}.get(setting, kind)
         margin = 2.6
         cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
         w, d = hi[0] - lo[0] + 2 * margin, hi[2] - lo[2] + 2 * margin

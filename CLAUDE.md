@@ -15,11 +15,17 @@ The owner is a beginner coder. Explain things simply, in short sentences.
    (shocking first line ≤10 words, something new every 5 s, specific numbers, satisfying payoff, cliffhanger).
    Or the owner pastes a script: `[TITLE]`, `[STYLE]` (optional), `[SCENE] what we see`, `NARRATOR: line`,
    `[CHAPTER] name` (optional). Several scripts (or topics) separated by `=====` = batch mode.
-2. **Scene plan** (`world/planner.py`): Gemini (`strong=True`) turns the script into a strict JSON plan
-   (areas, objects with asset + params, and per shot: camera, actions, labels, keywords). `world/plan.py`
-   validates it and auto-fixes everything (closest asset name, missing targets, number clamps, one shot per
-   script scene, keywords ≤4 words, ≤4 labels) and lists the fixes. `plan.md` shows it in plain words.
-   No AI → `offline_plan` (finds known objects in the words). The cow demo script → the hand-made example plan.
+2. **Scene plan** (`world/planner.py`), in TWO steps: (a) `visual_ideas`: Gemini says per line what the viewer
+   must SEE (subject, machine part, setting, number visual, inside or not), (b) `ai_plan` turns lines + ideas into
+   a strict JSON plan (areas with a `setting`, objects with asset + params, per shot: camera (target can be
+   `obj.part`), actions, labels, keywords). `builder.ensure_objects` designs missing machines with their working
+   parts. `plan.literal_problems` rejects shots whose camera subject is not the idea's subject: one AI retry
+   with the reasons (`_second_try`), then `fix_literal` aims the camera at the matching object/part locally.
+   `world/plan.py` validates it and auto-fixes everything (closest asset name, missing targets, number clamps,
+   real size, flows without a target, auto cutaway of machines, one shot per script scene, keywords ≤4 words,
+   ≤4 labels) and lists the fixes. `plan.md` shows it in plain words. No AI → `offline_plan` (finds known objects
+   and machine parts in the words, runs/lifts/opens machines by their motions). The cow demo script → the
+   hand-made example plan. The planner sees `examples.MACHINE_EXAMPLE_PLAN` as its example.
 3. **Voice** (made in a thread at the same time as the plan): Kokoro am_fenrir at 1.1x; word timings.
 4. **Timeline** (`Pipeline.timeline`): every shot lasts exactly its voice line + a short breath (whole frames).
 5. **3D render** (`world/video.py`): one clip per shot, encoded ONCE at final quality with the keyword
@@ -80,6 +86,30 @@ The owner is a beginner coder. Explain things simply, in short sentences.
   (`EpisodeOptions.video_format`, "auto" = `formats.detect(title)`). Each has script rules (sent to the writer),
   captions (`keywords` or `words` = one big word, red accents), ending (`overview` or `card` = "Part X") and a music
   mood. People have `mood` (neutral, happy, sad, angry, surprised, scared).
+* **Machines (round 6, `world/machines.py`, `world/motion.py`):** real working parts at real size. A part's
+  `motion` (dict or list): spin, slide (pistons, exact crank+rod motion with `len`), rod (connecting rods), valve
+  (cam timing), swing, pulse (sparks), chamber (the gas above a piston: squeezed, coloured by stroke), open (doors,
+  lids, flappers; `drive: open` for levers), lift (elevator car, negative = counterweight), stretch (ropes: the
+  pivot end stays), level (a float on a named liquid). States: `spin` runs, `lift` (to 0-1), `open`/`close`,
+  fill/drain/glow/alarm on one part (`toilet1.tank_water`). `car_engine` (inline 4, 0.6 m), `car` (4.5 m, engine
+  bay anchor), `elevator` (4-floor building, shaft, car, counterweight, ropes, sheave, motor, governor), `counter`,
+  `balance_scale`; built-in recipes `piston_pump` (the design example), `fridge`, `toilet`. Part `material`
+  (metal, paint, glass, plastic, rubber, ceramic, water) = specular highlight + sky reflection (`u_shine`).
+  A cutaway (and `xray`) cuts only the SHELL; the works inside stay whole. Objects with `"mount": "car1.engine_bay"`
+  sit at another object's anchor (and ride along); never grounded. Flows can follow a model `path` ("intake",
+  "loop") with `color2` (hot → cold) and draw glowing arrows along the way; particle size follows the machine size.
+* **Camera on a part:** `camera.target = "lift1.car"` frames that part where it is NOW (a follow shot rides the
+  rising car); exact part names win over prefixes (`governor` ≠ `governor_rope`), long thin parts (ropes) are
+  cropped to the load end, the machine's own walls/panels between the camera and the part are left out, labels
+  point at their part (`World.label_point`), alarms on a huge machine only colour the part in the picture.
+* **Settings (round 6, `world/settings.py`):** per area: studio (dark grid + a turntable under one machine),
+  kitchen, bathroom, garage, street, living_room, office, lab, factory, outdoors, desk; farm/site/town = the old
+  pads with props. Rooms are open dollhouse corners (floor, back + left wall, furniture) sized and placed from the
+  machine's box, walls don't cast shadows; guessed from object names (×3) + the shot words.
+* **Real size:** `assets.REAL_SIZE` (objects drawn far from life size: bottle, phone, coin…) → `plan.validate` sets
+  the scale (kept within 0.6-1.6× real); not in micro areas, symbols, the body or space worlds.
+* **Framing:** a normal shot puts the subject's box at 68 % of the width (`W_DIV`), at most 92 % of the safe
+  height (`H_DIV`).
 * **Moves:** `move` takes `"y"` (dive, climb a ramp, rise); a group keeps its formation (offsets from its first
   member). Liquid parts fill/drain from their own bottom (a ballast tank high in a hull drains in place).
 * **Keyword captions** (`captions.keyword_header/keyword_events`): top of the screen, one at a time, colored
@@ -199,7 +229,10 @@ storyforge/
   world/video.py   frames → FFmpeg clip, stills
   world/examples.py  4 demo scripts + hand-made plans (cow/farm, submarine/ocean, sugar/body, pyramids/ancient)
   world/presets.py   the 19 world presets (colours, ground, props, people, air) + guess from the words
-  world/builder.py   object builder: recipes → models, AI design, Drive library
+  world/builder.py   object builder: recipes (with motions, materials, paths) → models, AI design, Drive library
+  world/machines.py  machines with real working parts (engine, car, elevator) + number visuals (counter, scale)
+  world/motion.py    how working parts move (crank, rods, valves, doors, lifts, ropes, floats), pure functions of T
+  world/settings.py  the place around a machine per area (kitchen, bathroom, garage, street…) + set pieces
   world/recipes/     built-in object recipes (JSON)
   audio/tts.py     Kokoro, Kokoro ONNX, Edge TTS, Piper, espeak, own voice; word timings
   audio/align.py   CTC forced alignment + proportional fallback

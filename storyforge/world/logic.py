@@ -256,7 +256,7 @@ def ground_everything(world) -> list[str]:
     plan_insts = [i for i in world.insts if not i.oid.startswith("_env")]
     boxes = {id(i): inst_box(i) for i in plan_insts}
     for inst in plan_insts:
-        if inst.pos[1] <= 0.05 or floats_ok(world, inst):
+        if inst.pos[1] <= 0.05 or floats_ok(world, inst) or inst.oid in getattr(world, "mounts", {}):
             continue
         lo, hi = boxes[id(inst)]
         bottom = lo[1]

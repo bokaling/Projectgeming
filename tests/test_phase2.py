@@ -25,7 +25,7 @@ def cow():
 def test_the_library_covers_every_kind_of_topic():
     names = set(assets.names())
     assert len(names) >= 120
-    for need in ("pig", "factory", "wind_turbine", "car", "train", "rocket", "pump", "gear", "engine", "turbine",
+    for need in ("pig", "factory", "wind_turbine", "car", "train", "rocket", "pump", "gear", "car_engine", "turbine",
                  "conveyor", "battery", "fire", "cell", "virus", "molecule", "atom", "dna", "planet", "coin", "cash",
                  "bar_chart", "beaker", "ground_layers", "terrain", "water", "cloud", "explosion", "skyscraper"):
         assert need in names, need
@@ -54,7 +54,8 @@ def test_new_moving_parts_animate(cow):
     def part_matrices(oid, kind, t):
         fr = w.frame(t)
         inst = w.groups[oid][0]
-        keys = {inst.keys[k] for k, pt in enumerate(inst.model.parts) if pt.kind == kind}
+        keys = {inst.keys[k] for k, pt in enumerate(inst.model.parts)
+                if pt.kind == kind or (pt.motion and pt.name.startswith(kind))}  # the real engine: piston motion
         return [d.model.copy() for d in fr.draws if d.key in keys]
 
     for oid, kind in (("eng", "piston"), ("jack", "rocker"), ("camp", "flame")):
@@ -96,6 +97,8 @@ def test_long_plan_is_made_in_parts_that_share_one_world(sf_root, monkeypatch):
 
     def fake(messages, json_mode, temperature, max_tokens):
         pay = json.loads(messages[1]["content"])
+        if "lines" in pay:  # step 1 (visual ideas): this fake AI only makes plans
+            raise ValueError("no ideas")
         calls.append(pay)
         first = pay["scenes"][0]["n"]
         n = len(pay["scenes"])

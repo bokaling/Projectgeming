@@ -18,23 +18,40 @@ import numpy as np
 
 from . import assets
 from . import mesh as M
+from . import motion as motion_mod
 from .mesh import Model
 
 SHAPES = {"box", "cylinder", "cone", "sphere", "capsule", "torus", "tube", "wedge", "extrude"}
 KINDS = {"", "blade", "wheel", "piston", "rocker", "flame", "liquid", "light", "lamp", "load"}
+MATERIALS = {"metal", "paint", "plastic", "glass", "rubber", "ceramic", "water"}
 RECIPES_DIR = Path(__file__).parent / "recipes"
 _loaded: set = set()
 
 DESIGN_SYSTEM = """You design ONE low poly 3D object for a "how it works" explainer as a recipe of basic shapes.
-Units are meters, y is up, the object stands on y = 0 and faces +x. Use 4-30 parts, flat friendly colours, simple
-blocky proportions that are recognizable from the side. Shapes and "size":
-box [w, h, d] (centred on pos), cylinder [r, h] (upright, centred), cone [r, h] (upright, base at pos), sphere [r],
-capsule [r, length] (along x), torus [R, r] (flat ring), wedge [w, h, d] (a roof/ramp shape), tube {"points": [[x,y,z],…]}
-with size [r], extrude {"poly": [[x,y],…]} with size [depth]. Optional per part: "rot" [rx, ry, rz] degrees,
-"kind" (blade = spins, wheel, piston, rocker = swings, flame, liquid = fills, light = turns on, lamp), "pivot" and "axis"
-(x/y/z) for moving parts, "shell": true for outer walls (they can be cut open), "opacity" (glass 0.3).
-"ports": named points other things connect to (inlet, outlet, power, gas_out…). "label": where its name tag goes.
-Reply with JSON only: {"name", "about", "tags", "aliases", "parts": [...], "ports": {...}, "label": [x,y,z]}"""
+It must be the REAL thing at its REAL size, with its REAL working parts inside, so the video can cut it open and show
+how it works (a fridge has a compressor, condenser coils, an evaporator, a capillary tube and refrigerant; a toilet
+has a tank, flapper, float, fill valve, bowl and siphon; a washing machine has a drum, motor and belt).
+Units are meters, y is up, the object stands on y = 0, its front faces +z (the camera side). 10-45 parts.
+Shapes and "size": box [w, h, d] (centred on pos), cylinder [r, h] (upright, centred), cone [r, h] (upright, base at pos),
+sphere [r], capsule [r, length] (along x), torus [R, r] (flat ring), wedge [w, h, d] (a roof/ramp shape),
+tube {"points": [[x,y,z],…]} with size [r] (pipes, coils, cables), extrude {"poly": [[x,y],…]} with size [depth].
+Per part: "name" (the part's real name: compressor, coil, float, flapper… the camera can aim at it), "color",
+"rot" [rx, ry, rz] degrees, "pivot" [x,y,z] and "axis" (x/y/z) for moving parts, "material" (metal, paint, plastic,
+glass, rubber, ceramic, water), "opacity" (glass 0.3, water 0.75), "emissive" (0-1 glow),
+"shell": true for the OUTER casing (cut open in a cutaway, so the works inside show; put the works inside it),
+"kind": liquid (a liquid level that fills/drains; name it, e.g. "tank_water"), light (turns on), flame,
+"motion" (how a working part moves; one dict or a list):
+  {"type": "spin", "axis": "x", "speed": 1}            fans, motors, gears, drums (while the machine runs)
+  {"type": "slide", "axis": "y", "amp": 0.02}          pistons, plungers (go up and down while it runs)
+  {"type": "swing", "axis": "z", "deg": 20}            rocker arms, levers, wipers (while it runs)
+  {"type": "open", "axis": "x", "amp": 0.5} or {"type": "open", "axis": "y", "deg": 100}   doors, lids, flappers, valves
+  {"type": "swing", "axis": "z", "deg": 30, "drive": "open"}   a handle/lever that moves when the thing opens
+  {"type": "level", "of": "tank_water", "axis": "y", "amp": 0.15}   a float riding on a liquid's level
+  {"type": "pulse", "speed": 1}                         a light/spark that flashes in time
+"paths": named polylines that flows travel along (refrigerant loop, water from tank to bowl, air in, gas out):
+  {"loop": [[x,y,z],…], "water": [[x,y,z],…]}. "ports": named points other things connect to (inlet, outlet, power).
+Believable colours (metal grey, copper coils, white enamel, black rubber), not toy colours.
+Reply with JSON only: {"name", "about", "tags", "aliases", "parts": [...], "paths": {...}, "ports": {...}, "label": [x,y,z]}"""
 
 
 def _num(v, default, lo, hi) -> float:
@@ -101,9 +118,14 @@ def model_from_recipe(recipe: dict) -> Model:
             g = M.xf(g, _vec(p.get("pos")), _vec(p.get("rot"), 3, 0.0, -360, 360))
         kind = str(p.get("kind") or "")
         kind = kind if kind in KINDS else ""
-        m.add(str(p.get("name") or shape)[:24], g, _color(p.get("color")), emissive=_num(p.get("emissive"), 0.0, 0, 1),
+        mo = p.get("motion")
+        mo = [x for x in (motion_mod.check(q) for q in (mo if isinstance(mo, list) else [mo])) if x]
+        mat = str(p.get("material") or "").lower()
+        m.add(re.sub(r"[^a-z0-9_]+", "_", str(p.get("name") or shape).lower())[:24] or shape, g, _color(p.get("color")),
+              emissive=_num(p.get("emissive"), 0.0, 0, 1),
               opacity=_num(p.get("opacity"), 1.0, 0.1, 1.0), shell=bool(p.get("shell", False)), kind=kind,
-              pivot=tuple(_vec(p.get("pivot"))), axis=str(p.get("axis") or "y") if p.get("axis") in ("x", "y", "z") else "y")
+              pivot=tuple(_vec(p.get("pivot"))), axis=str(p.get("axis") or "y") if p.get("axis") in ("x", "y", "z") else "y",
+              motion=(mo[0] if len(mo) == 1 else mo) or None, material=mat if mat in MATERIALS else "")
     if not m.parts:
         raise ValueError("no usable parts")
     lo, hi = m.bounds()
@@ -112,7 +134,8 @@ def model_from_recipe(recipe: dict) -> Model:
         raise ValueError(f"odd size ({ext.round(2).tolist()} m)")
     if lo[1] < -0.3:  # stand it on the ground
         m.parts = [M.Part(q.name, M.xf(q.geo, (0, -float(lo[1]), 0)), q.color, q.emissive, q.opacity, q.shell,
-                          tuple(np.asarray(q.pivot) + [0, -float(lo[1]), 0]), q.axis, q.kind) for q in m.parts]
+                          tuple(np.asarray(q.pivot) + [0, -float(lo[1]), 0]), q.axis, q.kind, motion=q.motion,
+                          material=q.material) for q in m.parts]
     for name, pt in (recipe.get("ports") or {}).items():
         m.anchors[str(name)] = tuple(_vec(pt))
     if recipe.get("label"):
@@ -134,7 +157,14 @@ def register(recipe: dict) -> str:
         return model_from_recipe(recipe)
 
     make.__name__ = name
-    assets.asset(name, str(recipe.get("about") or name.replace("_", " "))[:120], list(recipe.get("tags") or ["built"]),
+    tags = [str(t) for t in (recipe.get("tags") or ["built"])][:8]
+    m = model_from_recipe(recipe)
+    if any(p.motion for p in m.parts) and "machine" not in tags:
+        tags.append("machine")
+    if any(p.shell for p in m.parts) and any(p.motion or p.kind in ("liquid", "blade") for p in m.parts):
+        tags.append("cutaway")  # it has works inside an outer casing: the checker cuts it open when it works
+    tags = list(dict.fromkeys(tags))
+    assets.asset(name, str(recipe.get("about") or name.replace("_", " "))[:160], tags,
                  [re.sub(r"[^a-z0-9_]+", "_", str(a).lower()) for a in (recipe.get("aliases") or [])][:10])(make)
     return name
 
@@ -184,8 +214,8 @@ def design(name: str, description: str = "", rep=None) -> str | None:
     """Ask the free AI to design an object as a recipe; check it, save it, return its name (None if it failed)."""
     from .. import llm  # noqa: PLC0415
 
-    example = json.loads((RECIPES_DIR / "submarine.json").read_text(encoding="utf-8")) if \
-        (RECIPES_DIR / "submarine.json").exists() else {}
+    example = json.loads((RECIPES_DIR / "piston_pump.json").read_text(encoding="utf-8")) if \
+        (RECIPES_DIR / "piston_pump.json").exists() else {}
     payload = {"object": name, "what_it_is": description, "example_recipe": example}
 
     def validate(obj):
