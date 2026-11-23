@@ -1278,8 +1278,10 @@ class World:
         px0, px1, py0, py1, ok1 = rect(lo, hi)
         sx0, sx1, sy0, sy1, ok2 = rect(slo, shi)
         W, H = self.size
-        big = ok1 and (min(px1, W) - max(px0, 0)) * (min(py1, H) - max(py0, 0)) > 0.12 * W * H  # a big blob up front
-        return bool(ok1 and ok2 and (px0 < sx1 and px1 > sx0 and py0 < sy1 and py1 > sy0 or big))
+        if not ok1:  # nearer than the subject and partly behind the lens: it wraps around the camera
+            return True
+        big = (min(px1, W) - max(px0, 0)) * (min(py1, H) - max(py0, 0)) > 0.12 * W * H  # a big blob up front
+        return bool(ok2 and (px0 < sx1 and px1 > sx0 and py0 < sy1 and py1 > sy0 or big))
 
     def _shell_parts_over_subject(self, inst: Inst, st: dict, eye, tgt, fov, i: int, any_size: bool = False,
                                   any_part: bool = False) -> set:
