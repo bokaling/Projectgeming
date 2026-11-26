@@ -36,7 +36,8 @@ from .mesh import rot_matrix
 AXES = {"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0)}
 STROKE_COLORS = [(1.0, 0.55, 0.16), (0.55, 0.55, 0.58), (0.31, 0.7, 1.0), (0.5, 0.86, 1.0)]  # bang, out, in, squeeze
 STROKE_GLOW = [1.3, 0.05, 0.25, 0.35]
-TYPES = {"spin", "slide", "rod", "valve", "swing", "pulse", "chamber", "open", "lift", "stretch", "level", "flicker"}
+TYPES = {"spin", "slide", "rod", "valve", "swing", "pulse", "chamber", "open", "lift", "stretch", "level", "flicker",
+         "squash", "pump"}
 
 
 def _axis(m: dict) -> np.ndarray:
@@ -100,7 +101,16 @@ def evaluate(part, st: dict, T: float, m: dict | None = None) -> tuple[np.ndarra
         else:
             return None, 0.0, None
         return _about(rot_matrix(*(ax * math.degrees(ang))), pv), 0.0, None
-    if kind == "slide":
+    if kind == "squash":  # a spring: squeezes and springs back while the machine runs (its pivot end stays)
+        if not run:
+            return None, 0.0, None
+        k = 1.0 - float(m.get("amp", 0.3)) * 0.5 * (1 + math.sin(theta * float(m.get("speed", 1.0))))
+        i = int(np.argmax(np.abs(ax)))
+        sm = np.eye(4, dtype=np.float32)
+        sm[i, i] = k
+        sm[i, 3] = float(pv[i]) * (1 - k)
+        return sm, 0.0, None
+    if kind == "slide" or kind == "pump":
         if not run:
             return None, 0.0, None
         a = theta * float(m.get("speed", 1.0)) + math.radians(float(m.get("phase", 0.0)))

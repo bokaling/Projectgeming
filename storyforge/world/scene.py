@@ -200,8 +200,9 @@ class World:
         keep = {k0}
         cand = []
         for k, p in enumerate(model.parts):  # what sits in it or right at it (rings, rod, gas, the cylinder wall)
-            if k == k0 or (p.shell and not p.name.startswith(name)) or p.opacity < 0.2:
-                continue
+            if k == k0 or (p.shell and not p.name.startswith(name)) or p.opacity < 0.2 or \
+                    (p.kind == "liquid" and not p.name.startswith(name)):
+                continue  # (water around a heating element is not part of the hero)
             pn = p.name[len(p.name.rstrip("0123456789")):]
             if num and pn and pn != num:
                 continue
@@ -212,11 +213,18 @@ class World:
                 cand.append((k, b))
         for k, b in cand:
             keep.add(k)
+        assembly = [k for k, p in enumerate(model.parts) if k not in keep and p.name.startswith(name + "_")
+                    and not num]  # a kit assembly ("compressor", "compressor_stage2"…): all its stages together
         if cand:  # frame the part with what is right at it, but never wider than twice the part
             blo = np.minimum(lo, np.min([b[0] for _, b in cand], 0))
             bhi = np.maximum(hi, np.max([b[1] for _, b in cand], 0))
             c, half = (lo + hi) / 2, (hi - lo) / 2
             lo, hi = np.maximum(blo, c - 2 * half - 0.01), np.minimum(bhi, c + 2 * half + 0.01)
+        if 0 < len(assembly) <= 14:
+            for k in assembly:
+                b = self._part_k_box(inst, k, T)
+                keep.add(k)
+                lo, hi = np.minimum(lo, b[0]), np.maximum(hi, b[1])
         return oid, keep, lo, hi
 
     def _part_k_box(self, inst: Inst, k: int, T: float) -> tuple[np.ndarray, np.ndarray]:
@@ -711,8 +719,9 @@ class World:
                     c0 = lo[ax] + win / 2 if abs(hang[ax] - hi[ax]) < abs(hang[ax] - lo[ax]) else hi[ax] - win / 2
                 else:
                     c0 = (lo[ax] + hi[ax]) / 2
-                lo, hi = lo.copy(), hi.copy()
-                lo[ax], hi[ax] = c0 - win / 2, c0 + win / 2
+                if hang is not None or ax == 1:  # ropes and cables hang: a piece; a shaft or a rail: all of it
+                    lo, hi = lo.copy(), hi.copy()
+                    lo[ax], hi[ax] = c0 - win / 2, c0 + win / 2
         elif name in inst.model.anchors:
             a = self.anchor(oid, name, T)
             r = max(0.08, inst.radius * 0.18)
@@ -900,7 +909,8 @@ class World:
         elif cam["move"] == "macro" and self._cam_part(i):  # ONE spark, not all four across the engine
             model = self.groups[tgt][0].model
             ks = self.part_names(model, self._cam_part(i))
-            b = self.part_box(tgt, model.parts[ks[0]].name, sc["start"] + sc["dur"] * 0.6, margin=False) if ks else None
+            # framed as it is when the shot starts (a rope that snaps later whips OUT of this box: we watch it go)
+            b = self.part_box(tgt, model.parts[ks[0]].name, sc["start"] + sc["dur"] * 0.1, margin=False) if ks else None
             if b is not None:
                 mlo, mhi = model.bounds()
                 g = max(0.05, 0.12 * float(np.max(mhi - mlo)) * self.groups[tgt][0].scale)
@@ -946,7 +956,7 @@ class World:
                     az = self.groups[tgt][0].rot + 58.0
                 elif axis == "z":
                     az = self.groups[tgt][0].rot + 18.0
-        room = area_of.get("setting") in ("kitchen", "bathroom", "garage", "living_room", "office", "lab")
+        room = area_of.get("setting") in ("kitchen", "bathroom", "garage", "living_room", "office", "lab", "laundry")
         prev_look = self._looks[i - 1][0] if i > 0 else self._looks[i][0]
         cut = bool(sc["plan"].get("cut")) or (i > 0 and (prev_look != self._looks[i][0] or self.isolated(i) or
                                                         self.isolated(i - 1)))
@@ -1023,7 +1033,7 @@ class World:
 
     def _overview(self) -> tuple[np.ndarray, np.ndarray]:
         """The whole system, all normal areas at once (for the ending)."""
-        micro = {a["id"] for a in self.plan["areas"] if a.get("micro")}
+        micro = {a["id"] for a in self.plan["areas"] if a.get("micro") or a.get("setting") == "table"}
         ids = [o["id"] for o in self.plan["objects"] if o["area"] not in micro and o["id"] in self.groups]
         real = [o for o in ids if "symbol" not in getattr(assets.REGISTRY.get(self.groups[o][0].asset), "tags", [])]
         ids = real or ids  # counters, scales and arrows are not "the system"
@@ -1033,6 +1043,8 @@ class World:
             ids = main  # the engine the video is about, not the whole car it sits in
         boxes = [self.group_box(o, self.total) for o in ids] or [(np.zeros(3), np.ones(3))]
         lo, hi = np.min([b[0] for b in boxes], 0), np.max([b[1] for b in boxes], 0)
+        if any("cross_section" in getattr(assets.REGISTRY.get(self.groups[o][0].asset), "tags", []) for o in ids):
+            return self.fit(lo, hi, 12.0, 14.0, self.fov, 0.95)  # a cut-open mountain: from the front, like a cake
         if len({self.groups[o][0].area for o in ids}) <= 1:  # one machine: the whole of it, working, 3/4 view
             az = float(self._cams[-1]["az"]) + 25.0 if self._cams else 30.0
             return self.fit(lo, hi, az, 24.0, self.fov, 0.9)
@@ -1205,6 +1217,8 @@ class World:
                 n[1] = 0
                 n /= max(np.linalg.norm(n), 1e-6)
                 c = st["pos"]  # remove the half that faces the camera
+                if "key" in inst.model.anchors:  # a designed machine: cut right through its most important part
+                    c = (m0 @ np.append(np.asarray(inst.model.anchors["key"], np.float32), 1.0))[:3]
                 if inst.oid == focus_id and self._cam_part(i):  # filming one part: cut right through THAT part
                     pb = self.part_box(inst.oid, self._cam_part(i), T, margin=False)
                     if pb is not None:
@@ -1229,7 +1243,7 @@ class World:
                 hero_clip = (*n, float(np.dot(n, hc)))
             near_keep = None
             if near_box is not None and inst.oid == focus_id:
-                near_keep = set()
+                near_keep = set(self.part_names(inst.model, self._cam_part(i)))  # the filmed part, however long
                 for k, part in enumerate(inst.model.parts):
                     lo, hi = part.geo.bounds()
                     w = (m0 @ np.array([[lo[0], lo[1], lo[2], 1], [hi[0], hi[1], hi[2], 1]], np.float32).T).T[:, :3]
@@ -1268,6 +1282,11 @@ class World:
                     if st["light"] > 0:
                         lamp = (1.0, 0.85, 0.42)
                         color = tuple(a + (b - a) * st["light"] for a, b in zip(color, lamp))
+                elif part.kind == "heater":  # a heating coil glows orange when it is turned on (light_on)
+                    hot = st["light"]
+                    if hot > 0:
+                        emi = max(emi, 0.9 * hot)
+                        color = tuple(a + (b - a) * hot for a, b in zip(color, (1.0, 0.36, 0.1)))
                 emi += st["glow"]
                 for name, g in st.get("glows", {}).items():
                     if part.name == name or part.name.startswith(name + "_") or (

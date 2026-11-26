@@ -698,7 +698,7 @@ class Renderer:
                     set_uniform(p, "u_inner", tuple(d.inner))
                 if d.cap:
                     set_uniform(p, "u_cap", int(d.cap))
-                    set_uniform(p, "u_rim", float(max(0.002, dist * 0.012)))
+                    set_uniform(p, "u_rim", float(max(0.002, dist * 0.004)))  # a thin rim, not a pink inside
                 self.meshes[d.key][3 if d.cap else 0].render()
             if blend:
                 ctx.disable(mgl.BLEND)

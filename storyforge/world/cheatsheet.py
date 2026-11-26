@@ -27,7 +27,7 @@ EXAMPLE = {
 
 
 def build() -> str:
-    from . import assets, plan as P, presets, settings  # noqa: PLC0415
+    from . import assets, kit, plan as P, presets, settings  # noqa: PLC0415
 
     lines = ["# 📋 Scene plan cheatsheet", "",
              "Write a plan by hand (📋 Paste plan in the app, or `python -m storyforge.make --plan`). Every plan is "
@@ -43,10 +43,13 @@ def build() -> str:
     lines += ["; ".join(f"`{k}` {v.split('(')[0].split(':')[0].strip()}" for k, v in list(P.ACTIONS.items())[i:i + 4])
               for i in range(0, len(P.ACTIONS), 4)]
     lines += ["", "Label / keyword kinds: " + ", ".join(f"`{k}` ({v})" for k, v in P.KINDS.items()) +
-              ". Keywords: 0-1 per shot, only for a wow fact.", "", "## Machines: real part names, ports, paths", ""]
+              ". Keywords: 0-1 per shot, only for a wow fact.", "",
+              "## Mechanism kit (in a new object's recipe: {\"kit\": piece, \"name\", \"pos\", \"size\", \"axis\": "
+              "x/y/z/-x/-y/-z}; also objects kit_<piece>)", "", ", ".join(kit.KIT), "",
+              "## Machines: real part names, ports, paths", ""]
     simple = []
     for info in sorted(assets.REGISTRY.values(), key=lambda i: i.name):
-        if "set" in info.tags:
+        if "set" in info.tags or "kit" in info.tags:
             continue
         names, anchors, paths = assets.part_list(info.name) if {"machine", "cutaway"} & set(info.tags) else ([], [], [])
         if names:

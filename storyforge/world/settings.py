@@ -25,6 +25,9 @@ SETTINGS = {
     "studio": "the clean light studio (default for machines and diagrams)",
     "kitchen": "a home kitchen: tiled floor, walls, counter with sink and stove, cabinets, window",
     "bathroom": "a bathroom: tiles, sink with mirror, bathtub, towel",
+    "laundry": "a laundry room: tiled floor, walls, a shelf with detergent, a laundry basket (washers, dryers)",
+    "hangar": "an aircraft hangar: big light concrete floor with yellow lines, a tall back wall, tool carts (jet "
+              "engines, planes, helicopters)",
     "garage": "a car workshop: concrete floor, tool wall, workbench, tires, shelves",
     "street": "a city street: road, sidewalk, buildings behind, lamp posts, trees",
     "living_room": "a living room: wooden floor, sofa, rug, lamp, window",
@@ -49,6 +52,8 @@ ALIASES = {"home": "kitchen", "house": "living_room", "room": "living_room", "wo
 KEYWORDS = [  # (words, setting): the area's objects and its shots' words; most hits wins
     (r"fridge|refrigerator|freezer|oven|microwave|dishwasher|kettle|toaster|stove|kitchen|blender|coffee", "kitchen"),
     (r"toilet|flush|shower|bathtub|bath|sink|faucet|tap|bathroom|water heater", "bathroom"),
+    (r"washing machine|washer|dryer|laundry|detergent", "laundry"),
+    (r"jet engine|turbofan|turbine engine|aircraft|airplane|airliner|helicopter|hangar|jet", "hangar"),
     (r"engine|piston|car\b|cars\b|gearbox|transmission|brake|tire|tyre|garage|mechanic|exhaust|spark plug", "garage"),
     (r"elevator|lift|skyscraper|building|traffic|street|escalator|bus\b", "street"),
     (r"washing machine|vacuum|air condition|heater|tv\b|television|sofa|living room", "living_room"),
@@ -353,7 +358,7 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
         if len(insts) <= 2 and size < 8:
             put("turntable", cx, cz, r=round(max(0.4, size * 0.6), 2))
         return out
-    if setting in ("kitchen", "bathroom", "garage", "living_room", "office", "lab"):
+    if setting in ("kitchen", "bathroom", "garage", "living_room", "office", "lab", "laundry"):
         # a room corner: back wall behind the objects, a side wall on the left, the floor between
         room_w = max(4.2, (hi[0] - lo[0]) + 3.6)
         room_d = max(3.4, (hi[2] - lo[2]) + 2.6)
@@ -366,12 +371,13 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
                  "bathroom": ("floor_tiles", {"color": "#f2f4f5", "color2": "#c9d6dc", "tile": 0.3}),
                  "garage": ("slab", {"color": "#8f9397"}), "living_room": ("planks", {}),
                  "office": ("slab", {"color": "#5d6670"}), "lab": ("floor_tiles", {"color": "#f4f6f7", "color2": "#e3e9ec",
-                                                                                   "tile": 0.6})}[setting]
+                                                                                   "tile": 0.6}),
+                 "laundry": ("floor_tiles", {"color": "#eef1f3", "color2": "#d5dde2", "tile": 0.4})}[setting]
         back = 1.4  # the floor goes on behind the back wall: a shot of the machine's back doesn't fall off the room
         put(floor[0], (x0 + x1) / 2, (bz - back + fz) / 2, w=round(room_w, 2), d=round(room_d + back, 2), **floor[1])
         wall_col = {"kitchen": "#f1e9da", "bathroom": "#eef5f7", "garage": "#c3c7c9", "living_room": "#e9dfd0",
-                    "office": "#e6e9ec", "lab": "#f3f6f8"}[setting]
-        tiles = {"kitchen": "#9fc7c4", "bathroom": "#a9d4e2"}.get(setting, "")
+                    "office": "#e6e9ec", "lab": "#f3f6f8", "laundry": "#e8f1f4"}[setting]
+        tiles = {"kitchen": "#9fc7c4", "bathroom": "#a9d4e2", "laundry": "#bcdbe6"}.get(setting, "")
         put("wall", (x0 + x1) / 2, bz - 0.06, length=round(room_w, 2), h=h, color=wall_col, tiles=tiles,
             tile_h=1.6 if setting == "bathroom" else 0.6)
         put("wall", x0 - 0.06, (bz + fz) / 2, rot=-90.0, length=round(room_d, 2), h=h, color=wall_col,
@@ -404,6 +410,10 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
         elif setting == "office":
             put("desk_table", right + 0.8, bz + 0.45)
             put("potted_plant", x0 + 0.4, bz + 0.4, h=1.0)
+        elif setting == "laundry":
+            put("shelf", right + 0.7, bz + 0.2, length=1.2)
+            put("bucket", right + 0.5, bz + 0.8)
+            put("potted_plant", x0 + 0.4, bz + 0.4, h=0.8)
         elif setting == "lab":
             put("kitchen_counter", right + 0.9, bz + 0.32, length=1.8, sink=True, stove=False, color="#e9eef1", top="#2f3438")
             put("shelf", x0 + 0.25, bz + 1.4, rot=90.0, length=1.2)
@@ -426,6 +436,18 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
             put("lamp_post", cx + dx * (size / 2 + 1.6), float(hi[2]) + 1.0, rot=-90.0)
             put("tree", cx + dx * (size / 2 + 3.4), float(hi[2]) + 1.0)
             put("person", cx + dx * (size / 2 + 2.4), float(hi[2]) + 2.2, rot=dx * 30.0)  # people for scale
+        return out
+    if setting == "hangar":  # a big, bright hangar: light concrete, yellow safety lines, a tall wall behind
+        w, d = max(14.0, size * 3.2), max(10.0, size * 2.6)
+        put("slab", cx, cz, w=round(w, 2), d=round(d, 2), color="#c9cdd1")
+        put("pad", cx, cz, w=round(size + 2.0, 2), d=round(float(hi[2] - lo[2]) + 2.0, 2), color="#f4c430")
+        put("slab", cx, cz, w=round(size + 1.7, 2), d=round(float(hi[2] - lo[2]) + 1.7, 2), h=0.035, color="#c9cdd1")
+        put("wall", cx, cz - d / 2, length=round(w, 2), h=round(max(6.0, float(hi[1]) * 1.8), 2), color="#dfe4e8",
+            window=0.0, window_x=0.0)
+        for dx in (-1, 1):
+            put("crate", cx + dx * (w / 2 - 1.2), cz - d / 2 + 1.0)
+            put("barrel", cx + dx * (w / 2 - 2.2), cz - d / 2 + 0.9)
+        put("person", cx + size / 2 + 1.6, cz + float(hi[2] - lo[2]) / 2 + 0.6, rot=-30.0)  # a person for scale
         return out
     if setting == "factory":
         w, d = max(8.0, size + 6), max(6.0, size + 5)

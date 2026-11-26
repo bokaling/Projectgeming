@@ -54,6 +54,12 @@ class Pipeline:
     def __init__(self, series: Series, episode: Episode, rep: Reporter, opts: EpisodeOptions | None = None):
         self.series, self.ep, self.rep = series, episode, rep
         self.opts = opts or episode.load_options()
+        try:  # objects designed before (the shared library on Drive) must be known before any plan is read
+            from .world import builder  # noqa: PLC0415
+
+            builder.load_all()
+        except Exception:  # noqa: BLE001
+            pass
 
     # ------------------------------------------------------------------ basics
     @property
@@ -229,6 +235,13 @@ class Pipeline:
 
         sc = self.script
         plan = {**plan, "format": plan.get("format") or self.video_format()}
+        try:  # a pasted plan may name new objects ("about": …): design them (or build them from the kit) first
+            from .world import builder  # noqa: PLC0415
+
+            plan = json.loads(json.dumps(plan))
+            builder.ensure_objects(plan, self.rep)
+        except Exception:  # noqa: BLE001
+            pass
         plan, fixes = P.validate(plan, [s["narration"] for s in sc["scenes"]])
         freeze_layout(plan)  # new areas get a fixed place too
         self.ep.save_plan(plan)
@@ -326,6 +339,7 @@ class Pipeline:
         if self.opts.captions and karaoke:  # documentaries: the full sentence, the current word bold, key words boxed
             keys = {w for s in plan["scenes"] for k in s.get("keywords", []) for w in k["text"].lower().split()}
             keys |= {w for s in plan["scenes"] if s.get("stat") for w in s["stat"]["big"].lower().split()}
+            keys = {w for w in keys if any(ch.isdigit() for ch in w) or (len(w) >= 4 and w not in beats.STOP)}
             events = captions.karaoke_events(tl["words"], fmt, lang, tl["total"], keys)
         elif self.opts.captions and not words_mode:  # 3D explainers: the words at the bottom + one big wow keyword
             events = captions.keyword_events(self.keyword_items(world), lang, tl["total"]) + \

@@ -54,7 +54,7 @@ def build(name: str, **params) -> Model:
     for p in model.parts:  # the old library's steel, gold and copper parts look like metal
         if not p.material and str(p.color).lower() in METALS:
             p.material = "metal"
-    model = _merge_static(model)
+    model = _merge_static(model, by_name=bool({"machine", "cutaway", "kit"} & set(info.tags)))
     lo, hi = model.bounds()
     model.anchors.setdefault("top", (0.0, float(hi[1]), 0.0))
     model.anchors.setdefault("label", (0.0, float(hi[1]) + 0.35, 0.0))
@@ -62,14 +62,19 @@ def build(name: str, **params) -> Model:
     return model
 
 
-def _merge_static(model: Model) -> Model:
-    """Plain parts (no animation, not a shell) with the same look become one mesh: far fewer draws, same picture."""
+def _merge_static(model: Model, by_name: bool = False) -> Model:
+    """Plain parts (no animation, not a shell) with the same look become one mesh: far fewer draws, same picture.
+    by_name (machines): only parts with the same name merge, so every named part ('nozzle', 'fuel_nozzles') stays
+    something the camera, labels and actions can aim at."""
+    import re as _re  # noqa: PLC0415
+
     keep, groups = [], {}
     for p in model.parts:
         if p.kind or p.shell or p.motion:  # moving parts and shells (walls: hidden one by one when they block) stay apart
             keep.append(p)
             continue
-        key = (str(p.color).lower(), round(float(p.opacity), 3), round(float(p.emissive), 3), p.material)
+        key = (str(p.color).lower(), round(float(p.opacity), 3), round(float(p.emissive), 3), p.material) + \
+            ((_re.sub(r"\d+$", "", p.name),) if by_name else ())
         groups.setdefault(key, []).append(p)
     merged = []
     for parts in groups.values():
@@ -809,6 +814,10 @@ from . import machines  # noqa: E402,F401  (machines with real working parts: en
 from . import settings as _settings  # noqa: E402,F401  (set pieces: walls, counters, tiles… not in the catalog)
 
 REGISTRY.pop("engine", None)  # the old toy engine: "engine" now means the real car_engine (alias)
+import sys  # noqa: E402
+
 from . import builder as _builder  # noqa: E402  (built-in recipes: objects made of basic parts)
 
+_builder.assets = sys.modules[__name__]  # (the builder may be imported first: give it this module now)
 _builder.load_dir(_builder.RECIPES_DIR)
+_builder.register_kit()  # the mechanism kit pieces are library objects too

@@ -56,7 +56,7 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 * **Shapes** (`mesh.py`): box, cylinder, cone, lathe, icosphere, torus, capsule, tube, extrude, roof, gear,
   plane, arrow, bolt; `Part(name, geo, color, emissive, opacity, shell, pivot, axis, kind)`, `Model(parts,
   anchors, paths)`.
-* **Asset library** (`assets.py` + `assets_more.py` + `machines.py`, ~140 objects + 19 recipes): `@asset(name, about, tags, aliases)` functions
+* **Asset library** (`assets.py` + `assets_more.py` + `machines.py` + `kit.py`, ~200 objects + 19 recipes): `@asset(name, about, tags, aliases)` functions
   with parameters (size, color, level…). `resolve()` maps any name the AI uses (aliases, plurals, last word,
   difflib) and falls back to `crate`. `catalog()` is what the planner AI sees. Part kinds the world animates:
   `liquid` (fill/drain), `crust`, `blade` (spin), `wheel` (rolls when moving), `piston` and `rocker` (while
@@ -392,6 +392,43 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
   (`pipeline.use_plan`).
 * **Doctor**: `score(..., video_format)` adds explainer checks (myth buster early, unit soup, [PAUSE], comparisons,
   1-3 sentences a shot); `improve` uses `IMPROVE_SYSTEM_3D` for every non-story format.
+
+### Part 13: new topics work like library machines
+* **Mechanism kit** (`world/kit.py`): 20 animated building blocks as recipe parts (gear_train, piston_crank, valve,
+  pump, fan, turbine, belt_drive, chain_drive, pulley_cable, hydraulic_cylinder, spring, lever, wheel_axle, motor,
+  battery_wire, heating_coil, tank_pipe, drum, light, emitter). In a recipe `{"kit": "turbine", "name": "compressor",
+  "pos", "size", "axis": x/y/z/-x/-y/-z, "stages"…}` → parts "compressor", "compressor_shaft"… (`kit.expand`: positions,
+  pivots and motion axes turned with the piece, paths "<name>_<path>", ports both "<name>_inlet" and plain "inlet").
+  Every piece is also a library object `kit_<piece>` (`builder.register_kit`, standing on the floor).
+* **Builder** (`builder.py`): new shapes gear (+teeth), spring (+turns), blades (+count, twisted), taper, lathe with
+  `"caps": false`, dome; kind `heater` (glows orange on `light_on`); motions `pump` (= slide) and `squash` (springs);
+  `key_part` → `anchors["key"]`: a cutaway of the whole object cuts through it (`scene.frame`); a moving part without
+  a pivot turns about its own pos. Machines merge static parts only within the same name (`_merge_static(by_name)`), so
+  every named part stays targetable ("nozzle" ≠ "fuel_nozzles"). The design prompt lists the kit, asks for real
+  proportions/materials, key_part, ports, paths, tour.
+* **Self check** (`builder.self_check`, `preview_stills`): 3 views (front 3/4, side, cut open through the key part with
+  the works moving) → Gemini vision (`CHECK_SYSTEM`) → if not ok, the designer gets the problems + fix and tries again
+  (`design(tries=3)` = up to 2 redesigns). Saved to `StoryForge/library/objects/<name>.json` (+ `<name>_check.jpg`)
+  with `"checked": "checked"|"unchecked"`; a design that still fails is used for this video but NOT saved. No AI →
+  `builder.compose` (kit templates: washing machine, jet engine, microwave, hair dryer, blender), not saved.
+* **Places**: settings `laundry` (tiled room, shelf, basket) and `hangar` (light concrete, yellow lines, tall wall,
+  crates, a person for scale), guessed from the words/object names.
+* **No-AI planner**: `make_plan` composes the title's machine from the kit first; `offline_plan` starts from the
+  machine named in the title, so "the drum" is the washer's drum (not a barrel).
+
+### Part 13 test loop (3 topics with NO library object, CPU 720p, designs + plans written as the prompts ask Gemini)
+* "How a washing machine works" (1:08, laundry room), "How a jet engine works" (1:02, hangar), "How a microwave heats
+  food" (0:59, kitchen). Designs checked from 3 views (as `self_check` shows them to Gemini vision): the washer's
+  drain hose ran outside the cabinet → redesigned once. Found and fixed in the ENGINE: a pasted/CLI plan was checked
+  without loading the shared library (the washer became a crate) → `Pipeline` loads it and designs missing objects;
+  "nozzle" merged into "fuel_nozzles" (same look) → machines merge by name; parts without a pivot orbited the origin
+  → pivot = own pos; a hero of a kit assembly showed one blade disc → the whole assembly; a horizontal shaft was
+  cropped like a rope → only hanging ropes are cropped; heaters glowed whenever the machine ran → only on `light_on`;
+  hero shots pulled in nearby water; the ending overview included the comparison table.
+* Not fixed: hero shots of thin bladed stages read as pink "combs"; a design can put parts on top of each other (the
+  washer's spring next to its inlet valve crowds that close-up); an object the plan raises (`"y": 0.9`, a microwave on
+  a counter) is grounded to the floor; kit templates exist for 5 machine kinds only (others fall back to the closest
+  object without AI).
 
 ### Research (round 2, not built)
 * **HyperFrames** (github.com/heygen-com/hyperframes, Apache 2.0): HTML + CSS + JS/GSAP compositions rendered to MP4

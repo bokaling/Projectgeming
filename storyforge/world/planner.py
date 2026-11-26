@@ -54,8 +54,11 @@ Rules:
   has (the elevator already has its car_door, motor, ropes, safety_brakes): target "lift1.car_door" instead.
 - Set "preset" (the world look): one of PRESETS. Give every area a "setting": one of SETTINGS.
 - Use assets from the catalog (exact names). If the thing a line needs is missing, use a short new snake_case asset name
-  and add "about": what it looks like AND its real working parts with their real size; it will be built as a new 3D
-  object. Never use an unrelated object as a stand-in.
+  and add "about": what it looks like AND its real working parts with their real size; it will be DESIGNED as a new 3D
+  object from real shapes and the mechanism kit (gears, pistons, pumps, fans, turbines, belts, springs, motors, heating
+  coils…), checked from 3 angles and saved. Then aim at its parts by their real names (drum, magnetron, compressor).
+  The kit pieces are also objects (kit_gear_train, kit_turbine…) for simple mechanisms. Never use an unrelated
+  object as a stand-in.
 - Real scale: every object keeps its real size (scale 1 = real size).
 - Machines are cut open: add a "cutaway" action (keep: true) on the first shot that shows the inside; then "spin" to run
   an engine/motor/compressor, "lift" (to 0-1) for an elevator car, "open"/"close" for doors, lids, flappers and valves,
@@ -326,7 +329,8 @@ def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str,
                          "For AI shots, press 🧭 Plan again in a few minutes." if llm.all_busy(exc) else
                          "No AI planner answered, so I made a plan from the words of your script "
                          "(add a free GEMINI_API_KEY for much better scenes).")
-            raw, provider = offline_plan(script), "Built-in planner (no AI)"
+            made = builder.compose(str(script.get("title") or ""), " ".join(texts[:3]), rep)  # a new machine: kit
+            raw, provider = offline_plan(script), "Built-in planner (no AI)" + (f" + kit {made}" if made else "")
     if ideas:
         raw["ideas"] = ideas
     plan, fixes = P.validate(raw, texts)
@@ -425,6 +429,14 @@ def offline_plan(script: dict) -> dict:
     by_asset: dict[str, str] = {}
     shot_kinds: dict = {}  # how many hero / macro shots so far
     last = None
+    title_m = [a for a in find_assets(str(script.get("title") or "")) if {"machine", "cutaway"} &
+               set(assets.REGISTRY[a].tags) and not a.startswith("kit_")][:1]
+    if title_m:  # "How a washing machine works": the machine is there from the start ("the drum" = its drum)
+        areas.append({"id": "area1"})
+        objects.append({"id": f"{title_m[0]}1", "asset": title_m[0], "area": "area1", "pos": [0.0, 0], "count": 1,
+                        "layout": "row", "y": 0, "params": {}})
+        by_asset[title_m[0]] = f"{title_m[0]}1"
+        last = f"{title_m[0]}1"
     for i, (sc, text) in enumerate(zip(script["scenes"], texts)):
         line = sc.get("visual", "") + " " + text
         present = [a for a in by_asset if {"machine", "cutaway"} & set(assets.REGISTRY[a].tags)]
