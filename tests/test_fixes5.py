@@ -182,8 +182,9 @@ def test_voice_that_breaks_halfway_switches_the_whole_video(offline, monkeypatch
     opts = project.EpisodeOptions(length="short", resolution="480p")
     from storyforge import script
 
-    script.script_from_text(series, ep, opts, "NARRATOR: One. Two.\n[SCENE] x\nNARRATOR: Three.\n[SCENE] y\n"
-                            "NARRATOR: Four.", Reporter(echo=False))
+    script.script_from_text(series, ep, opts, "NARRATOR: One. Two.\n[SCENE] x\nNARRATOR: Three, and then the next "
+                            "part of the story starts.\n[SCENE] y\nNARRATOR: Four, and this is the very last part "
+                            "of it.", Reporter(echo=False))
     rep = Reporter(echo=False)
     pipeline.Pipeline(series, ep, rep, opts).voices("en")
     text = rep.text(200)
@@ -218,13 +219,15 @@ def test_gemini_key_is_first_and_improve_prefers_the_bigger_free_model(monkeypat
     from storyforge import llm
 
     monkeypatch.setenv("GEMINI_API_KEY", "k")
-    assert [n for n, _ in llm.providers(allow_local=False)][0] == "Gemini"
     monkeypatch.setitem(llm._model_cache, "gemini", ["gemini-3-flash-lite", "gemini-3-flash"])
+    assert [n for n, _ in llm.providers(allow_local=False)][0].startswith("Gemini")
     used = []
-    monkeypatch.setattr(llm, "_openai_chat", lambda base, key, model, *a: used.append(model) or '{"ok": 1}')
-    dict(llm.providers(allow_local=False, strong=True))["Gemini"]([], True, 0.5, 100)
-    dict(llm.providers(allow_local=False))["Gemini"]([], True, 0.5, 100)
+    monkeypatch.setattr(llm, "_openai_chat", lambda base, key, model, *a, **k: used.append(model) or '{"ok": 1}')
+    llm.providers(strong=True)[0][1]([], True, 0.5, 100)
+    llm.providers()[0][1]([], True, 0.5, 100)
     assert used == ["gemini-3-flash", "gemini-3-flash-lite"]
+    names = [n for n, _ in llm.providers(strong=True)]
+    assert names == ["Gemini (gemini-3-flash)", "Gemini (gemini-3-flash-lite)"]  # main, then lite; no local
 
 
 # ---------------------------------------------------------------- word count

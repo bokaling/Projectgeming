@@ -17,7 +17,7 @@ from .labels import LabelMaker, card_image
 from .scene import World
 
 FPS = 30
-RENDER_VERSION = "3d-8"  # change when the look changes, so finished clips are made again
+RENDER_VERSION = "3d-9-light"  # change when the look changes, so finished clips are made again
 
 
 def make_renderer(size: tuple[int, int]) -> tuple[gl.Renderer, tuple[int, int], str]:
@@ -34,7 +34,8 @@ def make_renderer(size: tuple[int, int]) -> tuple[gl.Renderer, tuple[int, int], 
         rw, rh = int(round(W * 2 / 3 / 2) * 2), int(round(H * 2 / 3 / 2) * 2)
     else:
         rw, rh = W, H
-    r = gl.Renderer((rw, rh), msaa=2 if cpu else 4, shadow_size=1536 if cpu else 2048, ctx=ctx)
+    r = gl.Renderer((rw, rh), msaa=2 if cpu else 4, shadow_size=1536 if cpu else 2048, ctx=ctx,
+                    shadow_taps=6 if cpu else 12)
     how = f"{'CPU' if cpu else 'GPU'} · {name.split('(')[0].strip()} · {rw}×{rh}" + (f" → {W}×{H}" if (rw, rh) != (W, H) else "")
     return r, (rw, rh), how
 

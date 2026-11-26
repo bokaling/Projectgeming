@@ -379,7 +379,9 @@ _SETTINGS: Settings | None = None
 
 NOISE = re.compile(r"torchao|serve_kernel_port_as_iframe|cpp extensions|TRANSFORMERS_CACHE|symlinks|"
                    r"resume_download|torch\.utils\._pytree|weight_norm|dropout option adds dropout|"
-                   r"upgrade_state_dict|`torch_dtype` is deprecated|Torch was not compiled with flash attention")
+                   r"upgrade_state_dict|`torch_dtype` is deprecated|Torch was not compiled with flash attention|"
+                   r"words count mismatch|HF_TOKEN|unauthenticated requests to the HF Hub|TypedStorage|"
+                   r"torch\.nn\.utils|Defaulting repo_id|torch\.load|weights_only|lang_code")
 
 
 class _QuietFilter:
@@ -403,10 +405,16 @@ def quiet_warnings() -> None:
                 "kokoro", "misaki", "spacy", "thinc", "gradio", "google.colab", "accelerate", "librosa", "phonemizer"):
         warnings.filterwarnings("ignore", category=UserWarning, module=mod.replace(".", r"\.") + r"(\.|$)")
     warnings.filterwarnings("ignore", message=r".*(torchao|serve_kernel_port_as_iframe|symlink).*")
+    # by message too: the module a warning names is often the caller (kokoro, our own code), not torch / HF
+    warnings.filterwarnings("ignore", message=r"(?s).*(HF_TOKEN|unauthenticated requests|words count mismatch|"
+                                              r"dropout option|weight_norm|TypedStorage|torch\.load|weights_only).*")
+    warnings.filterwarnings("ignore", category=UserWarning, message=r"(?s).*\btorch\b.*")
     for name in ("torchao", "diffusers", "transformers", "huggingface_hub", "accelerate", "httpx", "phonemizer"):
         logging.getLogger(name).setLevel(logging.ERROR)
+    logging.getLogger("phonemizer").disabled = True  # phonemizer resets its own level; "disabled" stays
     flt = _QuietFilter()
-    for lg in (logging.getLogger(), logging.getLogger("torchao"), logging.getLogger("py.warnings")):
+    for lg in (logging.getLogger(), logging.getLogger("torchao"), logging.getLogger("py.warnings"),
+               logging.getLogger("phonemizer"), logging.getLogger("huggingface_hub")):
         lg.addFilter(flt)
         for h in lg.handlers:
             h.addFilter(flt)

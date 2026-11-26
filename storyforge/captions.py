@@ -248,7 +248,8 @@ def ass_filter(ass_path: Path) -> str:
 # 3D explainer: small keyword captions at the top, colored by meaning
 # ---------------------------------------------------------------------------
 
-KEY_COLORS = {"problem": (255, 92, 92), "part": (255, 170, 60), "number": (255, 255, 255), "info": (120, 235, 225)}
+KEY_COLORS = {"problem": (255, 92, 92), "part": (255, 170, 60), "number": (255, 255, 255), "info": (120, 235, 225),
+              "wow": (255, 214, 10)}
 
 
 def keyword_header(size: tuple[int, int], fmt: str, lang: str) -> list[str]:
@@ -287,4 +288,120 @@ def keyword_events(items: list[dict], lang: str, total: float) -> list[tuple]:
         pop = r"{\blur1.5\fscx70\fscy70\t(0,110,\fscx106\fscy106)\t(110,180,\fscx100\fscy100)}"  # never faded
         style = f"Key_{it.get('kind') if it.get('kind') in KEY_COLORS else 'info'}"
         events.append((round(it["start"], 3), round(end, 3), style, pop + _wrap(text, rtl)))
+    return events
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Two layers for 3D explainers: the spoken words at the bottom (2-3 at a time, white, bold, soft shadow) and ONE
+# big coloured keyword at the top for wow facts (MORE AIR, 10x SMALLER, 40,000 VOLTS)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def two_layer_header(size: tuple[int, int], fmt: str, lang: str) -> list[str]:
+    W, H = size
+    rtl = is_rtl(lang)
+    head = keyword_header(size, fmt, lang)
+    fs = int(min(W, H) * (0.06 if fmt == "9x16" else 0.045) * (1.1 if rtl else 1.0))
+    margin = int(H * (0.215 if fmt == "9x16" else 0.075))  # above the app buttons (bottom 20 %)
+    enc = -1 if rtl else 1
+    font = FONT_FA if rtl else FONT_EN
+    sub = (f"Style: Sub,{font},{fs},{ass_color((255, 255, 255))},{ass_color((255, 255, 255))},"
+           f"{ass_color((0, 0, 0), 0x50)},{ass_color((0, 0, 0), 0x70)},{-1 if rtl else 0},0,0,0,100,100,0,0,1,"
+           f"{max(2, fs // 16)},{max(2, fs // 11)},2,{int(W * 0.1)},{int(W * 0.1)},{margin},{enc}")
+    k = head.index("[Events]") - 1
+    return head[:k] + [sub] + head[k:]
+
+
+def subtitle_events(words: list[dict], fmt: str, lang: str, total: float | None = None) -> list[tuple]:
+    """The narration at the bottom, 2-3 words at a time (a new group at sentence ends and pauses)."""
+    rtl = is_rtl(lang)
+    words = [w for w in words if w.get("w")]
+    max_chars = (16 if fmt == "9x16" else 24) + (3 if rtl else 0)
+    groups, cur = [], []
+    for w in words:
+        if cur:
+            length = sum(len(x["w"]) + 1 for x in cur) + len(w["w"])
+            if len(cur) >= 3 or length > max_chars or w["s"] - cur[-1]["e"] > 0.45:
+                groups.append(cur)
+                cur = []
+        cur.append(w)
+        if w["w"][-1:] in ".!?؟…" or (w["w"][-1:] in ",;:" and len(cur) >= 2):
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    events = []
+    for gi, g in enumerate(groups):
+        start = g[0]["s"]
+        nxt = groups[gi + 1][0]["s"] if gi + 1 < len(groups) else (total or g[-1]["e"] + 0.5)
+        end = max(g[-1]["e"], min(nxt, g[-1]["e"] + 0.3))
+        text = " ".join(escape(w["w"]) for w in g)
+        events.append((round(start, 3), round(end, 3), "Sub", r"{\fad(60,0)\blur0.6}" + _wrap(text, rtl)))
+    return events
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Karaoke captions for 3D documentaries: the full sentence, the word being said in bold white, key words (numbers,
+# names, the plan's keywords) in a yellow box
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def karaoke_header(size: tuple[int, int], fmt: str, lang: str) -> list[str]:
+    W, H = size
+    rtl = is_rtl(lang)
+    head = keyword_header(size, fmt, lang)
+    fs = int(min(W, H) * (0.052 if fmt == "9x16" else 0.04) * (1.1 if rtl else 1.0))
+    margin = int(H * (0.215 if fmt == "9x16" else 0.08))
+    font = FONT_FA if rtl else FONT_EN
+    kara = (f"Style: Kara,{font},{fs},{ass_color((200, 204, 210))},{ass_color((255, 255, 255))},"
+            f"{ass_color((0, 0, 0), 0x40)},{ass_color((0, 0, 0), 0x60)},{-1 if rtl else 0},0,0,0,100,100,0,0,1,"
+            f"{max(2, fs // 16)},{max(1, fs // 14)},2,{int(W * 0.08)},{int(W * 0.08)},{margin},{-1 if rtl else 1}")
+    k = head.index("[Events]") - 1
+    return head[:k] + [kara] + head[k:]
+
+
+def _is_key_word(w: str, keys: set) -> bool:
+    core = re.sub(r"[^\w%]", "", w.lower())
+    return bool(core) and (any(ch.isdigit() for ch in core) or core in keys)
+
+
+def karaoke_events(words: list[dict], fmt: str, lang: str, total: float | None = None,
+                   keys: set | None = None) -> list[tuple]:
+    """One event per spoken word: the whole line stays, the current word turns bold white, key words get a box."""
+    rtl = is_rtl(lang)
+    keys = {re.sub(r"[^\w%]", "", k.lower()) for k in (keys or set())}
+    words = [w for w in words if w.get("w")]
+    max_words, max_chars = (7, 30) if fmt == "9x16" else (11, 52)
+    lines, cur = [], []
+    for w in words:
+        if cur and (len(cur) >= max_words or sum(len(x["w"]) + 1 for x in cur) + len(w["w"]) > max_chars
+                    or w["s"] - cur[-1]["e"] > 0.6):
+            lines.append(cur)
+            cur = []
+        cur.append(w)
+        if w["w"][-1:] in ".!?؟…":
+            lines.append(cur)
+            cur = []
+    if cur:
+        lines.append(cur)
+    yellow = "&H0AD6FF&"
+    events = []
+    for li, line in enumerate(lines):
+        nxt = lines[li + 1][0]["s"] if li + 1 < len(lines) else (total or line[-1]["e"] + 0.6)
+        end_line = max(line[-1]["e"], min(nxt, line[-1]["e"] + 0.5))
+        for k, w in enumerate(line):
+            ws = line[0]["s"] if k == 0 else w["s"]
+            we = line[k + 1]["s"] if k + 1 < len(line) else end_line
+            if we <= ws:
+                continue
+            parts = []
+            for j, x in enumerate(line):
+                tx = escape(x["w"])
+                if _is_key_word(x["w"], keys):  # a key word: dark text in a yellow box
+                    tx = f"{{\\c&H101010&\\3c{yellow}\\bord9\\shad0}}{tx}{{\\r}}"
+                elif j == k:  # the word being said: bold white
+                    tx = f"{{\\b1\\c&HFFFFFF&}}{tx}{{\\r}}"
+                parts.append(tx)
+            pre = r"{\fad(80,0)}" if k == 0 else ""
+            events.append((round(ws, 3), round(we, 3), "Kara", pre + _wrap(" ".join(parts), rtl)))
     return events

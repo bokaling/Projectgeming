@@ -134,7 +134,9 @@ def test_pause_before_reveals_and_narrator_speed(offline):
     series = project.Series.create("Speed")
     ep = series.episode(1)
     pipe = pipeline.Pipeline(series, ep, Reporter(echo=False), project.EpisodeOptions())
-    assert pipe.voice_choice("en")["speed"] == paste.NARRATOR_SPEED == 1.1
+    assert pipe.voice_choice("en")["speed"] == paste.NARRATOR_SPEED == 1.0  # explainers: calm 1.0x
+    pipe.opts.video_format = "story"
+    assert pipe.voice_choice("en")["speed"] == paste.STORY_SPEED == 1.1
 
 
 def test_voice_speed_keeps_captions_in_sync(sf_root, monkeypatch, tmp_path):

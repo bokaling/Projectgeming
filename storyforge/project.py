@@ -115,7 +115,8 @@ class EpisodeOptions:
     idea: str = ""  # the topic ("how cow poop becomes electricity") when the AI writes the script
     script_text: str = ""  # your script (or the one the AI wrote)
     source: str = "paste"  # paste = your script, ai = the AI writes it from `idea`
-    length: str = "short"  # short = ~60 s 9:16 1080x1920, long = ~10 min 16:9 1920x1080
+    length: str = "short"  # short = vertical 9:16 1080x1920 (30 s - 3 min), long = 16:9 1920x1080 (8-10 min)
+    seconds: int = 0  # target length in seconds; 0 = the format's default (How it works 80 s, documentary 150 s)
     languages: list = field(default_factory=lambda: ["en"])
     formats: list = field(default_factory=lambda: ["9x16"])  # set from `length`
     resolution: str = "1080p"  # or "720p" (faster)

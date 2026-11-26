@@ -13,15 +13,19 @@ import time
 from pathlib import Path
 
 from . import beats, captions, characters, config, formats, paste, publish, render, script
+from . import videos as videos_mod
 from .audio import music, tts
 from .messages import FriendlyError, Reporter, Timer
 from .paste import NARRATOR
 from .project import Episode, EpisodeOptions, Series, dims, fingerprint, read_json, write_json
 
 LEAD, TAIL, LAST_TAIL, MIN_SCENE = 0.08, 0.22, 0.6, 1.6  # seconds: short gaps between scenes
+TAIL_3D = 0.5  # explainers: half a second after each shot's line, so the animation finishes before the camera moves
+MIN_SCENE_3D = 3.0  # explainers and documentaries: no shot shorter than this (no jumpy cuts)
 END_CARD, END_HOLD = 1.6, 0.8
 QUALITY_CHECK_READY = True  # the automatic quality check (step 🔍) is on
-SPEAKER_GAP, REVEAL_PAUSE = 0.2, 0.4  # pause between speakers / before a reveal
+REVIEW_BUDGET = 120  # seconds: the self-review asks the AI for at most this long (one round)
+SPEAKER_GAP, REVEAL_PAUSE = 0.2, 0.55  # pause between speakers / before a reveal
 CHARACTER_SPEED = 1.05
 
 
@@ -65,7 +69,7 @@ class Pipeline:
     def voice_choice(self, lang: str) -> dict:
         """The narrator: about 1.1x speed (more energy). Word times come from the engine, so captions stay in sync."""
         c = tts.parse_voice(self.series.data.get("voices", {}).get(lang), lang)
-        c["speed"] = paste.NARRATOR_SPEED if c.get("engine") != "own" else 1.0
+        c["speed"] = paste.narrator_speed(self.video_format()) if c.get("engine") != "own" else 1.0
         return c
 
     def narrator_value(self, lang: str) -> str:
@@ -97,8 +101,12 @@ class Pipeline:
             items = [(text, self.voice_choice(lang))] if text.strip() else []
         out = []
         for text, voice in items:
-            for k, piece in enumerate(split_for_pauses(text)):
-                out.append((piece, voice, REVEAL_PAUSE if k else SPEAKER_GAP))
+            for j, chunk in enumerate(paste.PAUSE.split(text)):  # [PAUSE] after a reveal: the voice stops a moment
+                if not chunk.strip():
+                    continue
+                for k, piece in enumerate(split_for_pauses(chunk.strip())):
+                    gap = paste.PAUSE_SECONDS if (j and not k) else (REVEAL_PAUSE if k else SPEAKER_GAP)
+                    out.append((piece, voice, gap))
         return out
 
     def voices(self, lang: str) -> None:
@@ -162,7 +170,7 @@ class Pipeline:
         voices_used = sorted({tts.label(*v) for v in resolved.values()})
         self.rep.step(f"🗣️ Voiceover ({'Farsi' if lang == 'fa' else 'English'}, {len(todo)} scenes, "
                       f"{len(voices_used)} voice{'s' if len(voices_used) > 1 else ''}, narrator "
-                      f"{paste.NARRATOR_SPEED:g}x speed)")
+                      f"{paste.narrator_speed(self.video_format()):g}x speed)")
         if any(v[0] == "edge" for v in resolved.values()) and lang == "fa":
             self.rep.info("ℹ️ " + tts.EDGE_WARNING)
         engines = set()
@@ -200,6 +208,7 @@ class Pipeline:
         self.rep.step("🧭 Scene plan (the 3D world and every shot)")
         with Timer() as t:
             plan, provider, fixes = planner.make_plan(sc, self.opts.length, self.rep)
+        plan["format"] = self.video_format()  # explainers: calm cameras; stories: faster cuts
         freeze_layout(plan)
         self.ep.save_plan(plan)
         (self.ep.dir / "plan.md").write_text(P.summary(plan), encoding="utf-8")
@@ -219,6 +228,7 @@ class Pipeline:
         from .world.scene import freeze_layout  # noqa: PLC0415
 
         sc = self.script
+        plan = {**plan, "format": plan.get("format") or self.video_format()}
         plan, fixes = P.validate(plan, [s["narration"] for s in sc["scenes"]])
         freeze_layout(plan)  # new areas get a fixed place too
         self.ep.save_plan(plan)
@@ -234,11 +244,15 @@ class Pipeline:
         adir = self.ep.audio_dir(lang)
         scenes, words, t = [], [], 0.0
         sc_all = self.script["scenes"]
+        story = self.video_format() == "story"  # stories cut fast; 3D explainers breathe (the action finishes)
         for i, sc in enumerate(sc_all):
             x, sr = tts.read_wav(adir / f"{sc['id']}.wav")
             vlen = len(x) / sr
-            tail = LAST_TAIL if i == len(sc_all) - 1 else TAIL
-            dur = render.snap(max(MIN_SCENE, LEAD + vlen + tail))
+            tail = LAST_TAIL if i == len(sc_all) - 1 else (TAIL if story else TAIL_3D)
+            said = " ".join(ln.get("text", "") for ln in sc.get("lines", [])) or sc.get("narration", "")
+            if re.search(r"\[\s*PAUSE\s*\]\W*$", said, re.I):  # a pause after the last words: hold the picture
+                tail += paste.PAUSE_SECONDS
+            dur = render.snap(max(MIN_SCENE if story else MIN_SCENE_3D, LEAD + vlen + tail))
             scenes.append({"id": sc["id"], "start": round(t, 3), "dur": round(dur, 3), "voice": round(vlen, 3)})
             for w in (read_json(adir / f"{sc['id']}.json", {}) or {}).get("words", []):
                 words.append({"w": w["w"], "s": round(t + LEAD + w["s"], 3), "e": round(t + LEAD + w["e"], 3)})
@@ -247,7 +261,7 @@ class Pipeline:
 
         # explainers end on an overview of the whole system that flies back to shot 1 (the video loops);
         # "Part X" end cards are only for story series (option)
-        card = self.opts.end_card or formats.get(self.video_format())["ending"] == "card"  # story series: "Part X"
+        card = formats.end_card(self.video_format(), self.opts.end_card)  # only stories: "Part X"
         end = render.snap(END_CARD if card else END_OVERVIEW)
         total = round(t + end, 3)
         tl = {"scenes": scenes, "words": words, "total": total,
@@ -308,10 +322,16 @@ class Pipeline:
         if self.opts.captions and words_mode:  # story: single big words, red key words
             events = captions.caption_events(tl["words"], size, fmt, lang, style="pop", accent="red", total=tl["total"],
                                              single=True)
-        elif self.opts.captions:
-            events = captions.keyword_events(self.keyword_items(world), lang, tl["total"])
+        karaoke = formats.get(self.video_format())["captions"] == "karaoke"
+        if self.opts.captions and karaoke:  # documentaries: the full sentence, the current word bold, key words boxed
+            keys = {w for s in plan["scenes"] for k in s.get("keywords", []) for w in k["text"].lower().split()}
+            keys |= {w for s in plan["scenes"] if s.get("stat") for w in s["stat"]["big"].lower().split()}
+            events = captions.karaoke_events(tl["words"], fmt, lang, tl["total"], keys)
+        elif self.opts.captions and not words_mode:  # 3D explainers: the words at the bottom + one big wow keyword
+            events = captions.keyword_events(self.keyword_items(world), lang, tl["total"]) + \
+                captions.subtitle_events(tl["words"], fmt, lang, tl["total"])
         head = captions.header(size, fmt, lang, style="pop", accent="red") if words_mode else \
-            captions.keyword_header(size, fmt, lang)
+            captions.karaoke_header(size, fmt, lang) if karaoke else captions.two_layer_header(size, fmt, lang)
         outs, todo = [], []
         for k, (cid, t0, t1) in enumerate(items):
             out = self.ep.clip_path(cid, fmt, lang)
@@ -360,12 +380,17 @@ class Pipeline:
         return outs
 
     def end_card_text(self, lang: str) -> str:
-        card = self.opts.end_card or formats.get(self.video_format())["ending"] == "card"
+        card = formats.end_card(self.video_format(), self.opts.end_card)
         return publish.end_card_text(self.ep.number, lang, self.opts.final_episode) if card else ""
 
     def video_format(self) -> str:
         """The format of this video (the user's choice, or guessed from the title and the first lines)."""
-        sc = self.script or {}
+        if self.opts.video_format in formats.FORMATS:
+            return self.opts.video_format
+        try:
+            sc = self.script or {}
+        except FriendlyError:
+            sc = {}
         text = " ".join([sc.get("title", "")] + [s.get("narration", "") for s in sc.get("scenes", [])[:2]])
         return formats.resolve(self.opts.video_format, text)
 
@@ -397,9 +422,7 @@ class Pipeline:
         machine hums, bubbling, sparks, booms on reveals). Nothing above 8 kHz, -14 LUFS."""
         sc = self.script
         plan = plan or {"scenes": []}
-        fmood = formats.get(self.video_format())["mood"]
-        mood = self.opts.music_mood if self.opts.music_mood != "auto" else (
-            fmood if fmood != "auto" and sc.get("music_mood", "explainer") == "explainer" else sc.get("music_mood", "explainer"))
+        mood = formats.music_mood(self.video_format(), self.opts.music_mood, sc.get("music_mood", ""))
         seed = characters.stable_seed(f"{self.series.slug}/{self.ep.number}/music")
         prev = [p.get("music", "") for p in self.series.previous_summaries(self.ep.number, 3)]
         pick = music.choose_music(mood, seed, avoid=prev)
@@ -592,6 +615,7 @@ class Pipeline:
             rep.progress(0.95, "Thumbnail")
             with rep.timed("🖼️ Thumbnail & text"):
                 extra = self.thumbnails_and_text(plan)
+            library = self.copy_to_videos_folder(videos, extra)
         prof = config.gpu_profile()
         units = round(total.seconds / 3600 * prof.cu_per_hour, 2)
         report = [(n, round(sec, 1)) for n, sec in rep.timings if sec >= 0.05]
@@ -600,17 +624,38 @@ class Pipeline:
         for line in rep.timing_report(total.seconds):
             rep.info("   " + line)
         result = {"videos": [str(v) for v in videos], "thumbnails": [str(t) for t in extra["thumbnails"]],
+                  "library": [str(v) for v in library], "library_link": videos_mod.drive_link(),
                   "metadata": str(self.ep.export_dir / "metadata.md"), "minutes": round(total.seconds / 60, 1),
                   "gpu": prof.name, "units": units, "length": self.opts.length, "timings": report}
         write_json(self.ep.export_dir / "result.json", result)
         log_video_usage(self.series.name, self.ep.number, self.opts.length, prof.name, total.seconds, units)
+        where = library[0].parent if library else self.ep.export_dir
+        link = videos_mod.drive_link(where) if library else ""
         msg = (f"Done in {total.label} on {prof.name} (≈{units} compute units). "
-               f"Your videos are in Google Drive: {self.ep.export_dir}")
+               f"📂 Your video is in {where}" + (f" → {link}" if link else ""))
         if final:
             rep.done(result, msg)
         else:
             rep.ok(msg)
         return result
+
+    def copy_to_videos_folder(self, videos: list, extra: dict) -> list[Path]:
+        """📂 Every finished video also goes to 'StoryForge Videos' with a nice name, its captions and thumbnail."""
+        out = []
+        meta = (extra.get("metadata") or {}).get("languages", {})
+        title = self.script.get("title", "")
+        for v in videos:
+            v = Path(v)
+            lang = "fa" if "_fa_" in v.name else "en"
+            fmt = "16x9" if "16x9" in v.name else "9x16"
+            thumb = self.ep.export_dir / f"thumbnail_{lang}_{fmt}.jpg"
+            try:
+                out.append(videos_mod.add(v, title, fmt, lang, meta.get(lang, {}), thumb))
+            except OSError as exc:  # a full Drive must not lose the video: it is still in the project folder
+                self.rep.warn(f"Could not copy to '{videos_mod.FOLDER}' ({exc}). The video is in {v.parent}.")
+        if out:
+            self.rep.ok(f"📂 Copied to '{videos_mod.FOLDER}': {out[0].name}")
+        return out
 
     def quality_check(self, plan: dict) -> dict:
         """🔍 Before rendering: one still per shot, local checks (subject in frame, camera not inside a wall, labels
@@ -726,15 +771,19 @@ class Pipeline:
             if logic:
                 bad.setdefault(i, []).extend(logic)
                 self.rep.info(f"🧩 Shot {i + 1}: " + ", ".join(x.replace("_", " ") for x in logic))
-        seen = checker.ask_vision(frames[:n], texts, self.rep)  # {} without a free Gemini key
+        from . import llm  # noqa: PLC0415
+
+        t0 = time.time()  # one round, at most REVIEW_BUDGET seconds of AI; skipped while Gemini is busy
+        seen = {} if llm.gemini_busy() else checker.ask_vision(frames[:n], texts, self.rep)  # {} without a key
         new = json.loads(json.dumps(plan))
         report = []
         for i, probs in bad.items():
             done = checker.fix_local(new, i, probs)
             report += [f"Shot {i + 1}: {', '.join(done)}"] if done else []
         for i, info in seen.items():
+            use_ai = time.time() - t0 < REVIEW_BUDGET and not llm.gemini_busy()
             try:
-                new, changes, _ = fixer.fix(new, i, info["fix"], texts[i], self.rep)
+                new, changes, _ = fixer.fix(new, i, info["fix"], texts[i], self.rep, quick=True, use_ai=use_ai)
                 report.append(f"Shot {i + 1} (Gemini: {info['problem'] or 'looked wrong'}): {', '.join(changes)}")
             except ValueError:
                 report.append(f"Shot {i + 1}: Gemini saw a problem ({info['problem']}); check it on step 2.")
@@ -829,6 +878,27 @@ def episode_number(series: Series, number: int | None, opts: EpisodeOptions) -> 
     return number if same else None
 
 
+def same_topic_episode(series: Series, opts: EpisodeOptions, text: str) -> int | None:
+    """An episode of this series about the same topic (or with nearly the same title): making it again REPLACES it
+    (no 'title very close to episode 1' warning, no second copy)."""
+    import difflib  # noqa: PLC0415
+
+    def norm(t):
+        return re.sub(r"[^a-z0-9]+", " ", (t or "").lower()).strip()
+
+    idea = norm((opts.idea or "").split("=====")[0])
+    title = norm(paste.parse_lines(text or "").get("title", ""))
+    for n in reversed(series.episode_numbers()):
+        ep = series.episode(n)
+        old = ep.load_options()
+        if idea and norm(old.idea) == idea:
+            return n
+        old_title = norm((ep.load_script() or {}).get("title", ""))
+        if title and old_title and difflib.SequenceMatcher(None, title, old_title).ratio() >= 0.9:
+            return n
+    return None
+
+
 def generate(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, number: int | None = None) -> dict:
     """Everything after you press Generate: (topic → script), plan, voice, 3D render, sound, export."""
     texts = paste.split_scripts(text) if opts.source == "paste" else []
@@ -840,7 +910,7 @@ def generate(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, num
         for tp in topics:
             rep.step(f"✍️ Writing the script: {tp}")
             txt, provider = script.write_from_topic(tp, opts.length, (opts.languages or ["en"])[0], opts.creator_note, rep,
-                                                    opts.video_format)
+                                                    opts.video_format, opts.seconds)
             rep.ok(f"Script written by {provider}")
             texts.append(txt)
         opts.source = "paste"
@@ -848,6 +918,9 @@ def generate(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, num
         raise FriendlyError("The script box is empty.", "Paste your script (or type a topic), then press Generate.")
     if len(texts) > 1:
         return run_batch(series, opts, texts, rep, number)
+    number = number or same_topic_episode(series, opts, texts[0])
+    if number and number in series.episode_numbers():
+        rep.info(f"♻️ Same topic as episode {number}: it is made again in its place (no copy).")
     ep = series.episode(number or series.next_episode_number())
     set_current_episode(series, ep)
     opts.script_text = texts[0]
@@ -864,12 +937,13 @@ def prepare(series: Series, opts: EpisodeOptions, text: str, rep: Reporter, numb
         topic = (opts.idea or "").split("=====")[0].strip()
         rep.step(f"✍️ Writing the script: {topic}")
         text, provider = script.write_from_topic(topic, opts.length, (opts.languages or ["en"])[0], opts.creator_note, rep,
-                                                 opts.video_format)
+                                                 opts.video_format, opts.seconds)
         rep.ok(f"Script written by {provider}")
         opts.source = "paste"
     first = (paste.split_scripts(text) or [""])[0]
     if len(paste.split_scripts(text)) > 1:
         rep.warn("🧭 Plan first works on one script at a time: using the first one (before the first =====).")
+    number = number or same_topic_episode(series, opts, first)
     ep = series.episode(number or series.next_episode_number())
     set_current_episode(series, ep)
     opts.script_text = first
@@ -928,6 +1002,33 @@ def run_batch(series: Series, opts: EpisodeOptions, texts: list[str], rep: Repor
     rep.done(summary, f"Batch finished: {len(done)} of {len(texts)} videos made (≈{summary['units']} compute units)."
              + (f" Failed: episodes {failed}. Press Generate again to retry them." if failed else ""))
     return summary
+
+
+def use_plan(series: Series, opts: EpisodeOptions, text: str, plan: dict, rep: Reporter,
+             number: int | None = None) -> dict:
+    """📋 A plan you wrote (or pasted): the script is read, the plan checked and repaired like every plan, and saved.
+    Press 🚀 Make the video with this plan afterwards. Returns {"episode", "fixes", "shots"}."""
+    first = (paste.split_scripts(text) or [""])[0]
+    if not first.strip():
+        raise FriendlyError("Paste the script first (step 1).", "The plan needs the script it was written for.")
+    if not isinstance(plan, dict) or not isinstance(plan.get("scenes"), list):
+        raise FriendlyError("That plan has no \"scenes\" list.", "Paste the whole plan JSON (see docs/PLAN_CHEATSHEET.md).")
+    number = number or same_topic_episode(series, opts, first)
+    ep = series.episode(number or series.next_episode_number())
+    set_current_episode(series, ep)
+    opts.script_text = first
+    ep.save_options(opts)
+    script.script_from_text(series, ep, opts, first, rep)
+    pipe = Pipeline(series, ep, rep, opts)
+    from .world import plan as P  # noqa: PLC0415
+
+    texts = [s["narration"] for s in pipe.script["scenes"]]
+    _, fixes = P.validate({**plan, "format": plan.get("format") or pipe.video_format()}, texts)
+    saved = pipe.save_plan(plan)
+    rep.ok(f"📋 Your plan is checked and saved: {len(saved['scenes'])} shots, {len(fixes)} auto-fix(es)")
+    for f in fixes[:12]:
+        rep.info("🔧 " + f)
+    return {"episode": ep.number, "fixes": fixes, "shots": len(saved["scenes"])}
 
 
 def set_current_episode(series: Series, ep: Episode) -> None:

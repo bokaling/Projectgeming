@@ -22,7 +22,7 @@ from .assets import C, asset, col
 from .mesh import Model
 
 SETTINGS = {
-    "studio": "the clean dark studio with the glowing grid (default for machines and diagrams)",
+    "studio": "the clean light studio (default for machines and diagrams)",
     "kitchen": "a home kitchen: tiled floor, walls, counter with sink and stove, cabinets, window",
     "bathroom": "a bathroom: tiles, sink with mirror, bathtub, towel",
     "garage": "a car workshop: concrete floor, tool wall, workbench, tires, shelves",
@@ -34,6 +34,8 @@ SETTINGS = {
     "outdoors": "open grass with trees and rocks",
     "farm": "a farm yard (dirt, hay, fences)",
     "desk": "a desk top seen up close (for small things: phones, batteries, chips)",
+    "table": "COMPARISON: a plain light table top in a clean light studio, nothing else (everyday things side by "
+             "side to show a big or tiny number: a water bottle and a shot glass, a droplet next to a hair)",
     "site": "an industrial site: concrete pad, barrels, crates, a worker (big plants, tanks, power stations)",
     "town": "a small town: grass, houses, cars, people",
 }
@@ -41,7 +43,8 @@ OLD_STYLE = {"farm", "site", "town"}  # dressed by decor.py (pads, props along t
 ALIASES = {"home": "kitchen", "house": "living_room", "room": "living_room", "workshop": "garage",
            "repair_shop": "garage", "road": "street", "city": "street", "town": "street", "toilet": "bathroom",
            "restroom": "bathroom", "laboratory": "lab", "plant": "factory", "industry": "factory", "park": "outdoors",
-           "field": "outdoors", "nature": "outdoors", "table": "desk", "tabletop": "desk", "none": "studio",
+           "field": "outdoors", "nature": "outdoors", "tabletop": "table", "comparison": "table", "compare": "table",
+           "floor": "table", "none": "studio",
            "default": "studio", "dark": "studio"}
 KEYWORDS = [  # (words, setting): the area's objects and its shots' words; most hits wins
     (r"fridge|refrigerator|freezer|oven|microwave|dishwasher|kettle|toaster|stove|kitchen|blender|coffee", "kitchen"),
@@ -331,6 +334,7 @@ def turntable(r=1.0):
 
 def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
     """The setting's pieces around the area's main objects (world coordinates in 'at')."""
+    from . import assets as assets_mod  # noqa: PLC0415
     from .decor import inst_box  # noqa: PLC0415
 
     aid = area["id"]
@@ -343,6 +347,8 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
     def put(a, x, z, elev=0.0, rot=0.0, **params):
         out.append({"asset": a, "area": aid, "at": (float(x), float(elev), float(z)), "rot": float(rot), "params": params})
 
+    if any("cross_section" in getattr(assets_mod.REGISTRY.get(i.asset), "tags", []) for i in insts):
+        return out  # a mountain cut open IS the place (no grass or props in front of the underground)
     if setting == "studio":
         if len(insts) <= 2 and size < 8:
             put("turntable", cx, cz, r=round(max(0.4, size * 0.6), 2))
@@ -402,6 +408,10 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
             put("kitchen_counter", right + 0.9, bz + 0.32, length=1.8, sink=True, stove=False, color="#e9eef1", top="#2f3438")
             put("shelf", x0 + 0.25, bz + 1.4, rot=90.0, length=1.2)
         return out
+    if setting == "table":  # a comparison: a plain light table top, nothing else
+        w, d = max(1.4, size * 3.2), max(1.0, size * 2.2)
+        put("slab", cx, cz - d * 0.1, w=round(w, 2), d=round(d, 2), h=0.04, color="#eef1f3")
+        return out
     if setting == "desk":  # the floor IS the desk top: wood, with a few desk things far behind
         w, d = max(1.2, size * 6), max(0.9, size * 4.5)
         put("planks", cx, cz - d * 0.15, w=round(w, 2), d=round(d, 2), color="#b78350")
@@ -415,6 +425,7 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
         for dx in (-1, 1):
             put("lamp_post", cx + dx * (size / 2 + 1.6), float(hi[2]) + 1.0, rot=-90.0)
             put("tree", cx + dx * (size / 2 + 3.4), float(hi[2]) + 1.0)
+            put("person", cx + dx * (size / 2 + 2.4), float(hi[2]) + 2.2, rot=dx * 30.0)  # people for scale
         return out
     if setting == "factory":
         w, d = max(8.0, size + 6), max(6.0, size + 5)
@@ -428,10 +439,12 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
     if setting == "outdoors":
         put("slab", cx, cz, w=round(max(12.0, size * 3), 1), d=round(max(10.0, size * 2.5), 1), color="#6cae4f")
         rng = _rng(aid, "outdoors")
-        for k in range(5):
+        for k in range(6):
             a = rng.uniform(math.pi * 0.9, math.pi * 2.1)
             rr = size / 2 + rng.uniform(2.0, 5.0)
             put("tree" if k % 2 == 0 else "rock", cx + rr * math.cos(a), cz + rr * math.sin(a) - 1.0,
                 rot=float(rng.uniform(0, 360)))
+        for k in range(2):  # tiny people for scale
+            put("person", cx + (k * 2 - 1) * (size / 2 + 1.2), cz + size * 0.3 + 0.8, rot=float(rng.uniform(-40, 40)))
         return out
     return out

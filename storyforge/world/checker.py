@@ -205,6 +205,10 @@ def ask_vision(stills: list[np.ndarray], texts: list[str], rep=None, batch: int 
     from .. import llm  # noqa: PLC0415
 
     bad: dict[int, dict] = {}
+    if llm.gemini_busy():  # Gemini was busy a moment ago: don't wait on it again for an extra
+        if rep is not None:
+            rep.info("⏭️ Gemini is busy, so the picture check uses the local checks only.")
+        return bad
     for a in range(0, len(stills), batch):
         idx = list(range(a, min(len(stills), a + batch)))
         text = "\n".join(f"Shot {k + 1}: {texts[k]}" for k in idx) + \
@@ -249,11 +253,17 @@ def check(plan: dict, make_world, render_still, texts: list[str], rep=None, use_
         for i in changed:
             stills[i] = render_still(world, i)
     if use_ai:
+        import time  # noqa: PLC0415
+
+        from .. import llm  # noqa: PLC0415
+
         bad = ask_vision(stills, texts, rep)
         changed = set()
+        t0 = time.time()
         for i, info in sorted(bad.items()):
-            try:
-                plan, changes, _ = fixer.fix(plan, i, info["fix"], texts[i], rep)
+            try:  # the light Gemini model, at most 2 minutes, nothing when Gemini is busy
+                plan, changes, _ = fixer.fix(plan, i, info["fix"], texts[i], rep, quick=True,
+                                             use_ai=time.time() - t0 < 120 and not llm.gemini_busy())
             except ValueError:
                 report.append(f"Shot {i + 1}: Gemini saw a problem ({info['problem'] or info['fix']}), "
                               "but I couldn't fix it automatically. Check it on step 2.")

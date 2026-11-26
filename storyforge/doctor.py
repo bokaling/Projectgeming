@@ -87,8 +87,45 @@ def _sentences(text: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?؟…])\s+", text.strip()) if s.strip()]
 
 
-def score(text: str, length: str = "short") -> Report:
-    """Score a script. Instant and offline."""
+UNIT_SOUP = re.compile(r"\b\d[\d,.]*\s*(kN|MPa|kPa|GPa|psi|µs|μs|microseconds?|nanoseconds?|ms|°C|°F|degrees?|rpm|kW|"
+                       r"Nm|mm|newtons?|pascals?|joules?|kelvin)\b", re.I)
+MYTH = re.compile(r"\b(not|doesn'?t|isn'?t|aren'?t|don'?t|never|actually|myth|wrong|instead|most people|you think|"
+                  r"you'd think|turns out|really)\b", re.I)
+COMPARE = re.compile(r"\b(as (heavy|big|small|tall|long|hot|fast|thin|wide) as|thinner than|bigger than|smaller than|"
+                     r"the size of|like a|times)\b", re.I)
+
+
+def _explainer_checks(lines: list, parsed: dict, rep: "Report", flag) -> None:
+    """Part 5 rules for 3D formats: a myth buster early, no unit soup, [PAUSE] after reveals, 1-3 sentences a shot."""
+    early, said = [], 0
+    for ln in lines:
+        if said > 25:
+            break
+        early.append(ln.text)
+        said += len(ln.text.split())
+    if not MYTH.search(" ".join(early)):
+        rep.tips.append("🧠 Add a myth buster in the first 10 seconds: what people believe vs what really happens "
+                        "(\"The gas pedal doesn't give it more gas. It lets in more air.\").")
+    for ln in lines:
+        m = UNIT_SOUP.search(ln.text)
+        if m and not COMPARE.search(ln.text):
+            flag(ln, f"'{m.group(0)}' is hard to picture. Explain it simply or compare it to something everyday "
+                     "(\"as heavy as 9 cars\").")
+    all_text = " ".join(ln.text for ln in lines)
+    if not paste.PAUSE.search(all_text) and len(lines) > 4:
+        rep.tips.append("⏸️ Put [PAUSE] right after a reveal or an important result (the voice stops for a moment).")
+    if not COMPARE.search(all_text):
+        rep.tips.append("⚖️ Add 1-2 everyday comparisons for big or tiny numbers (shown on a plain table).")
+    for b in parsed["blocks"]:
+        n = sum(len(_sentences(x["text"])) for x in b["lines"])
+        if b["from_tag"] and n > 3:
+            first = next((ln for ln in lines if ln.text == b["lines"][0]["text"]), None)
+            if first is not None:
+                flag(first, f"{n} sentences in one shot. Keep 1-3 sentences per [SCENE] (4-8 seconds).")
+
+
+def score(text: str, length: str = "short", video_format: str = "how_it_works") -> Report:
+    """Score a script. Instant and offline. 3D formats (not stories) also get the explainer checks."""
     first = (paste.split_scripts(text) or [""])[0]
     lines = spoken_lines(first)
     rep = Report()
@@ -97,7 +134,7 @@ def score(text: str, length: str = "short") -> Report:
     rep.words = paste.count_words(all_text)
     rep.lines = len(lines)
     rep.speakers = sorted({ln.speaker for ln in lines}, key=lambda x: (x != paste.NARRATOR, x))
-    rep.seconds = round(rep.words / paste.WORDS_PER_SECOND, 1)
+    rep.seconds = round(rep.words / (paste.WORDS_PER_MINUTE / 60 * paste.narrator_speed(video_format)), 1)
     rep.has_style = bool(parsed.get("style"))
     from .beats import guess_mood  # noqa: PLC0415
 
@@ -197,6 +234,8 @@ def score(text: str, length: str = "short") -> Report:
         flag(last, "The last line doesn't pull into the next episode. End on an open question or a new threat.")
     rep.scores["cliffhanger"] = c
 
+    if video_format != "story":
+        _explainer_checks(lines, parsed, rep, flag)
     rep.total = int(round(sum(rep.scores.values()) / (10 * len(CATEGORIES)) * 100))
     by_no = {ln.no: ln for ln in lines}
     rep.weak = [{"no": no, "text": by_no[no].text, "why": why} for no, why in sorted(weak.items())]
@@ -264,6 +303,24 @@ FORMAT (very important):
 Reply with JSON only: {"script": "the full script, one line per line, with \\n between lines", "changes": ["short note", "..."]}"""
 
 
+IMPROVE_SYSTEM_3D = """You are the editor of a viral low poly 3D "how it works" channel. You rewrite explainer scripts for retention.
+Rules:
+- Line 1: a short question (max 10 words) that the first shot shows. Within the first 10 seconds: a surprising myth
+  buster (what people believe vs what really happens).
+- Then explain step by step in the REAL order the thing works: one clear idea per step with a simple "why", 1-3
+  sentences per [SCENE]. Every line describes something the viewer can SEE at that moment.
+- A calm, curious tone; punchy short sentences only for the hook, reveals and ending.
+- No jargon or unit soup (kN, MPa, degrees, microseconds) unless explained simply; use everyday comparisons
+  ("as heavy as 9 cars", "thinner than a hair"), 1-2 per video.
+- Only well-known accurate facts; careful wording when unsure ("about", "engineers estimate"); never invent facts.
+- Put [PAUSE] right after a reveal or an important result.
+- End with the whole thing working, then a short line that makes people want the next video.
+FORMAT (very important):
+- Keep EVERY [TITLE], [CHARACTER] and [STYLE] line exactly as it is. Keep the [SCENE] lines (update one only if that
+  step changed). Every spoken line starts with NARRATOR: (or a speaker name from the original). Same language.
+Reply with JSON only: {"script": "the full script, one line per line, with \\n between lines", "changes": ["short note", "..."]}"""
+
+
 def _tag_lines(text: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for raw in (text or "").split("\n"):
@@ -324,8 +381,9 @@ def check_rewrite(original: str, new: str, length: str) -> None:
         raise ValueError(f"the script has {words} words; it must be about {target} words")
 
 
-def improve(text: str, length: str = "short", rep=None) -> dict:
-    """Rewrite for retention. Returns {"script", "changes", "provider", "ai"}. Never changes your text in place."""
+def improve(text: str, length: str = "short", rep=None, video_format: str = "how_it_works") -> dict:
+    """Rewrite for retention. Returns {"script", "changes", "provider", "ai"}. Never changes your text in place.
+    Stories get the story editor; every 3D format gets the explainer rules (Part 5)."""
     original = (paste.split_scripts(text) or [""])[0]
     if not original.strip():
         raise ValueError("empty script")
@@ -344,7 +402,8 @@ def improve(text: str, length: str = "short", rep=None) -> dict:
         check_rewrite(original, keep_format(original, str(obj["script"])), length)
 
     try:
-        provider, obj = llm.generate_json(IMPROVE_SYSTEM, json.dumps(payload, ensure_ascii=False), validate=validate,
+        system = IMPROVE_SYSTEM if video_format == "story" else IMPROVE_SYSTEM_3D
+        provider, obj = llm.generate_json(system, json.dumps(payload, ensure_ascii=False), validate=validate,
                                           rep=rep, task="script doctor", temperature=0.8, max_tokens=6000,
                                           strong=True)
         new = keep_format(original, str(obj["script"]))

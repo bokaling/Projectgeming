@@ -40,9 +40,9 @@ def test_presets_resolve_guess_and_style():
     assert presets.guess(["a quiet talk about nothing"]) == "studio"
     ocean, studio = presets.style_of("ocean"), presets.style_of("studio")
     assert ocean["grid"] == "#000000" and ocean["floor"] == presets.PRESETS["ocean"]["base"]  # no grid, open sea floor
-    assert studio["grid"] == presets.PRESETS["studio"]["grid"]
+    assert studio["grid"] == "#000000" and presets.PRESETS["studio"]["grid"] is None  # a clean light studio: no grid
     for name, p in presets.PRESETS.items():  # every preset has every colour the renderer needs
-        assert set(presets.style_of(name)) == {"background", "horizon", "floor", "grid", "sky", "ground_light", "sun"}
+        assert set(presets.style_of(name)) >= {"background", "horizon", "floor", "grid", "sky", "ground_light", "sun"}
         assert all(a in assets.REGISTRY for a in p["props"]), name
 
 

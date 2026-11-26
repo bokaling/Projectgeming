@@ -173,7 +173,9 @@ def evaluate(part, st: dict, T: float, m: dict | None = None) -> tuple[np.ndarra
         return _move(ax * float(m.get("amp", 0.5)) * u), 0.0, None
     if kind == "lift":
         u = float(st.get("lift", 0.0))
-        return (_move(ax * float(m.get("amp", 1.0)) * u) if u else None), 0.0, None
+        amp = float(m.get("amp", 1.0))
+        sag = float(st.get("sag", 0.0)) if amp > 0 else 0.0  # a snapped rope: the car drops until the brakes hold
+        return (_move(ax * (amp * u - sag)) if (u or sag) else None), 0.0, None
     if kind == "stretch":
         u = float(st.get("lift", 0.0))
         if not u:

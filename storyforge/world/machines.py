@@ -134,7 +134,11 @@ def car_engine(cylinders=4, color="#c0392b"):
     plen_z, port_y = -0.22, roof + 0.02
     m.add("intake_plenum", M.xf(M.capsule(0.045, 2 * half - 0.1), (0, port_y + 0.03, plen_z)), "#2c3036",
           material="plastic")
-    m.add("throttle", _x_cyl(0.04, 0.06, -half - 0.02, port_y + 0.03, plen_z, 14), "#9aa2aa", material="metal")
+    m.add("throttle", _x_cyl(0.04, 0.06, -half - 0.02, port_y + 0.03, plen_z, 14), "#9aa2aa", material="metal",
+          shell=True)
+    tc = (-half - 0.02 + 0.03, port_y + 0.03, plen_z)  # the throttle plate: the gas pedal opens it to let in AIR
+    m.add("throttle_plate", _x_cyl(0.035, 0.004, tc[0] - 0.002, tc[1], tc[2], 14), "#e0b12a", material="metal",
+          motion={"type": "open", "axis": "z", "deg": 70}, pivot=tc)
     runners = []
     for x in xs:
         runners.append(M.tube([(x, port_y + 0.03, plen_z + 0.04), (x, port_y + 0.04, -0.15), (x, port_y, -0.09)],
@@ -310,6 +314,16 @@ def elevator(floors=4, color="#e9eef1"):
     for side in (-1, 1):
         m.add("car_door", M.xf(M.box(0.6, 2.25, 0.04), (side * 0.3, ground + 1.13, 0.74)), "#d3d8dc", material="metal",
               motion=[dict(lift), {"type": "open", "axis": "x", "amp": side * 0.56}])
+    m.add("car_buttons", M.merge(*[M.xf(M.box(0.05, 0.05, 0.02), (0.6 + dx, ground + 1.18 + 0.09 * r, 0.72))
+                                   for r in range(4) for dx in (-0.04, 0.04)]), "#ffd76b", emissive=0.6,
+          motion=dict(lift))
+    from .assets import build  # noqa: PLC0415  (a passenger rides inside the car, facing the doors)
+
+    rider = build("person", shirt="#3d8fd6", pants="#3e454d", height=1.75, seed=3)
+    s = 1.75 / max(1e-3, float(rider.bounds()[1][1]))
+    for p in rider.parts:  # every piece is "passenger_…", so "lift1.passenger" frames the whole person, head included
+        g = M.xf(M.Geo(p.geo.pos * s), (-0.35, ground + 0.12, -0.15), (0, -70, 0))  # facing the doors
+        m.add(f"passenger_{p.name}", g, p.color, emissive=p.emissive, motion=dict(lift))
     # counterweight: near the top when the car is at the bottom; goes down as the car goes up
     cw_top = sheave_y - 1.0
     cw = [M.xf(M.box(1.0, 0.16, 0.24), (0, cw_top - 0.2 - k * 0.19, -0.95)) for k in range(10)]

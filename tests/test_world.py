@@ -181,7 +181,7 @@ def test_camera_never_jumps_between_shots(cow_world):
     for i in range(1, len(w.scenes)):
         e0, _, _, f0 = w.camera(i - 1, w.scenes[i - 1]["dur"] - 1e-3)
         e1, _, _, f1 = w.camera(i, 1e-3)
-        if max(f0, f1) > 0.5:  # a fade (into the tiny world) hides the cut
+        if max(f0, f1) > 0.5 or w._cams[i]["cut"]:  # a fade (into the tiny world) or a planned hard cut
             continue
         assert np.linalg.norm(e1 - e0) < 0.5, i
     for i in range(len(w.scenes)):

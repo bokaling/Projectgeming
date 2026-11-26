@@ -36,7 +36,7 @@ FLOW_COLORS = {"gas": "#9fe870", "biogas": "#9fe870", "water": "#3aa6d9", "steam
                "manure": "#6b4a2c", "slurry": "#6b4a2c", "blood": "#c0392b", "air": "#bfe9ff"}
 
 
-def ai_fix(plan: dict, i: int, instruction: str, scene_text: str, rep=None) -> tuple[str, dict]:
+def ai_fix(plan: dict, i: int, instruction: str, scene_text: str, rep=None, quick: bool = False) -> tuple[str, dict]:
     payload = {
         "instruction": instruction,
         "shot_number": i + 1,
@@ -54,7 +54,7 @@ def ai_fix(plan: dict, i: int, instruction: str, scene_text: str, rep=None) -> t
             raise ValueError("'objects' must be a list")
 
     return llm.generate_json(FIX_SYSTEM, json.dumps(payload, ensure_ascii=False), validate=validate, rep=rep,
-                             task="fix a shot", temperature=0.4, max_tokens=6000, strong=True)
+                             task="fix a shot", temperature=0.4, max_tokens=6000, strong=not quick)
 
 
 def apply_ai(plan: dict, i: int, reply: dict) -> tuple[dict, list[str]]:
@@ -240,10 +240,14 @@ def _first_long_word(text: str):
     return words[0] if words else 0.15
 
 
-def fix(plan: dict, i: int, instruction: str, scene_text: str, rep=None) -> tuple[dict, list[str], str]:
-    """→ (new plan, changes, who did it). Raises ValueError if nothing could be understood."""
+def fix(plan: dict, i: int, instruction: str, scene_text: str, rep=None, quick: bool = False,
+        use_ai: bool = True) -> tuple[dict, list[str], str]:
+    """→ (new plan, changes, who did it). Raises ValueError if nothing could be understood.
+    quick: the light Gemini model first, no long waits (automatic checks); use_ai=False: only the simple rules."""
     try:
-        provider, reply = ai_fix(plan, i, instruction, scene_text, rep)
+        if not use_ai:
+            raise RuntimeError("rules only")
+        provider, reply = ai_fix(plan, i, instruction, scene_text, rep, quick)
         new, changes = apply_ai(plan, i, reply)
         checked, _ = P.validate(new, None)
         if checked["scenes"][i] != P.validate(plan, None)[0]["scenes"][i] or checked["objects"] != \

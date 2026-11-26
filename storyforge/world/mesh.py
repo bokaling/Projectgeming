@@ -34,6 +34,26 @@ class Geo:
             return np.zeros(3, np.float32), np.zeros(3, np.float32)
         return self.pos.min(0), self.pos.max(0)
 
+    def closed(self) -> bool:
+        """True when every edge belongs to an even number of triangles: a solid (a cut shows a flat cap),
+        not an open surface like a tube wall without thickness."""
+        c = getattr(self, "_closed", None)
+        if c is None:
+            if not len(self.pos):
+                c = False
+            else:
+                q = np.round(self.pos.astype(np.float64) * 2000).astype(np.int64).reshape(-1, 3, 3)
+                a = np.concatenate([q[:, 0], q[:, 1], q[:, 2]])
+                b = np.concatenate([q[:, 1], q[:, 2], q[:, 0]])
+                ab = np.concatenate([a, b], 1)
+                ba = np.concatenate([b, a], 1)
+                first = (np.sign(a - b) @ np.array([4, 2, 1])) <= 0  # a <= b in (x, y, z) order
+                key = np.where(first[:, None], ab, ba)
+                _, counts = np.unique(key, axis=0, return_counts=True)
+                c = bool(np.all(counts % 2 == 0))
+            self._closed = c
+        return c
+
 
 def geo(tris) -> Geo:
     a = np.asarray(tris, np.float32).reshape(-1, 3)
@@ -381,3 +401,52 @@ class Model:
     @property
     def tris(self) -> int:
         return sum(p.geo.tris for p in self.parts)
+
+
+def section(tris: np.ndarray, n, d: float) -> np.ndarray | None:
+    """The flat cut face where the plane dot(n, p) = d slices a solid: triangles (K*3, 3) of the convex outline
+    of the cut (low poly parts are convex enough), or None. tris: (T*3, 3) world positions."""
+    t = np.asarray(tris, np.float64).reshape(-1, 3, 3)
+    n = np.asarray(n, np.float64)
+    s = t @ n - d  # (T, 3) signed distances
+    pts = []
+    for a, b in ((0, 1), (1, 2), (2, 0)):
+        sa, sb = s[:, a], s[:, b]
+        m = (sa * sb) < 0
+        if np.any(m):
+            u = (sa[m] / (sa[m] - sb[m]))[:, None]
+            pts.append(t[m, a] + (t[m, b] - t[m, a]) * u)
+    if not pts:
+        return None
+    P = np.concatenate(pts)
+    if len(P) < 3:
+        return None
+    ax = np.array([1.0, 0.0, 0.0]) if abs(n[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    e1 = np.cross(n, ax)
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(n, e1)
+    q = np.stack([P @ e1, P @ e2], 1)
+    order = np.lexsort((q[:, 1], q[:, 0]))
+    q, P = q[order], P[order]
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower, upper = [], []
+    for k in range(len(q)):  # monotone chain convex hull
+        while len(lower) >= 2 and cross(q[lower[-2]], q[lower[-1]], q[k]) <= 1e-12:
+            lower.pop()
+        lower.append(k)
+    for k in range(len(q) - 1, -1, -1):
+        while len(upper) >= 2 and cross(q[upper[-2]], q[upper[-1]], q[k]) <= 1e-12:
+            upper.pop()
+        upper.append(k)
+    hull = lower[:-1] + upper[:-1]
+    if len(hull) < 3:
+        return None
+    c = P[hull].mean(0)
+    out = []
+    for k in range(len(hull)):
+        a, b = P[hull[k]], P[hull[(k + 1) % len(hull)]]
+        out += [c, a, b] if np.dot(np.cross(a - c, b - c), n) > 0 else [c, b, a]
+    return np.asarray(out, np.float32)

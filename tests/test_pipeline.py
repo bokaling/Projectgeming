@@ -39,7 +39,7 @@ def test_full_short_and_resume(offline, needs_gl):
     assert res["thumbnails"] and (ep.export_dir / "metadata.md").exists()
     # every scene lasts exactly as long as its voice line (+ a short breath)
     for s in tl["scenes"][:-1]:
-        assert 0 < s["dur"] - s["voice"] < 0.4
+        assert 0 < s["dur"] - s["voice"] < 0.7  # explainers: a 0.5 s breath so the action finishes
     assert tl["scenes"][-1]["dur"] - tl["scenes"][-1]["voice"] < 0.75  # a slightly longer breath before the end
     # resume: nothing is made again
     rep2 = Reporter(echo=False)

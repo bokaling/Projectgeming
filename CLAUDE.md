@@ -161,7 +161,7 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 
 | Step | Main | Fallbacks (automatic) |
 |---|---|---|
-| Script, scene plan, Farsi, titles | Gemini Flash (free key; `strong=True` for script + plan) | Groq → OpenRouter `:free` → Pollinations (no key) → small local model on GPU → built-in template / offline planner |
+| Script, scene plan, Farsi, titles | Gemini Flash (free key; `strong=True`: 3 retries, waits 5/15/30 s, "Gemini busy, retrying…") | Gemini Flash-Lite → Groq → OpenRouter `:free` (optional keys) → built-in planner (plans) / "Gemini is busy, try again" (scripts with a key) / template (no key). No Pollinations, no local LLM for scripts or plans |
 | 3D render | moderngl on the GPU (EGL) | moderngl on the CPU (Mesa llvmpipe, 2/3 size + upscale) |
 | English voice | Kokoro (GPU/CPU) | Kokoro ONNX (same voices, CPU, from GitHub) → Edge TTS → Piper → espeak-ng |
 | Farsi voice | Own recording or Edge TTS fa-IR (warn: no commercial grant) | Piper fa_IR |
@@ -323,6 +323,89 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
       stronger rim light, gentle colour grade, slow camera drift (global clock), bigger keyword captions with a
       soft outline, "explainer" music bed as the default, more action sounds (rumble for vehicles and shaking,
       steam hiss for smoke, pour for fill/drain, whoosh on cutaways), one loop of each kind per shot
+
+- [x] Round 2 (mega prompt, see "Round 2" below): busy-Gemini chain (no Pollinations, no local LLM for plans), real
+      part names + snapping, target length (150 words/min), light studio + sunny outdoor look, hero part cutaways (pink
+      cut faces), macro shots, comparison tables, two-layer captions, calm pacing (4-8 s shots, flights, hard cuts only
+      for big changes), filmic lighting (ACES, SSAO, soft shadows, DOF, grades, grain), elevator/engine/fridge/toilet
+      fixes, StoryForge Videos folder, CLI + cheatsheet + paste plan, 3D Documentary format (miners test)
+
+### Round 2 (what changed, how it works)
+* **AI chain** (`llm.py`): `providers(strong=True)` = Gemini's newest Flash with 3 retries (waits 5/15/30 s, log
+  "⏳ Gemini busy…", `net.request(waits=, on_wait=)`), then 2 Flash-Lite models, then Groq/OpenRouter (only with keys).
+  `BUSY["main"]` remembers a busy Gemini: `gemini_busy()` skips vision checks; `all_busy(exc)` makes the planner go
+  straight to the built-in planner (no second long wait). Scripts with a key that all fail → `FriendlyError(BUSY_TEXT)`.
+  `allow_local` defaults to False everywhere. Pollinations is gone.
+* **Length** (`paste.target_seconds/target_words`): `EpisodeOptions.seconds` (0 = format default: How it works 80 s,
+  documentary 150 s, long 540 s); 150 words/min at 1.0x; narrator 1.0x (story 1.1x, `paste.narrator_speed`). The
+  writer gets a word rule and a too-short reply goes back once with its word count; ≥60 % of the target is kept with a
+  warning. `[PAUSE]` = `paste.PAUSE_SECONDS` of silence (`scene_speech`), a trailing one holds the picture. A `[SCENE]`
+  under 6 words joins the next (`MIN_SHOT_WORDS`); 3D formats: `TAIL_3D` 0.5 s, `MIN_SCENE_3D` 3 s.
+* **Part names** (`assets.part_list/snap_part/part_center`): the catalog shows `[parts: …] [mount/ports: …] [paths: …]`
+  with the EXACT names. `plan.validate` snaps unknown mounts/targets (`PART_WORDS` synonyms, singular, shared words,
+  difflib), mounts may name a real part (top middle of it), and an object that only stands in for a machine's own part
+  ("doors" mounted on "lift1.doors") is folded into that part. Never on the ground.
+* **Looks** (`presets.LOOKS`, `World.look_of`): studio_light (default, no teal void, no grid), outdoor_day (blue sky
+  by view direction + fbm clouds in the background shader, grass, `sky_mode=1`), macro_dark, documentary, underwater,
+  space. Order: shot `look` → hero/macro → area `look` → table → documentary format → outdoor settings → preset.
+  `Frame.style` overrides the renderer style per frame. A look change, an isolated shot or `"cut": true` = hard cut.
+* **Hero shot** (camera `hero`, target `obj.part`): `World.hero_parts` = the FIRST member of the part group by index
+  (`_part_k_box`; four parts all called "liner" are not one box) over its whole travel + what touches it (≤2.2× size),
+  framed alone on the light studio. Cut plane through its middle turned 55° (outside AND cut face visible). Closed,
+  non-shell solids get a flat cut face built on the CPU (`mesh.section`: slice + convex hull, `Frame.dyn`) in
+  `HERO_COLOR` #ff3d9a (our pink); open/shell parts get a pink rim (`FRAG_CAP`, `Draw.cap=2`).
+* **Macro** (camera `macro`): one member of the part group, ropes cropped to the load end, only parts near it
+  (`near_box`), dark look, bloom 0.9, DOF. **Comparison**: area `setting: "table"` (plain light table, look
+  studio_light, only that area drawn, the camera frames everything on the table); real-size clamp is skipped when the
+  plan gives an explicit scale there. New assets: shot_glass, human_hair, seesaw, ruler.
+* **Camera pacing**: calm formats (not story) fly `CALM_FLIGHT` 1.8 s with quintic easing (`smoother`), gentler
+  key-word punch-ins, fly_over ±20°, shakes 1/4 (documentary keeps them). Discs that spin about x/z are filmed
+  face-on. Room sets: azimuth clamped to the open front/right (−5…95°). Wide cull distance scales with the shot.
+* **Lighting** (`gl.py`, Part 6): 12-tap rotated Poisson PCF (CPU 6 taps, `shadow_taps`), wrap diffuse + floor bounce,
+  contact shadow, height fog (`u_hfog` per grade), SSAO from the resolved depth (half size, plane-aware, blurred),
+  DOF (half-size blur mixed by CoC; macro 0.45, close_up 0.25), ACES filmic + exposure, `GRADES` (bright, dark,
+  documentary, underwater, space: saturation, contrast, lift/gain tint, vignette, grain), glass fresnel, additive
+  `beam` parts (headlamps). Benchmark 720×1280 CPU (llvmpipe, 4 cores): old 152 ms/frame → new 177 ms/frame (6 taps;
+  12 taps: 282). GPU cost of the extra passes is small (not measured on a T4 yet).
+* **Captions**: 3D explainers = two layers (`captions.two_layer_header`, `subtitle_events`: 2-3 white words at the
+  bottom above the app buttons + ONE big keyword at the top; `plan.validate` keeps 1 keyword/shot, wow > number >
+  problem). Part labels are small white pills with a pink dot (`labels.py`). Documentary = karaoke
+  (`karaoke_events`: the line stays, the current word bold white, numbers/keywords in a yellow box).
+* **Elevator**: passenger + buttons in the car, `snap` (rope whips back, glow, car sags 0.55 m, `st["sag"]` in
+  `motion.lift`), `clamp`/snap → brake sparks. **Car + engine**: the car is never a ghost; close on the engine its near
+  panels are left out (cutaway car), the hood opens when an engine is mounted; throttle_plate opens (air!).
+  **Toilet/fridge**: lathe bowl/pedestal, compressor dome; builder shapes `lathe` and `dome`. Working parts in front of
+  a filmed part become see-through instead of missing; flow particles ≤1.2 % of the camera distance; doors stay (not
+  cut) in a shot that opens/closes them. Labels are clamped inside the frame (shrunk if too wide).
+* **Documentary** (`formats.documentary`, `assets_more`: miner with helmet/headlamp/beam, rescue_capsule, mine
+  cross-section): scene `stat {big, small}` cards and `map {lat, lon, place}` insets (`World.overlays`,
+  `LabelMaker.stat_card/map_inset`, coarse continents), dark `documentary` look everywhere, no set dressing around a
+  `cross_section` asset, mounted groups centred on the anchor, `move` with only `"y"` goes straight up/down.
+* **Videos folder** (`videos.py`): `MyDrive/StoryForge Videos/<date> <title> (Short 9x16).mp4` + `.txt` (YouTube,
+  TikTok, Instagram, Facebook) + `.jpg`; same name the same day = replaced; "Posted ✅" moves it to `Posted/`;
+  `drive_link()` reads the Drive folder id (xattr `user.drive.id`) for a clickable link. Same topic → same episode
+  (`pipeline.same_topic_episode`), no "title very close" warning.
+* **Cheaper planning**: `python -m storyforge.make --script --plan --res --out` (whole pipeline), `docs/PLAN_CHEATSHEET.md`
+  generated by `python -m storyforge.world.cheatsheet` (real part names), app step 2 "📋 Paste plan (JSON)"
+  (`pipeline.use_plan`).
+* **Doctor**: `score(..., video_format)` adds explainer checks (myth buster early, unit soup, [PAUSE], comparisons,
+  1-3 sentences a shot); `improve` uses `IMPROVE_SYSTEM_3D` for every non-story format.
+
+### Research (round 2, not built)
+* **HyperFrames** (github.com/heygen-com/hyperframes, Apache 2.0): HTML + CSS + JS/GSAP compositions rendered to MP4
+  by seeking every frame in headless Chrome (Puppeteer); needs Node.js 22+ and FFmpeg (`npx hyperframes init`,
+  `npx hyperframes render`). Its README documents NO transparent output (no ProRes 4444 / VP9 alpha / PNG sequence
+  flags) and no speed numbers. Our own benchmark of headless-Chrome frame capture was ~0.5 s per 1080×1920 frame
+  (Three.js test, phase 1): a 60 s overlay layer would be ~15 min of capture on a CPU, far over the "under 1 min extra"
+  rule. Not adopted: the overlay layer (captions via libass, stat cards and map insets via Pillow labels drawn by our
+  own renderer) costs ~0 s extra. Revisit only if HyperFrames gains a documented alpha output and a fast path.
+* **Blender "🎬 Cinematic"** (desk research, NOT run here: no T4 in this session): the official Linux LTS tarball
+  (~300 MB download per Colab session, or ~1 GB unpacked kept on Drive) runs headless (`blender -b -P script.py`)
+  with its own Python, so no bpy pip package is needed. A converter would write our plan as a .blend (meshes from
+  `mesh.py`, keyframes from `World.state`). Eevee needs a GL/EGL context (NVIDIA EGL works on Colab GPUs); Cycles
+  works headless on CUDA/OptiX with the OptiX denoiser. Rough expectation for a T4 at 1080×1920: Eevee ~0.3-1 s/frame,
+  Cycles 64 samples + denoise ~3-8 s/frame → a 60 s Short (1,800 frames) ≈ 10-30 min (Eevee) or 1.5-4 h (Cycles),
+  i.e. about 0.4-1.2 or 3-8 compute units at ~1.8 units/hour. Measure before building: one 10 s test shot.
 
 ### Verified only on CPU (needs a real Colab run)
 NVIDIA EGL rendering on a T4/L4 (the `in_nrm` fix is tested with a Mesa program that drops the input, not on

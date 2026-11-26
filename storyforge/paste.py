@@ -27,11 +27,40 @@ TAG = re.compile(r"^\s*\[(TITLE|SCENE|CHAPTER|CHARACTER|STYLE)\]\s*:?\s*(.*)$", 
 SPEAKER = re.compile(r"^\s*([^\s:][^:]{0,30}?)\s*[:：]\s*(.+)$")
 PERSIAN = re.compile(r"[؀-ۿ]")
 LATIN = re.compile(r"[A-Za-z]")
-NARRATOR_SPEED = 1.1  # the narrator talks a little faster (more energy)
-WORDS_PER_SECOND = 2.5 * NARRATOR_SPEED
-WORDS_PER_SCENE = {"short": 14, "long": 28}  # a scene = whole sentences, so the voice sounds natural
-TARGET_SECONDS = {"short": 60, "long": 600}
-TARGET_WORDS = {"short": 150, "long": 1500}  # at 1.1x speed, with short pauses and the cold open
+NARRATOR_SPEED = 1.0  # explainers and documentaries: calm, clear 1.0x (stories: STORY_SPEED)
+STORY_SPEED = 1.1  # stories talk a little faster (more energy)
+WORDS_PER_MINUTE = 150  # at 1.0x
+WORDS_PER_SECOND = WORDS_PER_MINUTE / 60 * NARRATOR_SPEED
+WORDS_PER_SCENE = {"short": 15, "long": 22}  # a shot = 1-3 sentences about one thing (4-8 s of voice)
+TARGET_SECONDS = {"short": 80, "long": 540}
+TARGET_WORDS = {"short": 200, "long": 1400}
+# Length choices for vertical videos (seconds) and the long 16:9 range
+SHORT_SECONDS = (30, 60, 80, 90, 120, 180)
+LONG_SECONDS = (480, 540, 600)
+PAUSE = re.compile(r"\[\s*PAUSE\s*\]", re.I)
+PAUSE_SECONDS = 0.75  # [PAUSE] after a reveal: the voice stops this long
+
+
+def narrator_speed(video_format: str = "how_it_works") -> float:
+    return STORY_SPEED if video_format == "story" else NARRATOR_SPEED
+
+
+def target_seconds(length: str = "short", seconds: int | float = 0, video_format: str = "how_it_works") -> int:
+    """How long the video should be: your choice, else the format's default (How it works 80 s, documentary 150 s)."""
+    if seconds and float(seconds) > 0:
+        sec = float(seconds)
+        return int(min(600, max(240, sec)) if length == "long" else min(180, max(20, sec)))
+    if length == "long":
+        return TARGET_SECONDS["long"]
+    from . import formats  # noqa: PLC0415
+
+    return int(formats.get(video_format).get("seconds", TARGET_SECONDS["short"]))
+
+
+def target_words(length: str = "short", seconds: int | float = 0, video_format: str = "how_it_works") -> int:
+    """About 150 words a minute at 1.0x (a story at 1.1x says a little more)."""
+    sec = target_seconds(length, seconds, video_format)
+    return int(round(sec * WORDS_PER_MINUTE / 60 * narrator_speed(video_format) / 5.0) * 5)
 
 
 def split_scripts(text: str) -> list[str]:
@@ -51,7 +80,7 @@ LABEL = re.compile(r"^\s*(?:[-•*_>]+\s*)?([A-Za-z\u0600-\u06FF][\w.'\- \u0600-
 def count_words(text: str) -> int:
     """Spoken words, the way the narrator says them: "whispered—then" and "Wait...what" are 2 words,
     "don't" and "3:15" are 1. Punctuation alone is not a word."""
-    return sum(1 for t in WORD_SPLIT.split(text or "") if any(ch.isalnum() for ch in t))
+    return sum(1 for t in WORD_SPLIT.split(PAUSE.sub(" ", text or "")) if any(ch.isalnum() for ch in t))
 
 
 def _clean_name(name: str) -> str:
@@ -234,11 +263,28 @@ def split_block(block: dict, target: int) -> list[dict]:
     return out
 
 
-def to_scenes(parsed: dict, length: str = "short") -> list[dict]:
-    """Blocks → scenes. Blocks without [SCENE] (or very long ones) are split automatically."""
+MIN_SHOT_WORDS = 6  # a [SCENE] shorter than this (~2 s) joins the next one: shots last 4-8 s, no jumpy cuts
+
+
+def to_scenes(parsed: dict, length: str = "short", merge_short: bool = True) -> list[dict]:
+    """Blocks → scenes. Blocks without [SCENE] (or very long ones) are split automatically.
+    merge_short: a tiny [SCENE] (one short sentence) joins the next one, so one shot covers both lines."""
     target = WORDS_PER_SCENE.get(length, 14)
     scenes = []
-    for b in parsed["blocks"]:
+    blocks = [dict(b, lines=list(b["lines"])) for b in parsed["blocks"]]
+    if merge_short:
+        k = 1  # never the hook (block 0): a short question is a fine first shot
+        while k < len(blocks) - 1:
+            b, nxt = blocks[k], blocks[k + 1]
+            words = sum(_word_count(ln["text"]) for ln in b["lines"])
+            both = words + sum(_word_count(ln["text"]) for ln in nxt["lines"])
+            if words < MIN_SHOT_WORDS and both <= target * 2.0 and not nxt.get("chapter") and b["from_tag"]:
+                vis = " / ".join(x for x in (b["visual"].strip(), nxt["visual"].strip()) if x)
+                blocks[k] = dict(b, visual=vis, lines=b["lines"] + nxt["lines"], from_tag=True)
+                blocks.pop(k + 1)
+                continue
+            k += 1
+    for b in blocks:
         words = sum(_word_count(ln["text"]) for ln in b["lines"])
         if b["from_tag"] and words <= target * 2.2:
             scenes.append({"visual": b["visual"].strip(), "chapter": b["chapter"], "part": 0, "from_tag": True,
@@ -252,13 +298,15 @@ def narration_of(lines: list[dict]) -> str:
     return " ".join(ln["text"].strip() for ln in lines if ln.get("text", "").strip())
 
 
-def length_warning(text: str, length: str) -> str:
+def length_warning(text: str, length: str, seconds: int | float = 0, video_format: str = "how_it_works") -> str:
     """'' if the script is long enough, else a friendly warning."""
     words = count_words(narration_of([ln for b in parse_lines(text)["blocks"] for ln in b["lines"]]))
-    seconds = words / WORDS_PER_SECOND
-    need = TARGET_WORDS.get(length, 150)
+    sec_said = words / (WORDS_PER_MINUTE / 60 * narrator_speed(video_format))
+    need = target_words(length, seconds, video_format)
     if words >= need * 0.8:
         return ""
-    kind = "Short (~60 s)" if length == "short" else "Long video (~10 min)"
+    want = target_seconds(length, seconds, video_format)
+    kind = f"{'Short' if length == 'short' else 'Long video'} (~{want} s)" if want < 240 else f"Long video (~{want // 60} min)"
+    seconds = sec_said
     return (f"Your script has {words} words, about {seconds:.0f} seconds of voice. A {kind} needs about {need} words. "
             "The video will be shorter, or add more story.")

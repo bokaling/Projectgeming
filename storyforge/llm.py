@@ -1,8 +1,9 @@
 """Free AI text providers with automatic fallback.
 
-Order (research.md section 2): Gemini Flash-Lite → Groq → OpenRouter :free →
-Pollinations (no key) → small local model on the GPU. Providers without a key
-are skipped. If all fail, script.py makes a template script you can edit.
+Order: Gemini's main Flash model (3 retries when it is busy: wait 5 s, 15 s, 30 s) → Gemini Flash-Lite
+models → Groq → OpenRouter :free (only with your own free keys). Providers without a key are skipped.
+The small local model is never used for scripts or scene plans (its plans were garbage). If every
+provider fails, the planner uses the built-in planner and the script writer says "Gemini is busy".
 """
 
 from __future__ import annotations
@@ -16,7 +17,9 @@ from . import config, net
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 GROQ_BASE = "https://api.groq.com/openai/v1"
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-POLLINATIONS_URLS = ["https://text.pollinations.ai/openai", "https://text.pollinations.ai/"]
+GEMINI_WAITS = (5, 15, 30)  # seconds between retries when the main Gemini model says "busy" (HTTP 503/429/500)
+LITE_WAITS = (5,)
+BUSY = {"main": 0.0}  # time.time() when the main Gemini model last stayed busy after every retry
 
 # Preferred model name patterns, best first. We read each provider's model list
 # at run time, so new model versions are picked up automatically.
@@ -124,7 +127,7 @@ def _list_models(provider: str, base: str, key: str) -> list[str]:
         models = rank_models(provider, [m.get("id", "") for m in data if m.get("id")])
     except Exception:
         models = []
-    models = (models + [m for m in DEFAULT_MODELS[provider] if m not in models])[:4]
+    models = (models + [m for m in DEFAULT_MODELS[provider] if m not in models])[:12]
     with _lock:
         _model_cache[provider] = models
     return models
@@ -135,7 +138,8 @@ def _list_models(provider: str, base: str, key: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _openai_chat(base: str, key: str | None, model: str, messages, json_mode: bool, temperature: float, max_tokens: int):
+def _openai_chat(base: str, key: str | None, model: str, messages, json_mode: bool, temperature: float, max_tokens: int,
+                 waits=None, on_wait=None):
     body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
@@ -143,7 +147,8 @@ def _openai_chat(base: str, key: str | None, model: str, messages, json_mode: bo
     if key:
         headers["Authorization"] = f"Bearer {key}"
     try:
-        resp = net.request("POST", f"{base}/chat/completions", json=body, headers=headers, timeout=150, retries=2)
+        resp = net.request("POST", f"{base}/chat/completions", json=body, headers=headers, timeout=150,
+                           retries=len(waits) if waits is not None else 2, waits=waits, on_wait=on_wait)
     except net.ServiceError as exc:
         if exc.status == 400 and json_mode:  # some models don't support JSON mode
             body.pop("response_format", None)
@@ -160,6 +165,47 @@ def _openai_chat(base: str, key: str | None, model: str, messages, json_mode: bo
     return content
 
 
+def gemini_models(key: str) -> tuple[list[str], list[str]]:
+    """(main models, lite models): the newest Flash first, then the Flash-Lite models (they answer when Flash is busy)."""
+    ranked = _list_models("gemini", GEMINI_BASE, key)
+    main = [m for m in ranked if re.search(r"flash(?!-lite)", m)][:1]
+    lite = [m for m in ranked if "flash-lite" in m][:2]
+    return main, lite
+
+
+def gemini_busy(within: float = 900) -> bool:
+    """True when the main Gemini model stayed busy after all retries in the last 15 minutes (skip extras)."""
+    import time  # noqa: PLC0415
+
+    return BUSY["main"] > 0 and time.time() - BUSY["main"] < within
+
+
+def _waiter(rep):
+    def on_wait(sec, status):
+        if rep is not None:
+            rep.info(f"⏳ Gemini busy (HTTP {status}), retrying in {sec:g} s…")
+    return on_wait
+
+
+def _gemini_provider(model: str, waits, rep, main: bool):
+    key = config.secret("GEMINI_API_KEY")
+
+    def call(messages, json_mode, temperature, max_tokens):
+        import time  # noqa: PLC0415
+
+        try:
+            return _openai_chat(GEMINI_BASE, key, model, messages, json_mode, temperature, max_tokens,
+                                waits=waits, on_wait=_waiter(rep))
+        except net.ServiceError as exc:
+            if exc.status in (401, 403):
+                raise net.ServiceError("key was refused (check GEMINI_API_KEY in Colab Secrets)", exc.status) from None
+            if main and exc.status in net.RETRY_STATUS:
+                BUSY["main"] = time.time()
+            raise
+
+    return call
+
+
 def _keyed_provider(provider: str, base: str, env: str, strong: bool = False):
     key = config.secret(env)
     if not key:
@@ -168,7 +214,7 @@ def _keyed_provider(provider: str, base: str, env: str, strong: bool = False):
     def call(messages, json_mode, temperature, max_tokens):
         last: Exception | None = None
         models = _list_models(provider, base, key)
-        if strong:  # writing (✨ Improve): the bigger free model first (e.g. Gemini Flash before Flash-Lite)
+        if strong:  # writing: the bigger free model first
             models = sorted(models, key=lambda m: 0 if re.search(r"flash(?!-lite)|70b|120b", m) else 1)
         for model in models[:2]:
             try:
@@ -182,31 +228,6 @@ def _keyed_provider(provider: str, base: str, env: str, strong: bool = False):
         raise last or net.ServiceError("no model available")
 
     return call
-
-
-def _pollinations(messages, json_mode, temperature, max_tokens):
-    last: Exception | None = None
-    for url in POLLINATIONS_URLS:
-        body = {"model": "openai", "messages": messages, "temperature": temperature}
-        if json_mode:
-            body["jsonMode"] = True
-            body["response_format"] = {"type": "json_object"}
-        try:
-            resp = net.request("POST", url, json=body, timeout=150, retries=1, backoff=8)
-        except net.ServiceError as exc:
-            last = exc
-            continue
-        try:
-            data = resp.json()
-            if isinstance(data, dict) and "choices" in data:
-                return data["choices"][0]["message"]["content"]
-            if isinstance(data, (dict, list)):
-                return json.dumps(data)
-        except ValueError:
-            pass
-        if resp.text.strip():
-            return resp.text
-    raise last or net.ServiceError("no reply")
 
 
 # ---- local model on the GPU (last AI fallback) -----------------------------
@@ -255,27 +276,34 @@ def unload_local() -> None:
 # ---------------------------------------------------------------------------
 
 
-def providers(allow_local: bool = True, strong: bool = False) -> list[tuple[str, object]]:
+def providers(allow_local: bool = False, strong: bool = False, rep=None) -> list[tuple[str, object]]:
+    """The AI chain, best first. Gemini: the main Flash model (3 patient retries), then Flash-Lite.
+    The local GPU model only when a caller asks for it (never for scripts or scene plans)."""
     out = []
-    for name, base, env in (
-        ("Gemini", GEMINI_BASE, "GEMINI_API_KEY"),
-        ("Groq", GROQ_BASE, "GROQ_API_KEY"),
-        ("OpenRouter", OPENROUTER_BASE, "OPENROUTER_API_KEY"),
-    ):
-        fn = _keyed_provider(name.lower(), base, env, strong) if strong else _keyed_provider(name.lower(), base, env)
+    key = config.secret("GEMINI_API_KEY")
+    if key:
+        main, lite = gemini_models(key)
+        if not strong:  # quick jobs (titles): the light model first, it is rarely busy
+            main, lite = lite[:1], main + lite[1:]
+        for k, m in enumerate(main):
+            out.append((f"Gemini ({m})", _gemini_provider(m, GEMINI_WAITS if strong else LITE_WAITS, rep, strong)))
+        for m in lite:
+            if m not in main:
+                out.append((f"Gemini ({m})", _gemini_provider(m, LITE_WAITS, rep, False)))
+    for name, base, env in (("Groq", GROQ_BASE, "GROQ_API_KEY"), ("OpenRouter", OPENROUTER_BASE, "OPENROUTER_API_KEY")):
+        fn = _keyed_provider(name.lower(), base, env, strong)
         if fn:
             out.append((name, fn))
-    out.append(("Pollinations", _pollinations))
     if allow_local and config.get().gpu.available:
         out.append(("Local AI on GPU", _local_chat))
     return out
 
 
-def chat(messages, *, json_mode=False, temperature=0.8, max_tokens=4000, rep=None, task="text", allow_local=True):
+def chat(messages, *, json_mode=False, temperature=0.8, max_tokens=4000, rep=None, task="text", allow_local=False):
     """Ask the first free AI that answers. Returns (provider_name, text)."""
     calls = [
         (name, (lambda f=fn: f(messages, json_mode, temperature, max_tokens)))
-        for name, fn in providers(allow_local)
+        for name, fn in _found(allow_local, False, rep)
     ]
     return net.try_in_order(task, calls, rep)
 
@@ -328,7 +356,7 @@ def vision_json(system: str, text: str, images: list, *, rep=None, max_tokens: i
 
 
 def generate_json(system: str, user: str, *, validate=None, rep=None, task="script", temperature=0.85,
-                  max_tokens=4000, allow_local=True, strong=False):
+                  max_tokens=4000, allow_local=False, strong=False):
     """Ask for JSON, check it with `validate(obj)` (raise ValueError if bad). Returns (provider, obj)."""
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -352,9 +380,24 @@ def generate_json(system: str, user: str, *, validate=None, rep=None, task="scri
 
         return run
 
-    try:
-        found = providers(allow_local, strong=True) if strong else providers(allow_local)
-    except TypeError:  # a simpler providers() (tests)
-        found = providers(allow_local)
-    calls = [(name, make(fn)) for name, fn in found]
+    calls = [(name, make(fn)) for name, fn in _found(allow_local, strong, rep)]
+    if not calls:
+        raise net.AllProvidersFailed(task, [("AI", "no free AI key (add GEMINI_API_KEY in Colab Secrets)")])
     return net.try_in_order(task, calls, rep)
+
+
+def _found(allow_local: bool, strong: bool, rep):
+    try:
+        return providers(allow_local, strong=strong, rep=rep)
+    except TypeError:  # a simpler providers() (tests)
+        return providers(allow_local)
+
+
+def all_busy(exc: Exception) -> bool:
+    """Every AI in the chain was busy or unreachable (HTTP 429/5xx, network): asking again now only waits."""
+    errs = getattr(exc, "errors", None)
+    return bool(errs) and all(re.search(r"HTTP (429|5\d\d)|network problem|timed? ?out", e, re.I) for _, e in errs)
+
+
+BUSY_TEXT = ("Gemini is busy, try again in a few minutes.",
+             "Free Gemini gets crowded at peak times. Your project is saved: press the button again later.")

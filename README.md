@@ -85,17 +85,34 @@ NARRATOR: This farm runs 150 homes on cow poop.
 NARRATOR: Its 2,000 cows make 130 tons of manure. Every single day.
 ```
 
-- One `[SCENE]` line (what we see) + one `NARRATOR:` line (what is said) = one shot.
-- No `[SCENE]` lines? The text is split into shots for you.
-- A Short needs about **150 words**, a Long about **1500**. The app counts them for you.
+- One `[SCENE]` line (what we see) + 1-3 sentences of `NARRATOR:` (what is said) = one shot of 4-8 seconds.
+- No `[SCENE]` lines? The text is split into shots for you. A tiny `[SCENE]` (under 6 words) joins the next one.
+- `[PAUSE]` after a reveal: the voice stops for a moment (about 0.75 s) and the picture holds.
+- **Length:** pick 30 s, 60 s, 80 s, 90 s, 2 min or 3 min for vertical videos (How it works: 80 s by default,
+  3D Documentary: about 2.5 min), or 8-10 min for a long 16:9 video. About **150 words a minute**.
 - `[CHAPTER] The digester` (optional) starts a YouTube chapter in long videos.
 - Several scripts in one box: put a line of `=====` between them. They're made one after another,
   and one failure doesn't stop the rest.
 - Farsi works the same way (`راوی:` for the narrator).
 
-**Topic → script:** with a free Gemini key the AI writes the script with retention rules: a shocking first line,
-something new every 5 seconds, real numbers, a satisfying payoff and a cliffhanger. Without a key you get a
+**Topic → script:** with a free Gemini key the AI writes the script: a short question the first shot shows, a myth
+buster in the first 10 seconds, then step by step in the real order, one idea and a "why" per shot, everyday
+comparisons instead of units, `[PAUSE]` after reveals, only well-known facts. A script that is too short is sent back
+once with its word count. If Gemini is busy it waits and retries (5 s, 15 s, 30 s), then tries the Flash-Lite models;
+if all are busy you get "Gemini is busy, try again in a few minutes" (no bad script). Without a key you get a
 simple starter script to edit.
+
+**Formats:** How it works (default), What happens if, How it's made, History, Top 5/10, Story, and **🎥 3D Documentary**
+(true stories: dark cinematic look, cross-sections, a map with a marker, stat cards like `700 M / UNDERGROUND`,
+karaoke captions).
+
+**Write your own plan (cheaper):** `docs/PLAN_CHEATSHEET.md` lists every object with its real part names, every
+camera move and action, and a small example. Paste a plan in the app (step 2 → 📋 Paste plan), or make the whole
+video from the command line:
+
+```bash
+python -m storyforge.make --script script.txt --plan plan.json --res 720p --out video.mp4
+```
 
 ---
 
@@ -209,6 +226,12 @@ version is saved on the branch `legacy-images`.) To test it:
 ## 📁 Your files on Google Drive
 
 ```text
+MyDrive/StoryForge Videos/               ⭐ every finished video, easy to find:
+  2026-11-23 How an elevator works (Short 9x16).mp4
+  2026-11-23 How an elevator works (Short 9x16).txt   title, description, hashtags, captions for
+                                                      YouTube, TikTok, Instagram and Facebook
+  2026-11-23 How an elevator works (Short 9x16).jpg   the thumbnail
+  Posted/                                             tick "Posted ✅" in the app to move a video here
 MyDrive/StoryForge/
   series/<series>/series.json            voices, episode list
     episodes/ep01/
@@ -247,7 +270,7 @@ MyDrive/StoryForge/
 | Voices | Kokoro 82M (+ Kokoro ONNX backup), Edge TTS / Piper (Farsi), your voice | Apache 2.0 / see above |
 | Captions | FFmpeg + libass, Vazirmatn / Montserrat / Anton | LGPL / SIL OFL |
 | Music & SFX | Generated in code | Yours |
-| Script, scene plan, titles | Gemini / Groq / OpenRouter free tiers, Pollinations, built-in fallback | Free tiers |
+| Script, scene plan, titles | Gemini Flash (3 patient retries) → Gemini Flash-Lite → Groq / OpenRouter (optional keys) → built-in planner | Free tiers |
 
 Based on [`research.md`](research.md). The plan and rules are in [`CLAUDE.md`](CLAUDE.md).
 

@@ -33,6 +33,10 @@ CAMERA_MOVES = {
     "low_angle": "low, looking up (big and dramatic)", "follow": "follow a moving target",
     "zoom_into": "dive into the target (then the next scene is inside it)", "cutaway": "orbit while it is cut open",
     "static": "almost still", "reveal": "start close and pull far back",
+    "hero": "HERO PART CUTAWAY: target 'obj.part' (one piston, one valve): that ONE part alone, big, cut in half "
+            "(cut faces in our pink), clean light studio, nothing else in frame",
+    "macro": "extreme close-up on a dark background with glow and shallow depth of field (the most dramatic "
+             "moment: add glow / sparks / flow)",
 }
 ACTIONS = {
     "appear": "pop in", "disappear": "shrink away", "grow": "grow (from → to size)", "move": "move to a place",
@@ -46,11 +50,14 @@ ACTIONS = {
     "drop": "fall from above and land with a plop (a poop, a box, a coin…); 'from' = height in m",
     "open": "open the machine's doors / lid / valve / flapper (whole object, or one part: 'fridge1.door')",
     "close": "close them again",
+    "snap": "a rope/cable SNAPS (target 'lift1.ropes'): it breaks, the loose ends whip back, the car drops a little "
+            "and the safety brakes clamp onto the rails with sparks",
+    "clamp": "brakes clamp shut with a shower of sparks (target 'lift1.safety_brakes')",
     "lift": "move the machine's lifting part to a level: 'to': 1 = top, 0 = bottom (an elevator car rises, its "
             "counterweight goes down, the ropes and pulley follow)",
 }
 WIDE_MOVES = {"fly_over", "pull_out", "top_down", "reveal"}
-KINDS = {"problem": "red", "part": "orange", "number": "white", "info": "teal"}
+KINDS = {"problem": "red", "part": "orange", "number": "white", "info": "teal", "wow": "yellow"}
 LAYOUTS = {"grid", "row", "circle", "scatter", "column"}
 ALIASES = {
     "rotate": "spin", "turn": "spin", "run": "spin", "start": "spin", "turn_on": "light_on", "light": "light_on",
@@ -60,13 +67,15 @@ ALIASES = {
     "section": "cutaway", "cross_section": "cutaway", "see_through": "xray", "x_ray": "xray", "electricity": "sparks",
     "bob": "float", "wobble": "float", "warn": "alarm", "danger": "alarm", "empty": "drain", "steam": "smoke",
     "raise": "lift", "go_up": "lift", "rise": "lift", "lower": "lift", "go_down": "lift", "ascend": "lift",
-    "descend": "lift", "unlock": "open", "shut": "close", "operate": "spin", "work": "spin",
+    "descend": "lift", "unlock": "open", "shut": "close", "operate": "spin", "work": "spin", "break": "snap",
+    "snaps": "snap", "cut_rope": "snap", "rope_break": "snap", "grip": "clamp", "brake": "clamp", "clamps": "clamp",
 }
 CAM_ALIASES = {"zoom_in": "push_in", "zoom": "push_in", "dolly_in": "push_in", "zoom_out": "pull_out",
                "aerial": "fly_over", "flyover": "fly_over", "fly_through": "fly_over", "track": "follow",
                "overhead": "top_down", "birds_eye": "top_down", "closeup": "close_up", "close": "close_up",
                "dive": "zoom_into", "into": "zoom_into", "x_ray": "cutaway", "cross_section": "cutaway",
-               "still": "static", "circle": "orbit", "rotate": "orbit"}
+               "still": "static", "circle": "orbit", "rotate": "orbit", "hero_cutaway": "hero", "hero_part": "hero",
+               "extreme_close_up": "macro", "macro_shot": "macro", "detail": "macro"}
 NUM = (int, float)
 
 
@@ -95,9 +104,19 @@ def _xy(v, default=(0.0, 0.0)):
     return list(default)
 
 
-def _short(text: str, words: int) -> str:
+def _short(text: str, words: int, words_only: bool = False) -> str:
+    """At most `words` words ('+', '-', 'x' between words don't count when words_only)."""
     t = " ".join(str(text or "").split())
     w = t.split()
+    if words_only:
+        out, n = [], 0
+        for x in w:
+            real = any(ch.isalnum() for ch in x)
+            if real and n >= words:
+                break
+            out.append(x)
+            n += real
+        return " ".join(out)
     return " ".join(w[:words]) if len(w) > words else t
 
 
@@ -207,11 +226,19 @@ def guess_setting(aid: str, objects: list, raw_scenes: list, texts: list | None)
     return found
 
 
+PART_WORDS = {"cable": "rope", "cables": "ropes", "wire_rope": "ropes", "hoist_cable": "ropes", "button": "panel",
+              "buttons": "car_panel", "button_panel": "car_panel", "lamp": "light", "elevator_car": "car", "cabin": "car",
+              "brakes": "safety_brakes", "pulley": "sheave", "spark_plug": "plug", "valves": "intake_valves",
+              "cylinder": "liner", "crank": "crankshaft"}
+
+
 def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, list[str]]:
     """Clean and repair a plan. Returns (plan, fixes). Never raises for bad content."""
     fixes: list[str] = []
     p = copy.deepcopy(plan) if isinstance(plan, dict) else {}
     out = {"title": str(p.get("title") or "").strip(), "style": p.get("style") if isinstance(p.get("style"), dict) else {}}
+    if isinstance(p.get("format"), str) and p["format"]:
+        out["format"] = p["format"]  # how_it_works, documentary, story…: how the world moves the camera
     from . import presets  # noqa: PLC0415
 
     out["preset"] = presets.resolve(p.get("preset")) or presets.guess([out["title"]] + list(scenes_text or []) + [
@@ -233,6 +260,10 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
         st = settings_mod.resolve(a.get("setting"))
         if st:
             area["setting"] = st
+        from . import presets as _pr  # noqa: PLC0415
+
+        if _pr.look(a.get("look")):
+            area["look"] = _pr.look(a.get("look"))
         areas.append(area)
     # objects
     objects, ids = [], set()
@@ -269,6 +300,7 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
                 obj[k] = str(o[k]).strip()
         if o.get("mount"):  # sits on / inside another object ("car1.engine_bay")
             obj["mount"] = str(o["mount"]).strip()
+        obj["_raw_asset"] = str(raw)
         if o.get("about") or o.get("description"):
             obj["about"] = str(o.get("about") or o.get("description"))[:160]
         objects.append(obj)
@@ -279,11 +311,15 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
         if not obj["area"]:
             obj["area"] = areas[0]["id"]
     micro_areas = {a["id"] for a in areas if a.get("micro")}
+    tables = {a["id"] for a in areas if a.get("setting") == "table"}
+    raw_scale = {slug(o.get("id") or ""): o.get("scale") for o in (p.get("objects") or []) if isinstance(o, dict)}
     for obj in objects:  # real size: a bottle is never bigger than the person holding it
         info = assets.REGISTRY[obj["asset"]]
         if obj["area"] in micro_areas or ("symbol" in info.tags and obj["asset"] not in assets.REAL_SIZE) or \
                 out["preset"] in ("body", "space"):
             continue  # tiny worlds, the inside of the body and space are drawn zoomed
+        if obj["area"] in tables and isinstance(raw_scale.get(obj["id"]), NUM):
+            continue  # a comparison: your sizes (a droplet as thin as a hair), side by side on the table
         real = assets.real_scale(obj["asset"], obj["params"])
         if real is None:
             continue
@@ -313,16 +349,42 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
                 o[k] = slug(base) + (dot + port if dot else "")
     built = {o["id"]: assets.build(o["asset"], **o["params"]) for o in objects}
     parts_of = {k: {pt.name for pt in m.parts} for k, m in built.items()}
-    for o in objects:  # a mount must name another object and one of its anchor points
+    merged: dict[str, str] = {}  # an object that only stands in for a machine's own part → that part
+
+    def o_asset(oid):
+        return next((x["asset"] for x in objects if x["id"] == oid), "")
+    for o in objects:  # a mount names another object and one of its anchor points or REAL parts (snapped)
         if "mount" in o:
             base, _, anchor = o["mount"].partition(".")
             base = slug(base)
-            if base == o["id"] or base not in built or (anchor and anchor not in built[base].anchors):
-                fixes.append(f"{o['id']}: mount '{o['mount']}' doesn't exist: it stands on the ground")
+            if base == o["id"] or base not in built:
+                fixes.append(f"{o['id']}: mount '{o['mount']}' is not an object: it stands on the ground")
                 o.pop("mount")
-            else:
-                o["mount"] = base + ("." + anchor if anchor else "")
-                o["area"] = next(x["area"] for x in objects if x["id"] == base)
+                continue
+            if anchor and anchor not in built[base].anchors:
+                snapped = assets.snap_part(built[base], PART_WORDS.get(anchor, anchor))
+                fixes.append(f"{o['id']}: mount '{o['mount']}' → " + (f"{base}.{snapped} (the closest real part)"
+                                                                        if snapped else f"{base} (its top)"))
+                anchor = snapped or ""
+            raw_known = slug(o.get("_raw_asset", "")) in assets.REGISTRY or slug(o.get("_raw_asset", "")) in \
+                assets.ALIASES
+            stems = set(assets.part_list(o_asset(base))[0]) if o_asset(base) else set()
+            own = [x for x in (assets.snap_part(built[base], PART_WORDS.get(w, w)) for w in
+                               (slug(o["id"]).rstrip("0123456789_"), o.get("_raw_asset", ""))) if x in stems]
+            if not raw_known and (anchor in own or own):  # "doors" on "lift1.doors": the elevator HAS its doors
+                part = anchor if anchor in own else own[0]
+                merged[o["id"]] = f"{base}.{part}"
+                fixes.append(f"{o['id']}: is {base}'s own part '{part}': uses that part")
+                continue
+            o["mount"] = base + ("." + anchor if anchor else "")
+            o["area"] = next(x["area"] for x in objects if x["id"] == base)
+    if merged:
+        objects[:] = [o for o in objects if o["id"] not in merged]
+        ids -= set(merged)
+        for k in merged:
+            built.pop(k, None)
+    for o in objects:
+        o.pop("_raw_asset", None)
 
     def focus_ok(oid: str, name: str) -> bool:
         m = built.get(oid)
@@ -335,6 +397,17 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
     def target(t, fallback):
         t = str(t or "").strip()
         base = slug(t.split(".")[0]) if t else ""
+        if base in merged:
+            return merged[base]
+        if base in ids and "." in t:  # 'lift1.doors' → the real part 'lift1.car_door'
+            part = t.split(".", 1)[1]
+            m = built.get(base)
+            if m is not None and not focus_ok(base, part):
+                snapped = assets.snap_part(m, PART_WORDS.get(slug(part), part))
+                if snapped and snapped != part:
+                    fixes.append(f"'{t}' → '{base}.{snapped}' (the real part name)")
+                    return base + "." + snapped
+            return base + "." + part
         if base in ids:
             return base + ("." + t.split(".", 1)[1] if "." in t else "")
         if t:  # 'the cows' / 'cow' → the object made of that asset
@@ -467,7 +540,8 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
                 kw = {"text": kw}
             if not isinstance(kw, dict) or not str(kw.get("text", "")).strip():
                 continue
-            item = {"text": _short(kw["text"], 4), "kind": kw.get("kind") if kw.get("kind") in KINDS else "info"}
+            item = {"text": _short(kw["text"], 4, words_only=True),
+                    "kind": kw.get("kind") if kw.get("kind") in KINDS else "info"}
             if kw.get("at") is not None:
                 item["at"] = kw["at"] if isinstance(kw["at"], NUM) else str(kw["at"])
             keywords.append(item)
@@ -478,7 +552,25 @@ def validate(plan: dict, scenes_text: list[str] | None = None) -> tuple[dict, li
         for a in actions:
             if a["do"] in ("cutaway", "xray"):
                 cut_done.add(a["target"].split(".")[0])
+        if len(keywords) > 1:  # one big keyword at a time, for the wow fact (numbers and myth busters first)
+            order = {"wow": 0, "number": 1, "problem": 2, "info": 3, "part": 4}
+            keywords = sorted(keywords, key=lambda k: order.get(k["kind"], 5))[:1]
         scene = {"id": f"s{i + 1:02d}", "camera": camera, "actions": actions, "labels": labels, "keywords": keywords}
+        from . import presets as _pr  # noqa: PLC0415
+
+        if _pr.look(s.get("look")):
+            scene["look"] = _pr.look(s.get("look"))
+        if s.get("cut") is True:
+            scene["cut"] = True  # a hard cut (big change of place or time), no camera flight
+        st = s.get("stat")
+        if isinstance(st, str) and st.strip():
+            st = {"big": st}
+        if isinstance(st, dict) and str(st.get("big") or "").strip():  # documentary stat card: "700 M" / "UNDERGROUND"
+            scene["stat"] = {"big": _short(str(st["big"]), 4), "small": _short(str(st.get("small") or ""), 5)}
+        mp = s.get("map")
+        if isinstance(mp, dict) and isinstance(mp.get("lat"), NUM) and isinstance(mp.get("lon"), NUM):
+            scene["map"] = {"lat": _num(mp["lat"], 0, -90, 90), "lon": _num(mp["lon"], 0, -180, 180),
+                            "place": _short(str(mp.get("place") or ""), 4), "region": str(mp.get("region") or "")[:20]}
         if scenes_text is not None and i < len(scenes_text):
             scene["text"] = scenes_text[i]
         elif s.get("text"):
@@ -594,8 +686,8 @@ def best_match(plan: dict, want: set) -> tuple[str, str] | None:
                     n and stem in model.anchors and n * 2 > score):
                 best, score = (o["id"], stem), n * 2 + (1 if want & ow else 0)
         n = len(want & ow)
-        if n and n * 2 > score:
-            best, score = (o["id"], ""), n * 2
+        if n and n * 2 + 1 > score:  # a thing that IS what the line names beats a machine part with that name
+            best, score = (o["id"], ""), n * 2 + 1
     return best
 
 
@@ -666,10 +758,14 @@ def schema_text() -> str:
         "params?, color?, hidden?, from?/to? (pipes: 'tank1.outlet'), mount? ('car1.engine_bay'), about? (new assets: "
         "what it is + its working parts)}. Scenes: {camera {move, target ('obj' or 'obj.part'), angle?, height?}, "
         "actions [{do, target ('obj' or 'obj.part'), at, to?, path?, color?, color2?, keep?, speed?}], labels "
-        "[{target, text, kind, at, from?, to?}], keywords [{text, kind, at}]}.\n"
+        "[{target, text, kind, at, from?, to?}], keywords [{text, kind, at}], look?, cut?, stat? {big, small} "
+        "(documentary card: '700 M' / 'UNDERGROUND'), map? {lat, lon, place} (a small map with a marker)}.\n"
+        "Looks (per area or shot): studio_light (clean light studio), outdoor_day (sunny sky, grass), macro_dark "
+        "(dark, glowing), documentary (dark cinematic). cut: true = hard cut (big change of place or time).\n"
         "Camera moves: " + "; ".join(f"{k} = {v}" for k, v in CAMERA_MOVES.items()) + ".\n"
         "Actions: " + "; ".join(f"{k} = {v}" for k, v in ACTIONS.items()) + ".\n"
-        "Label/keyword kinds: problem (red), part (orange, names of parts), number (white), info (teal).\n"
+        "Label/keyword kinds: problem (red), part (names of parts: small white labels), number (white), info (teal), "
+        "wow (yellow: the big wow fact).\n"
         "Layouts for count > 1: row, column, grid, circle, scatter."
     )
 

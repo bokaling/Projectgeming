@@ -21,65 +21,71 @@ obvious with the sound off. Plain English, concrete objects only.
 Rules:
 - The subject is the LITERAL thing the line talks about. A line about a human shows a person; a line about a fridge's
   compressor shows the compressor (inside the fridge); "the car" shows a car. Never a random shape for an idea.
-- Machines: show the INSIDE with the real working parts moving (cut open / see-through): pistons, valves, cables,
-  pulleys, gears, compressor, coils, floats, flappers, motors. Name the exact part in focus ("part").
-- Abstract ideas become a clear visual metaphor made of real objects: "heat leaves the fridge" = glowing red arrows and
-  hot coils at the back; "pressure" = a gauge needle swinging; "the fuel explodes" = an orange flash in the cylinder.
-- Every number becomes a visual: a counter counting up, a stack or pile of N things, a gauge needle, a balance scale,
-  a bar chart, a thermometer. Say which one in "number_visual" (or "" when the line has no number).
-- Real scale: things keep their real size. Tiny things (molecules, bacteria, electrons, atoms) need a zoomed-in world
-  ("micro": true) reached by zooming into the thing that contains them.
+- Machines: show the INSIDE with the real working parts moving (cut open): pistons, valves, cables, pulleys, gears,
+  compressor, coils, floats, flappers, motors. Name the exact part in focus ("part").
+- Shot types ("shot"): "normal"; "hero" = ONE part alone, big, cut in half on a clean light background (use it 1-3
+  times for the key parts: one piston, the compressor, the flapper); "macro" = an extreme close-up on a dark background
+  with glow/sparks for the MOST dramatic moment (once per video); "comparison" = a big or tiny number shown with everyday
+  things on a plain table ("as heavy as 9 cars", "thinner than a hair", "a water bottle squeezed to a shot glass", a
+  seesaw for balance), then back to the machine (1-2 per video, only where the line has such a number).
+- Every other number becomes a visual: a counter, a stack of N things, a gauge, a balance scale, a bar chart.
+- Real scale: things keep their real size. Tiny things (molecules, bacteria, atoms) are a zoomed-in world ("micro": true).
 - The place fits the machine ("setting"): kitchen (fridge, oven), bathroom (toilet, shower), garage (car engine),
-  street (elevator building, cars), living_room, office, desk (small things: phones, chips), lab, factory, outdoors,
-  studio (dark studio, when no place fits).
-- Shot 1 is the hook: CLOSE and striking, showing the first line directly (a cable snapping, a fridge door opening in
-  slow motion, a spark lighting up a cylinder). The last shot shows the whole machine working (a satisfying overview).
+  street (elevator building, cars, bright sunny day), living_room, office, desk (small things), lab, factory, outdoors
+  (sunny grass, trees, tiny people for scale), studio (clean light studio, when no place fits), table (comparisons).
+- Shot 1 shows the opening question directly (the gas pedal pressed, the elevator car rising), close and clear.
+  The last shot shows the whole machine working.
+- Several lines about the same thing can share one picture: say "same as before" in "see" and keep the subject.
 - Keep the narration's facts; never add new numbers or claims.
 Reply with JSON only:
 {"machine": "the main machine/thing", "shots": [{"n": 1, "see": "what we see, one sentence", "subject": "a noun",
-  "part": "the machine part in focus or ''", "objects": ["the nouns in the picture"], "moves": "what moves",
-  "number_visual": "", "setting": "garage", "inside": true}]}"""
+  "part": "the machine part in focus or ''", "shot": "normal|hero|macro|comparison", "objects": ["the nouns in the picture"],
+  "moves": "what moves", "number_visual": "", "setting": "garage", "inside": true}]}"""
 
-PLAN_SYSTEM = """You are the 3D director of a viral low poly "how it works" explainer channel (clean low poly 3D, dark teal studio,
-glowing grid floor). Step 2 of 2: you turn the narration AND its visual ideas (step 1) into ONE continuous 3D world and
-a shot plan. The camera flies smoothly from area to area.
+PLAN_SYSTEM = """You are the 3D director of a viral low poly "how it works" explainer channel. The look: clean low poly 3D, a
+clean light studio or a bright sunny day (blue sky, soft clouds, grass, trees, tiny people for scale), soft shadows; cut
+faces in our signature pink. Step 2 of 2: turn the narration AND its visual ideas (step 1) into ONE continuous 3D world
+and a calm, clear shot plan.
 Rules:
-- Follow each shot's visual idea EXACTLY: the camera target is the idea's subject (or the part in focus, as
-  "obj.part", e.g. "eng1.piston", "lift1.car", "lift1.sheave"; machines list their parts in the catalog under focus).
-  A shot whose picture doesn't show its line is rejected.
-- Set "preset" (the look): one of PRESETS. Give every area a "setting" (the place around it): one of SETTINGS.
-- Use assets from the catalog (exact names). If the thing a line needs is missing (a fridge, a toilet, a washing
-  machine), use a short new snake_case asset name and add "about": what it looks like AND its real working parts
-  (compressor, coils, float, flapper, valves, pistons, cables, pulleys…) with their real size; it will be built as a
-  new 3D object with those parts. Never use an unrelated object as a stand-in.
-- Real scale: every object keeps its real size (scale 1 = real size; don't make a bottle giant or a man tiny). Put
-  small things in close-ups, big things in wide shots. Tiny things (molecules, bacteria, atoms) go in their own area
-  with "micro": true, reached by camera "zoom_into" on the thing that holds them.
-- Machines are cut open: add a "cutaway" action (keep: true) on the first shot that shows the inside; then "spin" to
-  run an engine/motor/compressor, "lift" (to 0-1) for an elevator car, "open"/"close" for doors, lids, flappers and
-  valves, "fill"/"drain" for liquids (a part like "toilet1.tank_water" fills just that liquid).
-- Flows show cause and effect: a flow/sparks ALWAYS has "to" (the object id it goes into) or "path" (one of the
-  object's own paths, e.g. "intake", "exhaust", "loop"). Use "color" and "color2" (start/end colour: hot red → cold blue).
-- Numbers are visuals: a "counter" (label with "from"/"to" counts up, text like "{n} kg"), a stack/pile of N things
-  (count + layout), a "gauge", a "balance_scale", a "bar_chart", a "thermometer".
-- Put the story's places in areas, in story order. Objects stay in their area. Reuse objects instead of copies.
-- pos is [x, z] in meters inside the area (x right, z toward the viewer), ground is y = 0. Keep objects within 12 m of
-  the area centre and don't overlap them. Things on a machine or inside a car: "mount": "car1.engine_bay".
+- Follow each shot's visual idea EXACTLY: the camera target is the idea's subject (or the part in focus, as "obj.part",
+  e.g. "eng1.piston", "lift1.car", "lift1.sheave").
+- PART NAMES: use ONLY the exact names listed under [parts: ...] of that asset in the catalog (for camera targets,
+  actions, labels and mounts). Never invent a part name, and never add a separate object for a part the machine already
+  has (the elevator already has its car_door, motor, ropes, safety_brakes): target "lift1.car_door" instead.
+- Set "preset" (the world look): one of PRESETS. Give every area a "setting": one of SETTINGS.
+- Use assets from the catalog (exact names). If the thing a line needs is missing, use a short new snake_case asset name
+  and add "about": what it looks like AND its real working parts with their real size; it will be built as a new 3D
+  object. Never use an unrelated object as a stand-in.
+- Real scale: every object keeps its real size (scale 1 = real size).
+- Machines are cut open: add a "cutaway" action (keep: true) on the first shot that shows the inside; then "spin" to run
+  an engine/motor/compressor, "lift" (to 0-1) for an elevator car, "open"/"close" for doors, lids, flappers and valves,
+  "fill"/"drain" for liquids.
+- HERO shots (camera "hero", target "obj.part"): one part alone, big, cut in half, clean light studio. Use 1-3 per video
+  for the key parts the lines explain.
+- MACRO shot (camera "macro"): the most dramatic moment, extreme close-up on a dark background; add "glow", "sparks" or
+  "flow" on that part. Once per video.
+- COMPARISON scenes: for a big or tiny number, add an area {"setting": "table"} with everyday things side by side
+  (bottle, coin, water_drop, person, car, cow, balance_scale, sugar_cube…) and cut to it ("cut": true), then cut back.
+  1-2 per video, only where a line has such a number.
+- Outdoor places (street, outdoors, farm) are bright and sunny with tiny people for scale.
+- Flows show cause and effect: a flow/sparks ALWAYS has "to" (object id) or "path" (one of the object's own [paths]).
+- PACING: shots last 4-8 seconds. Slow, eased camera moves: orbit, push_in, close_up, follow, static, reveal; no fast
+  spins. The camera flies smoothly between places in the same world; "cut": true only for a big change of place or time
+  (and into/out of comparisons). Put visible changes (open, lift, fill) on an EARLY word, so they finish in the shot.
 - Every scene: one camera move with a target; 1-3 actions ON a spoken word ("at": a word from that scene's text);
-  0-2 labels (1-3 words, the part's name, next to it); 0-2 keywords (only the important words, max 3 words).
-- Kinds: problem (red) for problems/dangers, part (orange) for names of parts, number (white) for numbers, info (teal).
-- Vary the camera (never the same move 3 times in a row). Scene 1 is the hook: CLOSE and striking (close_up or
-  push_in on the part the first line names) and the thing it says HAPPENS on screen (add that action: the spark
-  "glow"s, the cable "alarm"s and "shake"s, the door "open"s). Never start wide. The last scene shows the whole
-  machine working.
-- An action said on a word happens on that word: put visible changes (open, lift, fill) on an early word of the
-  line, so the viewer sees them finish.
+  0-2 labels (small white labels with the part's real name, kind "part"); keywords: 0-1, ONLY for a wow fact
+  (a number or a myth buster, max 3 words, e.g. "MORE AIR", "10x SMALLER", "40,000 VOLTS"; kind "wow" or "number").
+- Scene 1 shows the opening question directly (close_up or push_in on what it asks about, and it HAPPENS). Never start
+  wide. The last scene shows the whole machine working.
 - Exactly one plan scene per script scene, same order. Don't invent facts in labels: only words from the narration.
 Reply with JSON only.""".replace("PRESETS", ", ".join(presets.PRESETS)).replace("SETTINGS", ", ".join(settings_mod.SETTINGS))
 
 
 def _scene_texts(script: dict) -> list[str]:
-    return [" ".join(ln["text"] for ln in sc.get("lines", [])) or sc.get("narration", "") for sc in script["scenes"]]
+    from .. import paste  # noqa: PLC0415
+
+    return [" ".join(paste.PAUSE.sub(" ", " ".join(ln["text"] for ln in sc.get("lines", [])) or sc.get("narration", "")
+                                     ).split()) for sc in script["scenes"]]
 
 
 def _fingerprint(texts: list[str]) -> str:
@@ -125,8 +131,8 @@ def visual_ideas(script: dict, length: str, rep=None) -> list[dict] | None:
         except Exception as exc:  # noqa: BLE001
             from ..messages import StopRequested  # noqa: PLC0415
 
-            if isinstance(exc, StopRequested):
-                raise
+            if isinstance(exc, StopRequested) or llm.all_busy(exc):
+                raise  # every Gemini model is busy: the built-in planner, no second long wait
             return None
         got = {}
         for sh in obj["shots"]:
@@ -136,7 +142,8 @@ def visual_ideas(script: dict, length: str, rep=None) -> list[dict] | None:
                 continue
         for i in range(a, b):
             sh = got.get(i) or {}
-            out.append({k: str(sh.get(k) or "")[:200] for k in ("see", "subject", "part", "number_visual", "setting")}
+            out.append({k: str(sh.get(k) or "")[:200] for k in ("see", "subject", "part", "number_visual", "setting",
+                                                                "shot")}
                        | {"objects": [str(x)[:40] for x in (sh.get("objects") or [])][:6] if isinstance(
                            sh.get("objects"), list) else [], "inside": bool(sh.get("inside")),
                           "machine": str(obj.get("machine") or "")[:60]})
@@ -315,7 +322,9 @@ def make_plan(script: dict, length: str = "short", rep=None) -> tuple[dict, str,
             if isinstance(exc, StopRequested):
                 raise
             if rep is not None:
-                rep.warn("The AI planner is busy, so I made a simple plan from the words of your script "
+                rep.warn("Gemini is busy, so I made the plan with the built-in planner (machines from the library). "
+                         "For AI shots, press 🧭 Plan again in a few minutes." if llm.all_busy(exc) else
+                         "No AI planner answered, so I made a plan from the words of your script "
                          "(add a free GEMINI_API_KEY for much better scenes).")
             raw, provider = offline_plan(script), "Built-in planner (no AI)"
     if ideas:
@@ -359,8 +368,9 @@ def _second_try(script: dict, length: str, rep, ideas: list, raw: dict, texts: l
 # No AI: a simple planner from the words
 # ---------------------------------------------------------------------------
 
-MOVES = ["orbit", "push_in", "fly_over", "close_up", "pull_out", "low_angle", "orbit", "top_down", "push_in"]
+MOVES = ["orbit", "push_in", "close_up", "orbit", "pull_out", "low_angle", "static", "push_in"]  # calm, eased moves
 PART_MOVES = ["close_up", "orbit", "push_in", "orbit", "low_angle", "push_in"]
+DRAMA = ("spark", "flame", "fire", "explod", "burn", "snap", "break", "bang", "boom", "lightning", "volts")
 GROUPS = {"house", "tree", "person", "bacteria", "methane", "manure", "car", "coin", "molecule", "blood_cell", "virus",
           "cell", "solar_panel", "wind_turbine", "barrel", "rock", "cloud", "skyscraper", "atom"}
 
@@ -413,6 +423,7 @@ def offline_plan(script: dict) -> dict:
     texts = _scene_texts(script)
     areas, objects, scenes = [], [], []
     by_asset: dict[str, str] = {}
+    shot_kinds: dict = {}  # how many hero / macro shots so far
     last = None
     for i, (sc, text) in enumerate(zip(script["scenes"], texts)):
         line = sc.get("visual", "") + " " + text
@@ -479,6 +490,18 @@ def offline_plan(script: dict) -> dict:
             cam["target"] = f"{target}.{part}"
             cam["move"] = PART_MOVES[i % len(PART_MOVES)]  # close moves on a part (no top-down on a piston)
             label = part.replace("_", " ")
+            drama = any(w in (text or "").lower() for w in DRAMA)
+            if drama and not shot_kinds.get("macro") and i > 0:  # the most dramatic moment: a dark macro shot
+                cam["move"] = "macro"
+                shot_kinds["macro"] = 1
+                actions.append({"do": "glow", "target": cam["target"], "at": _first_word(text)})
+            elif i > 0 and shot_kinds.get("hero", 0) < 3 and part not in shot_kinds.get("hero_parts", []) and \
+                    shot_kinds.get("since", 9) >= 2:  # a key part alone, big, cut in half
+                cam["move"] = "hero"
+                shot_kinds["hero"] = shot_kinds.get("hero", 0) + 1
+                shot_kinds.setdefault("hero_parts", []).append(part)
+                shot_kinds["since"] = 0
+            shot_kinds["since"] = shot_kinds.get("since", 9) + 1
         labels = [{"target": target, "text": label, "kind": "part", "at": 0.2}]
         scenes.append({"camera": cam,
                        "actions": actions[:3], "labels": labels, "keywords": _keywords(text)})

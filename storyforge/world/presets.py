@@ -13,20 +13,20 @@ import re
 # sky / ground_light (soft light from above / below), sun; base = ground under the site (None = no ground: space);
 # natural = open ground (sand, sea floor, flesh…): no pads, ground plate, roads or pipe stands, the floor IS the ground
 PRESETS = {
-    "studio": dict(background="#0b2a30", horizon="#13414a", floor="#0e3238", grid="#2ee6d6", sky="#a8e4ec",
-                   ground_light="#24474d", sun="#fff4e0", base="#6d7377", pad="concrete",
+    "studio": dict(background="#cfd9e1", horizon="#f3f6f8", floor="#e4e9ed", grid=None, sky="#ffffff",
+                   ground_light="#b9c4cc", sun="#fff6ea", base="#d5dce1", pad="concrete", look="studio_light",
                    props=["barrel", "crate", "bucket"], air=None),
-    "farm": dict(background="#0b2a30", horizon="#13414a", floor="#0e3238", grid="#2ee6d6", sky="#b8e6ec",
-                 ground_light="#3b4d35", sun="#fff1d6", base="#5f7a4c", pad="dirt",
+    "farm": dict(background="#4f9be0", horizon="#d4ebf8", floor="#76b957", grid=None, sky="#d6ecff",
+                 ground_light="#5f7f4c", sun="#fff3dc", base="#76b957", pad="dirt", look="outdoor_day",
                  props=["hay_bale", "bucket", "hay_bale", "crate"], air=None),
-    "city": dict(background="#1b2433", horizon="#3a4a63", floor="#262c35", grid="#5ad1ff", sky="#c9dcf0",
-                 ground_light="#3a3f48", sun="#fff3e0", base="#4e545c", pad="concrete",
+    "city": dict(background="#4f9be0", horizon="#d4ebf8", floor="#8a9198", grid=None, sky="#d6ecff",
+                 ground_light="#6b7178", sun="#fff3dc", base="#7d858c", pad="concrete", look="outdoor_day",
                  props=["car", "lamp_post", "bus", "car"], air=None),
-    "house_interior": dict(background="#2a2230", horizon="#4a3b47", floor="#3a2d2a", grid=None, sky="#ffe8cf",
+    "house_interior": dict(background="#c9bfb4", horizon="#f3ede6", floor="#d8cbbb", grid=None, sky="#ffe8cf",
                            ground_light="#5a4335", sun="#ffe2b8", base="#9c7a55", pad="#b38a5e",
                            props=["laptop", "bottle", "phone", "bucket"], air=None),
-    "factory": dict(background="#1d2228", horizon="#3a434d", floor="#22272d", grid="#f5a524", sky="#d6dee6",
-                    ground_light="#3d434a", sun="#fff4e0", base="#5b6066", pad="concrete",
+    "factory": dict(background="#9aa7b1", horizon="#dfe5e9", floor="#a8afb5", grid=None, sky="#f2f5f7",
+                    ground_light="#8a939a", sun="#fff4e0", base="#9aa1a7", pad="concrete",
                     props=["barrel", "crate", "railing", "barrel"], air=None),
     "lab": dict(background="#a9c3d1", horizon="#e3eef3", floor="#cfdde4", grid="#7fb6d0", sky="#ffffff",
                 ground_light="#b9c6cc", sun="#ffffff", base="#dfe8ec", pad="#eef3f5",
@@ -48,8 +48,8 @@ PRESETS = {
     "desert": dict(background="#c97a45", horizon="#f0c88a", floor="#cfa468", grid=None, sky="#ead6b4",
                    ground_light="#977048", sun="#ffe9c0", base="#cfa86a", pad="#d8b47a",
                    props=["rock", "rock", "crate"], air="dust", fence=None, lamps=False, natural=True),
-    "forest": dict(background="#16301f", horizon="#3e6b45", floor="#22402a", grid=None, sky="#d8f0c8",
-                   ground_light="#3a5a33", sun="#fff4d6", base="#4f7a3a", pad="dirt",
+    "forest": dict(background="#4f9be0", horizon="#d4ebf8", floor="#5f9e45", grid=None, sky="#d8f0c8",
+                   ground_light="#4d6e3e", sun="#fff4d6", base="#5f9e45", pad="dirt", look="outdoor_day",
                    props=["tree", "rock", "grass_patch", "tree"], air=None, lamps=False, natural=True),
     "snow": dict(background="#7f9bb3", horizon="#e3edf5", floor="#c9d8e4", grid=None, sky="#ffffff",
                  ground_light="#b8c8d6", sun="#ffffff", base="#f2f6f9", pad="#e6eef4",
@@ -62,13 +62,13 @@ PRESETS = {
     "battlefield": dict(background="#34322d", horizon="#6b6457", floor="#3f3a32", grid=None, sky="#d8d0c0",
                         ground_light="#4a4236", sun="#ffe6c8", base="#6b5a43", pad="dirt",
                         props=["crate", "barrel", "rock", "smoke_cloud"], air="dust", natural=True),
-    "highway": dict(background="#1d2633", horizon="#45577a", floor="#262c35", grid=None, sky="#d6e4f5",
-                    ground_light="#3a3f48", sun="#fff3e0", base="#3f4347", pad="gravel",
+    "highway": dict(background="#4f9be0", horizon="#d4ebf8", floor="#76b957", grid=None, sky="#d6ecff",
+                    ground_light="#5f7f4c", sun="#fff3dc", base="#76b957", pad="gravel", look="outdoor_day",
                     props=["car", "lamp_post", "bus", "car"], air=None),
-    "school": dict(background="#263241", horizon="#4b5f78", floor="#2d3846", grid=None, sky="#fff4e2",
+    "school": dict(background="#b9c7d3", horizon="#eef2f5", floor="#d9cdb8", grid=None, sky="#fff4e2",
                    ground_light="#5a4a3a", sun="#ffeccc", base="#c9a87a", pad="#d6b88c",
                    props=["laptop", "bucket", "bottle"], air=None),
-    "office": dict(background="#222c38", horizon="#46566a", floor="#2a3340", grid=None, sky="#f0f4ff",
+    "office": dict(background="#b9c4ce", horizon="#eef1f4", floor="#c9ced3", grid=None, sky="#f0f4ff",
                    ground_light="#4a5260", sun="#fff6e8", base="#8b8f96", pad="#a2a7ae",
                    props=["laptop", "phone", "glass_box"], air=None),
 }
@@ -116,6 +116,36 @@ def guess(texts: list[str]) -> str:
     return best
 
 
+# Looks a single shot (or area) can have, whatever the world preset is (renderer colours + post effects).
+# sky=1: a real sky (blue gradient by view direction, soft clouds); env=False: only the subject is drawn;
+# grade: the colour grading (gl.GRADES); dof: depth of field strength (close-ups).
+LOOKS = {
+    "studio_light": dict(background="#cfd9e1", horizon="#f3f6f8", floor="#e4e9ed", grid="#000000", sky="#ffffff",
+                         ground_light="#b9c4cc", sun="#fff6ea", fog=1.0, sky_mode=0, grade="bright"),
+    "outdoor_day": dict(background="#3f8fdc", horizon="#d4ebf8", floor="#76b957", grid="#000000", sky="#d6ecff",
+                        ground_light="#5f7f4c", sun="#fff3dc", fog=1.6, sky_mode=1, grade="bright"),
+    "macro_dark": dict(background="#040608", horizon="#0c1116", floor="#07090c", grid="#000000", sky="#7a8898",
+                       ground_light="#0d1115", sun="#ffe6c8", fog=0.8, sky_mode=0, grade="dark", dof=1.0, env=False),
+    "documentary": dict(background="#07090d", horizon="#1a2027", floor="#15181c", grid="#000000", sky="#8796a8",
+                        ground_light="#1c1a18", sun="#ffd9a8", fog=0.75, sky_mode=0, grade="documentary"),
+    "underwater": dict(background="#022a40", horizon="#0a5b7a", floor="#0b3d52", grid="#000000", sky="#8fdcff",
+                       ground_light="#1d5566", sun="#d8f6ff", fog=0.45, sky_mode=0, grade="underwater"),
+    "space": dict(background="#03040c", horizon="#0b1236", floor="#03040c", grid="#000000", sky="#9fb4ff",
+                  ground_light="#1a1f3a", sun="#fff8e8", fog=1.0, sky_mode=0, grade="space"),
+}
+LOOK_ALIASES = {"light": "studio_light", "studio": "studio_light", "clean": "studio_light", "white": "studio_light",
+                "outdoor": "outdoor_day", "outdoors": "outdoor_day", "day": "outdoor_day", "sunny": "outdoor_day",
+                "macro": "macro_dark", "dark": "macro_dark", "cinematic": "documentary", "ocean": "underwater"}
+OUTDOOR_SETTINGS = {"street", "outdoors", "farm", "site", "town"}
+GRADE_OF = {"ocean": "underwater", "space": "space", "planet_surface": "space", "body": "dark", "battlefield": "documentary"}
+
+
+def look(name) -> str:
+    n = str(name or "").strip().lower().replace(" ", "_")
+    n = LOOK_ALIASES.get(n, n)
+    return n if n in LOOKS else ""
+
+
 def style_of(preset: str) -> dict:
     """Renderer colours for a preset (gl.STYLE keys)."""
     p = PRESETS.get(preset) or PRESETS["studio"]
@@ -124,4 +154,7 @@ def style_of(preset: str) -> dict:
     out["grid"] = p["grid"] or "#000000"  # black lines add nothing: no grid
     if p.get("natural") and p.get("base"):
         out["floor"] = p["base"]
+    if p.get("look") in LOOKS:
+        out["sky_mode"] = LOOKS[p["look"]].get("sky_mode", 0)
+    out["grade"] = GRADE_OF.get(preset, "bright")
     return out

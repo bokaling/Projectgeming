@@ -44,9 +44,14 @@ def request(
     backoff: float = 2.0,
     timeout: float = 60,
     max_wait: float = 30,
+    waits=None,
+    on_wait=None,
     **kwargs,
 ):
-    """requests.request with retries. Raises ServiceError on failure."""
+    """requests.request with retries. Raises ServiceError on failure.
+
+    waits: exact seconds to wait before each retry (e.g. (5, 15, 30) for a busy Gemini); on_wait(seconds, status)
+    is called before each wait (the log says "Gemini busy, retrying…")."""
     import requests  # noqa: PLC0415
 
     headers = {"User-Agent": USER_AGENT, **(kwargs.pop("headers", None) or {})}
@@ -69,11 +74,14 @@ def request(
                 wait = float(wait_hdr)
                 if wait > max_wait:  # a long ban: give up on this provider now
                     raise last
-                if attempt < retries:
+                if attempt < retries and waits is None:
                     _sleep(wait)
                     continue
         if attempt < retries:
-            _sleep(min(max_wait, backoff * (2**attempt)))
+            sec = waits[min(attempt, len(waits) - 1)] if waits else min(max_wait, backoff * (2**attempt))
+            if on_wait is not None:
+                on_wait(sec, getattr(last, "status", None) or "network")
+            _sleep(sec)
     assert last is not None
     raise last
 

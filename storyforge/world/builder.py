@@ -21,7 +21,7 @@ from . import mesh as M
 from . import motion as motion_mod
 from .mesh import Model
 
-SHAPES = {"box", "cylinder", "cone", "sphere", "capsule", "torus", "tube", "wedge", "extrude"}
+SHAPES = {"box", "cylinder", "cone", "sphere", "capsule", "torus", "tube", "wedge", "extrude", "lathe", "dome"}
 KINDS = {"", "blade", "wheel", "piston", "rocker", "flame", "liquid", "light", "lamp", "load"}
 MATERIALS = {"metal", "paint", "plastic", "glass", "rubber", "ceramic", "water"}
 RECIPES_DIR = Path(__file__).parent / "recipes"
@@ -34,7 +34,9 @@ has a tank, flapper, float, fill valve, bowl and siphon; a washing machine has a
 Units are meters, y is up, the object stands on y = 0, its front faces +z (the camera side). 10-45 parts.
 Shapes and "size": box [w, h, d] (centred on pos), cylinder [r, h] (upright, centred), cone [r, h] (upright, base at pos),
 sphere [r], capsule [r, length] (along x), torus [R, r] (flat ring), wedge [w, h, d] (a roof/ramp shape),
-tube {"points": [[x,y,z],…]} with size [r] (pipes, coils, cables), extrude {"poly": [[x,y],…]} with size [depth].
+tube {"points": [[x,y,z],…]} with size [r] (pipes, coils, cables), extrude {"poly": [[x,y],…]} with size [depth],
+lathe {"profile": [[radius, y], …]} (a CURVED round shape spun around y: toilet bowls, bottles, vases, tanks - use it
+instead of a plain cylinder whenever the real thing is curved), dome [r, h] (half a sphere: compressor domes, caps).
 Per part: "name" (the part's real name: compressor, coil, float, flapper… the camera can aim at it), "color",
 "rot" [rx, ry, rz] degrees, "pivot" [x,y,z] and "axis" (x/y/z) for moving parts, "material" (metal, paint, plastic,
 glass, rubber, ceramic, water), "opacity" (glass 0.3, water 0.75), "emissive" (0-1 glow),
@@ -107,6 +109,15 @@ def model_from_recipe(recipe: dict) -> Model:
             g = M.torus(s[0], min(s[1], s[0] * 0.9), 18, 6)
         elif shape == "wedge":
             g = M.xf(M.prism_roof(s[0], s[2], s[1]), (0, -s[1] / 2, 0))
+        elif shape == "lathe":  # a curved, round shape: a profile [[radius, height], ...] spun around (bowls, domes)
+            prof = [(_num(q[0], 0.1, 0.0, 60.0), _num(q[1], 0.0, -60.0, 60.0)) for q in (p.get("profile") or [])
+                    if isinstance(q, (list, tuple)) and len(q) >= 2][:24]
+            if len(prof) < 2:
+                continue
+            g = M.lathe(prof, 16, close_bottom=prof[0][0] > 0, close_top=prof[-1][0] > 0)
+        elif shape == "dome":  # half a sphere (a compressor dome, a tank top): size [radius, height]
+            r, h = s[0], s[1]
+            g = M.lathe([(r * math.cos(a), h * math.sin(a)) for a in np.linspace(0, math.pi / 2, 7)], 16)
         elif shape == "tube":
             pts = [_vec(q) for q in (p.get("points") or [])][:40]
             if len(pts) < 2:

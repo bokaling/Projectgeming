@@ -1309,3 +1309,153 @@ def rail(length=10.0):
 @asset("ground_plate", "the ground under a whole site (grass, dirt or concrete)", ["helper", "terrain"])
 def ground_plate(w=60.0, d=40.0, color="#5f7a4c"):
     return Model().add("ground", M.box(w, 0.03, d, base=True), col(color, "#5f7a4c"))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Everyday things for COMPARISON scenes (a big or tiny number shown on a plain table)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@asset("shot_glass", "a small shot glass (comparisons: a water bottle squeezed down to the size of a shot glass)",
+       ["container", "everyday", "comparison"], aliases=["shotglass", "small_glass"])
+def shot_glass(liquid="#3aa6d9", level=0.6):
+    prof = [(0.0, 0.0), (0.22, 0.0), (0.24, 0.06), (0.3, 0.6)]
+    m = Model().add("glass", M.lathe(prof, 14, close_top=False), C["glass"], opacity=0.4, shell=True, material="glass")
+    if level:
+        m.add("liquid", M.xf(M.cylinder(0.2, 0.55 * float(level), 14), (0, 0.06, 0)), col(liquid, C["water"]),
+              opacity=0.85, kind="liquid", material="water")
+    return m
+
+
+@asset("human_hair", "one human hair, standing up (comparisons: thinner than a hair; about 0.07 mm thick)",
+       ["everyday", "comparison", "people"], aliases=["hair", "a_hair", "strand_of_hair"])
+def human_hair(color="#3b2a20"):
+    pts = [(0.0, 0.0, 0.0), (0.01, 0.35, 0.0), (0.03, 0.7, 0.01), (0.07, 1.0, 0.02)]
+    return Model().add("hair", M.tube(pts, 0.006, 6), col(color, "#3b2a20"), material="plastic")
+
+
+@asset("seesaw", "a seesaw / lever balance (comparisons: balance, counterweight, one side heavier)",
+       ["everyday", "comparison", "machine"], aliases=["see_saw", "teeter_totter", "lever_balance"])
+def seesaw(tilt=8.0, color="#f4c430"):
+    m = Model()
+    m.add("stand", M.prism(0.6, 0.55, 0.5) if hasattr(M, "prism") else M.cylinder(0.28, 0.55, 3), C["dark_steel"],
+          material="metal")
+    plank = M.xf(M.box(4.0, 0.12, 0.45), (0, 0.6, 0), (0, 0, float(tilt)))
+    m.add("plank", plank, col(color, C["yellow"]), material="paint")
+    a = math.radians(float(tilt))
+    for side, sx in (("left_seat", -1), ("right_seat", 1)):
+        x, y = 1.8 * sx * math.cos(a), 0.6 + 1.8 * sx * math.sin(a) + 0.12
+        m.add(side, M.xf(M.box(0.45, 0.06, 0.5), (x, y, 0)), C["red"])
+        m.anchors[side] = (x, y + 0.05, 0.0)
+    return m
+
+
+@asset("ruler", "a ruler with marks (comparisons: how long or how small something is)", ["everyday", "comparison"],
+       aliases=["measuring_stick", "scale_ruler"])
+def ruler(length=0.3):
+    L = float(length)
+    m = Model().add("ruler", M.box(L, 0.004, 0.035, base=True), "#f6e7b8", material="plastic")
+    marks = [M.xf(M.box(0.0015, 0.001, 0.012 if k % 5 else 0.02), (-L / 2 + k * L / 30, 0.0045, -0.008))
+             for k in range(31)]
+    m.add("marks", M.merge(*marks), "#2a2a2e")
+    return m
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# 3D Documentary: miners, the rescue capsule, a mountain cut open like a cake (mine cross-section)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@asset("miner", "a miner / rescuer in overalls with a helmet and a headlamp (its light beam shines ahead)",
+       ["people", "documentary"], aliases=["miners", "rescuer", "rescue_worker", "helmet_worker", "trapped_miner"])
+def miner(suit="#e07b39", helmet="#f4c430", height=1.75, lamp=True, mood="neutral", seed=1):
+    from .assets import person  # noqa: PLC0415
+
+    s = float(height) / 1.8
+    m = person(shirt=suit, pants="#3e454d", hat="", overalls=True, height=height, mood=mood, seed=seed)
+    m.add("reflective_stripe", M.merge(*[M.xf(M.box(0.35, 0.05 * s, 0.59), (0, y * s, 0)) for y in (0.98, 1.18)]),
+          "#e8eef2", emissive=0.15)
+    m.add("helmet", M.xf(M.lathe([(0.0, 0.0), (0.32, 0.0), (0.31, 0.1), (0.22, 0.2), (0.0, 0.24)], 10),
+                         (0, 1.9 * s, 0)), col(helmet, C["yellow"]), material="plastic")
+    if lamp:
+        m.add("headlamp", M.xf(M.cylinder(0.06, 0.05, 8), (0.3, 1.98 * s, 0), (0, 0, -90)), "#fff6d8", emissive=1.2,
+              kind="light")
+        beam = M.xf(M.cone(1.1, 6.0, 12), (0.33 + 6.0, 1.98 * s - 0.35, 0), (0, 0, 90))
+        m.add("beam", beam, "#ffe9b8", emissive=1.0, opacity=0.09, kind="beam")
+    return m
+
+
+@asset("rescue_capsule", "the Fenix rescue capsule: a narrow steel cage for one person, pulled up a rescue shaft",
+       ["vehicle", "documentary", "machine"], aliases=["capsule", "fenix", "phoenix_capsule", "fenix_capsule",
+                                                       "rescue_pod"])
+def rescue_capsule(h=3.9):
+    H = float(h)
+    m = Model()
+    body = M.cylinder(0.27, H * 0.62, 12)
+    m.add("body", M.xf(body, (0, H * 0.18, 0)), "#f2f2ee", material="paint", shell=True)
+    m.add("stripes", M.merge(*[M.xf(M.cylinder(0.275, 0.12, 12), (0, H * y, 0)) for y in (0.3, 0.62)]), "#d52b1e",
+          material="paint")
+    m.add("stripe_blue", M.xf(M.cylinder(0.275, 0.12, 12), (0, H * 0.46, 0)), "#0039a6", material="paint")
+    m.add("top", M.xf(M.cone(0.27, H * 0.12, 12), (0, H * 0.8, 0)), "#9aa3ab", material="metal")
+    m.add("bottom", M.xf(M.cone(0.27, H * 0.14, 12), (0, H * 0.18, 0), (180, 0, 0)), "#9aa3ab", material="metal")
+    m.add("wheels", M.merge(*[M.xf(M.cylinder(0.06, 0.05, 8), (0.3 * math.cos(a), H * y, 0.3 * math.sin(a)), (90, 0, 0))
+                              for a in (0.0, 2.09, 4.19) for y in (0.25, 0.75)]), "#2b2f35")
+    m.add("door", M.xf(M.box(0.04, H * 0.4, 0.3), (0.27, H * 0.3, 0)), "#d3d8dc", material="metal")
+    m.add("cable", M.xf(M.cylinder(0.02, H * 0.6, 4), (0, H * 0.92, 0)), "#2e3338", material="metal")
+    m.anchors.update({"top": (0.0, H, 0.0), "inside": (0.0, H * 0.45, 0.0)})
+    return m
+
+
+@asset("mine", "a mine cut open like a cake: rock layers, the ramp tunnel winding down, the emergency shelter deep "
+               "below, a cave-in, a borehole and a rescue shaft (cross-section for documentaries)",
+       ["cross_section", "documentary", "terrain"], aliases=["mine_cross_section", "gold_mine", "copper_mine",
+                                                             "underground_mine", "mine_shaft", "mountain_cross_section"])
+def mine(depth=70.0, width=60.0, seed=4):
+    import random  # noqa: PLC0415
+
+    D, W = float(depth), float(width)
+    rng = random.Random(int(seed))
+    m = Model()
+    cols = ["#b58e5e", "#9a7652", "#7e6650", "#665a50", "#4d4743", "#3b3735"]
+    n = len(cols)
+    for k, c in enumerate(cols):  # rock layers, darker the deeper they go (the back of the cut)
+        h = D / n
+        m.add("rock_layers", M.xf(M.box(W, h, 10.0, base=True), (0, D - (k + 1) * h, -5.6)), c, material="rough")
+    surf = M.jitter(M.box(W, 1.2, 12.0, base=True), 0.25, rng.randint(1, 99))
+    m.add("surface", M.xf(surf, (0, D, -5.0)), "#d8b47a")
+    # the ramp: zig-zag tunnel from the entrance down to the shelter (about 5 km in real life)
+    xs = [-W * 0.4, W * 0.32, -W * 0.3, W * 0.28, -W * 0.22, W * 0.12]
+    pts = [(-W * 0.45, D + 0.6, 0.0)]
+    for k, x in enumerate(xs):
+        pts.append((x, D - 4 - k * (D - 10) / len(xs), 0.0))
+    pts.append((W * 0.12, 3.0, 0.0))
+    m.add("ramp", M.tube(pts, 1.1, 8), "#211d1a", material="rough")
+    m.paths["ramp"] = [list(p) for p in pts]
+    m.add("ramp_lights", M.merge(*[M.xf(M.box(0.3, 0.3, 0.3), (p[0], p[1] + 1.0, 0.9)) for p in pts[1:-1]]),
+          "#ffcf7a", emissive=1.0, kind="light")
+    # the emergency shelter at the bottom
+    rx = W * 0.12 + 7.0
+    room = [M.xf(M.box(10.0, 4.2, 0.3, base=True), (rx, 1.0, -2.0)),  # an open room: back wall, ceiling, sides
+            M.xf(M.box(10.0, 0.3, 3.0, base=True), (rx, 5.2, -0.6)),
+            M.xf(M.box(0.3, 4.2, 3.0, base=True), (rx - 5.0, 1.0, -0.6)),
+            M.xf(M.box(0.3, 4.2, 3.0, base=True), (rx + 5.0, 1.0, -0.6))]
+    m.add("refuge", M.merge(*room), "#2a2522", material="rough")
+    m.add("refuge_light", M.xf(M.box(6.0, 0.15, 0.4), (rx, 4.9, 0.6)), "#ffd27a", emissive=1.2, kind="light")
+    m.add("refuge_floor", M.xf(M.box(10.0, 0.3, 3.4, base=True), (rx, 0.7, -0.4)), "#4a423b")
+    # the cave-in: a huge block of rock that slid down and sealed the ramp
+    rocks = [M.xf(M.jitter(M.sphere(rng.uniform(1.6, 3.2), 1), 0.25, rng.randint(1, 99)),
+                  (W * 0.3 + rng.uniform(-3, 3), D * 0.52 + rng.uniform(-3, 3), rng.uniform(-0.5, 1.0)))
+             for _ in range(9)]
+    m.add("collapse", M.merge(*rocks), "#8a7a68", material="rough")
+    # the borehole (day 17) and the rescue shaft (day 66): straight down from the surface to the shelter
+    m.add("borehole", M.xf(M.cylinder(0.18, D - 4.0, 8), (rx - 2.5, 4.6, 0.6)), "#7fd7ff", emissive=0.6)
+    m.add("rescue_shaft", M.xf(M.cylinder(0.75, D - 4.0, 12), (rx + 2.0, 4.6, 0.6)), "#1b1816")
+    m.add("shaft_rim", M.xf(M.cylinder(0.95, 0.12, 12), (rx + 2.0, D + 0.6, 0.6)), "#c8c2b8")
+    m.paths["borehole"] = [[rx - 2.5, D + 1.0, 0.6], [rx - 2.5, 4.8, 0.6]]
+    m.paths["shaft"] = [[rx + 2.0, 4.8, 0.6], [rx + 2.0, D + 1.0, 0.6]]
+    m.anchors.update({"entrance": (-W * 0.45, D + 0.6, 0.0), "refuge": (rx, 1.2, 0.0), "collapse": (W * 0.3, D * 0.52, 0.0),
+                      "surface": (rx + 2.0, D + 0.7, 0.6), "borehole_top": (rx - 2.5, D + 0.7, 0.6),
+                      "shaft_bottom": (rx + 2.0, 1.2, 0.6), "top": (0.0, D + 1.2, 0.0)})
+    m.tour = [("ramp", "A tunnel winds down through the mountain."), ("collapse", "Here the rock gave way."),
+              ("refuge", "Deep below, a small emergency shelter.")]
+    return m

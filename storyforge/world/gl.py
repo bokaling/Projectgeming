@@ -91,6 +91,8 @@ class Draw:
     xray: bool = False
     shadow: bool = True
     shine: float = 0.0  # 0 = matte, 1 = shiny metal / glass (specular highlight + sky reflection)
+    additive: bool = False  # light beams (headlamps, light shafts): added on top, no depth write
+    cap: int = 0  # cut open: 1 = a solid → a flat cut face in the inner colour; 2 = an open surface → a rim at the cut
 
 
 @dataclass
@@ -121,11 +123,30 @@ class Frame:
     sun: tuple | None = None  # direction TO the sun (default: from the upper left)
     card: object = None  # optional full-frame RGBA overlay (end card)
     lights: list = field(default_factory=list)  # warm point lights [(pos, rgb, radius)], max 4
+    style: dict | None = None  # this shot's look (colours, sky, grade): overrides the renderer's style
+    dof: float = 0.0  # depth of field (0 = sharp everywhere, 1 = close-up/macro blur outside the subject)
+    focus_dist: float = 0.0  # metres from the eye to what is sharp (0 = the target)
+    time: float = 0.0  # seconds (film grain, drifting clouds)
+    dyn: list = field(default_factory=list)  # [(world triangles (K*3, 3), rgb, emissive)]: cut faces made this frame
 
 
 STYLE = {
-    "background": "#0b2a30", "horizon": "#13414a", "floor": "#0e3238", "grid": "#2ee6d6",
-    "sky": "#a8e4ec", "ground_light": "#24474d", "sun": "#fff4e0",
+    "background": "#cfd9e1", "horizon": "#f3f6f8", "floor": "#e4e9ed", "grid": "#000000",
+    "sky": "#ffffff", "ground_light": "#b9c4cc", "sun": "#fff6ea", "sky_mode": 0, "grade": "bright",
+}
+# Colour grading per look (Part 6): exposure, saturation, contrast, lift (shadows tint), gain (highlights tint),
+# vignette, film grain, SSAO strength, height fog
+GRADES = {
+    "bright": dict(exposure=1.12, sat=1.1, contrast=1.04, lift=(0.0, 0.0, 0.004), gain=(1.0, 0.995, 0.985),
+                   vignette=0.16, grain=0.010, ao=0.55, hfog=0.0),
+    "dark": dict(exposure=1.08, sat=1.05, contrast=1.1, lift=(0.0, 0.004, 0.008), gain=(1.03, 1.0, 0.96),
+                 vignette=0.45, grain=0.022, ao=0.6, hfog=0.0),
+    "documentary": dict(exposure=1.0, sat=0.86, contrast=1.14, lift=(0.006, 0.012, 0.022), gain=(1.06, 1.0, 0.9),
+                        vignette=0.55, grain=0.03, ao=0.7, hfog=0.35),
+    "underwater": dict(exposure=1.05, sat=1.0, contrast=1.05, lift=(0.0, 0.01, 0.02), gain=(0.86, 1.0, 1.06),
+                       vignette=0.35, grain=0.015, ao=0.5, hfog=0.2),
+    "space": dict(exposure=1.05, sat=1.05, contrast=1.1, lift=(0.0, 0.0, 0.01), gain=(1.0, 1.0, 1.02),
+                  vignette=0.4, grain=0.015, ao=0.5, hfog=0.0),
 }
 
 VERT = """#version 330
@@ -143,23 +164,35 @@ uniform vec3 u_sun_dir; uniform vec3 u_sun_col; uniform vec3 u_sky; uniform vec3
 uniform vec3 u_fog; uniform float u_fog_near; uniform float u_fog_far; uniform vec3 u_eye;
 uniform vec3 u_bg_top; uniform vec3 u_bg_bottom; uniform vec2 u_res;
 uniform int u_nl; uniform vec3 u_lpos[4]; uniform vec3 u_lcol[4]; uniform float u_lrad[4];
-uniform sampler2DShadow u_shadow; uniform float u_texel;
-float shadow_at(vec4 lp, vec3 n){
+uniform sampler2DShadow u_shadow; uniform float u_texel; uniform int u_taps;
+uniform int u_sky_mode; uniform vec3 u_cam_r; uniform vec3 u_cam_u; uniform vec3 u_cam_f; uniform vec2 u_tan;
+uniform float u_hfog;
+const vec2 POISSON[12] = vec2[](vec2(-0.326,-0.406), vec2(-0.840,-0.074), vec2(-0.696,0.457), vec2(-0.203,0.621),
+  vec2(0.962,-0.195), vec2(0.473,-0.480), vec2(0.519,0.767), vec2(0.185,-0.893), vec2(0.507,0.064),
+  vec2(0.896,0.412), vec2(-0.322,-0.933), vec2(-0.792,-0.598));
+float shadow_at(vec4 lp, vec3 n){  // soft shadows: 12 Poisson taps, turned per pixel (no banding)
   vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
   if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
-  float bias = 0.0015 + 0.003 * (1.0 - max(dot(n, u_sun_dir), 0.0));
+  float bias = 0.0012 + 0.003 * (1.0 - max(dot(n, u_sun_dir), 0.0));
+  float a = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
+  mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));
   float s = 0.0;
-  for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++)
-    s += texture(u_shadow, vec3(p.xy + vec2(x, y) * u_texel * 1.0, p.z - bias));
-  return s / 9.0;
+  int taps = clamp(u_taps, 4, 12);
+  for (int k = 0; k < 12; k++) {
+    if (k >= taps) break;
+    s += texture(u_shadow, vec3(p.xy + R * POISSON[k] * u_texel * 2.2, p.z - bias));
+  }
+  return s / float(taps);
 }
 vec3 light(vec3 base, vec3 n, vec3 world, vec4 lp){
   float hemi = 0.5 + 0.5 * n.y;
-  vec3 amb = mix(u_ground, u_sky, hemi) * 0.47;
+  vec3 bounce = u_ground * (0.55 + 0.45 * base);  // light bounced off the floor tints the undersides
+  vec3 amb = mix(bounce, u_sky, hemi) * 0.5;
   float d = max(dot(n, u_sun_dir), 0.0);
+  float wrap = max(dot(n, u_sun_dir) * 0.8 + 0.2, 0.0);  // soft terminator (less harsh than Lambert)
   float sh = shadow_at(lp, n);
-  float ao = mix(0.68, 1.0, smoothstep(0.0, 0.9, world.y));  // contact shading: bases sit ON the floor
-  vec3 col = base * (amb * ao + u_sun_col * d * (0.2 + 0.8 * sh) * 1.05);
+  float ao = mix(0.62, 1.0, smoothstep(0.0, 0.7, world.y));  // contact shadow: bases sit ON the floor
+  vec3 col = base * (amb * ao + u_sun_col * mix(d, wrap, 0.35) * (0.15 + 0.85 * sh) * 1.05);
   for (int k = 0; k < 4; k++) {  // warm lamps and lit windows
     if (k >= u_nl) break;
     vec3 L = u_lpos[k] - world; float dl = length(L);
@@ -168,29 +201,61 @@ vec3 light(vec3 base, vec3 n, vec3 world, vec4 lp){
   }
   return col;
 }
-vec3 bg_at(){  // the background colour behind this pixel (same formula as the background pass)
+vec3 view_dir(){  // the direction this pixel looks in (for the sky)
+  vec2 uv = gl_FragCoord.xy / u_res * 2.0 - 1.0;
+  return normalize(u_cam_f + uv.x * u_tan.x * u_cam_r + uv.y * u_tan.y * u_cam_u);
+}
+vec3 sky_at(vec3 d){  // a real sky: deep blue up high, pale at the horizon, a warm glow around the sun
+  float h = clamp(d.y, -0.2, 1.0);
+  vec3 c = mix(u_bg_bottom, u_bg_top, pow(smoothstep(-0.05, 0.75, h), 0.8));
+  float sg = max(dot(d, u_sun_dir), 0.0);
+  return c + u_sun_col * (pow(sg, 24.0) * 0.35 + pow(sg, 4.0) * 0.06);
+}
+vec3 bg_at(){  // the background colour behind this pixel (same formula as the background pass, no clouds)
+  if (u_sky_mode == 1) return sky_at(view_dir());
   vec2 uv = gl_FragCoord.xy / u_res; vec2 c = uv - 0.5;
   return mix(u_bg_bottom, u_bg_top, smoothstep(0.0, 1.0, uv.y)) * (1.0 - 0.35 * dot(c, c));
 }
 vec3 fogged(vec3 col, vec3 world){  // far things melt into the background: no hard horizon line
-  float t = smoothstep(u_fog_near, u_fog_far, length(u_eye - world));
-  return mix(col, bg_at(), t);
+  float dist = length(u_eye - world);
+  float t = smoothstep(u_fog_near, u_fog_far, dist);
+  float hf = u_hfog * exp(-max(world.y, 0.0) * 0.45) * (1.0 - exp(-dist * 0.035));  // low mist, thicker far away
+  return mix(col, bg_at(), clamp(max(t, hf), 0.0, 1.0));
 }
 """
 
 FRAG = """#version 330
 uniform vec3 u_color; uniform float u_emissive; uniform float u_opacity; uniform vec4 u_clip; uniform int u_clip_on;
-uniform vec3 u_inner; uniform int u_xray; uniform float u_shine;
+uniform vec3 u_inner; uniform int u_xray; uniform float u_shine; uniform int u_additive;
+uniform int u_cap; uniform float u_rim; uniform mat4 u_vp;
 in vec3 v_world; in vec3 v_n; in vec4 v_light; out vec4 f_color;
 """ + LIT + """
 void main(){
   if (u_clip_on == 1 && dot(v_world, u_clip.xyz) > u_clip.w) discard;
   vec3 n = normalize(v_n);
   vec3 base = u_color;
+  vec3 pw = v_world;
+#ifdef CAP
+  gl_FragDepth = gl_FragCoord.z;
+  if (!gl_FrontFacing && u_clip_on == 1 && u_cap == 1) {  // a solid seen through the cut: its flat cut face
+    vec3 rd = v_world - u_eye;
+    float t = (u_clip.w - dot(u_clip.xyz, u_eye)) / dot(u_clip.xyz, rd);
+    pw = u_eye + rd * clamp(t, 0.0, 1.0);
+    vec4 cp = u_vp * vec4(pw, 1.0);
+    gl_FragDepth = cp.z / cp.w * 0.5 + 0.5;
+    n = normalize(u_clip.xyz); base = u_inner;
+  } else if (!gl_FrontFacing && u_clip_on == 1 && u_cap == 2) {  // an open wall: its inside, a rim at the cut
+    n = -n;
+    base = (u_clip.w - dot(v_world, u_clip.xyz)) < u_rim ? u_inner : u_color * 0.62;
+  } else
+#endif
   if (!gl_FrontFacing) { n = -n; if (u_clip_on == 1) base = u_inner; }
-  vec3 V = normalize(u_eye - v_world);
+  vec3 V = normalize(u_eye - pw);
   float rim = pow(1.0 - max(dot(n, V), 0.0), 3.0);
-  vec3 col = light(base * (1.0 - 0.25 * u_shine), n, v_world, v_light) + rim * 0.2 * u_sky + base * u_emissive * 1.6;
+  vec3 col = light(base * (1.0 - 0.25 * u_shine), n, pw, v_light) + rim * 0.2 * u_sky + base * u_emissive * 1.6;
+#ifdef CAP
+  if (!gl_FrontFacing && u_clip_on == 1 && base == u_inner) col += u_inner * 0.28;  // cut faces read bright
+#endif
   if (u_shine > 0.0) {  // metal, paint and glass: a sun highlight on each facet + the sky reflected in it
     vec3 H = normalize(u_sun_dir + V);
     float sh = shadow_at(v_light, n);
@@ -199,9 +264,12 @@ void main(){
     col += u_sun_col * spec * u_shine * 0.9 + mix(u_ground, u_sky, 0.5 + 0.5 * R.y) * u_shine * 0.22 * (0.4 + 0.6 * rim);
   }
   float a = u_opacity;
+  if (u_opacity < 0.6 && u_shine > 0.5) a = min(1.0, u_opacity + 0.45 * rim);  // glass: clearer face-on, bright edges
   if (u_xray == 1) { a = 0.06 + 0.22 * rim; col = mix(col, u_color * 1.2 + 0.1, 0.4); }  // a faint ghost
-  f_color = vec4(fogged(col, v_world), a);
+  if (u_additive == 1) { f_color = vec4(u_color * u_emissive * (0.25 + 0.75 * (1.0 - rim)) * u_opacity, 1.0); return; }
+  f_color = vec4(fogged(col, pw), a);
 }"""
+FRAG_CAP = FRAG.replace("#version 330\n", "#version 330\n#define CAP 1\n", 1)
 
 GRID_FRAG = """#version 330
 uniform vec3 u_floor; uniform vec3 u_grid; uniform vec2 u_center; uniform float u_radius;
@@ -214,7 +282,9 @@ void main(){
   float major = max(line(p.x / 5.0, 1.3), line(p.y / 5.0, 1.3));
   float fade = 1.0 - smoothstep(u_radius * 0.35, u_radius, length(p - u_center));
   float sh = shadow_at(v_light, vec3(0.0, 1.0, 0.0));
-  vec3 col = u_floor * (0.55 + 0.45 * sh);
+  float nz = fract(sin(dot(floor(p * 1.7), vec2(127.1, 311.7))) * 43758.5453);
+  float nz2 = fract(sin(dot(floor(p * 0.35), vec2(269.5, 183.3))) * 43758.5453);
+  vec3 col = u_floor * (0.97 + 0.03 * nz + 0.04 * nz2 - 0.02) * (0.58 + 0.42 * sh);
   col += u_grid * (minor * 0.06 + major * 0.24) * fade;  // faint: the places are the stars
   f_color = vec4(fogged(col, v_world), 1.0);
 }"""
@@ -242,8 +312,32 @@ QUAD_VERT = """#version 330
 in vec2 in_pos; out vec2 v_uv;
 void main(){ v_uv = in_pos * 0.5 + 0.5; gl_Position = vec4(in_pos, 0.0, 1.0); }"""
 BG_FRAG = """#version 330
-uniform vec3 u_top; uniform vec3 u_bottom; in vec2 v_uv; out vec4 f_color;
-void main(){ float t = smoothstep(0.0, 1.0, v_uv.y); vec2 c = v_uv - 0.5;
+uniform vec3 u_top; uniform vec3 u_bottom; uniform float u_time; in vec2 v_uv; out vec4 f_color;
+uniform vec3 u_bg_top; uniform vec3 u_bg_bottom; uniform vec2 u_res; uniform int u_sky_mode;
+uniform vec3 u_cam_r; uniform vec3 u_cam_u; uniform vec3 u_cam_f; uniform vec2 u_tan; uniform vec3 u_sun_dir;
+uniform vec3 u_sun_col;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int k = 0; k < 4; k++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
+  return v; }
+void main(){
+  if (u_sky_mode == 1) {
+    vec2 uv = v_uv * 2.0 - 1.0;
+    vec3 d = normalize(u_cam_f + uv.x * u_tan.x * u_cam_r + uv.y * u_tan.y * u_cam_u);
+    float h = clamp(d.y, -0.2, 1.0);
+    vec3 col = mix(u_bg_bottom, u_bg_top, pow(smoothstep(-0.05, 0.75, h), 0.8));
+    float sg = max(dot(d, u_sun_dir), 0.0);
+    col += u_sun_col * (pow(sg, 24.0) * 0.35 + pow(sg, 4.0) * 0.06);
+    if (d.y > 0.01) {  // soft white clouds on a high plane, drifting slowly
+      vec2 q = d.xz / (d.y + 0.08) * 0.9 + vec2(u_time * 0.012, u_time * 0.004);
+      float c = smoothstep(0.52, 0.8, fbm(q * 1.3)) * smoothstep(0.01, 0.12, d.y);
+      vec3 cloud = mix(vec3(0.82, 0.86, 0.92), vec3(1.0, 0.99, 0.97), smoothstep(0.5, 0.9, fbm(q * 1.3 + 0.3)));
+      col = mix(col, cloud * 1.08, c * 0.9);
+    }
+    f_color = vec4(col, 1.0); return;
+  }
+  float t = smoothstep(0.0, 1.0, v_uv.y); vec2 c = v_uv - 0.5;
   vec3 col = mix(u_bottom, u_top, t) * (1.0 - 0.35 * dot(c, c)); f_color = vec4(col, 1.0); }"""
 BRIGHT_FRAG = """#version 330
 uniform sampler2D u_tex; in vec2 v_uv; out vec4 f_color;
@@ -255,17 +349,59 @@ void main(){ vec3 s = texture(u_tex, v_uv).rgb * 0.227;
   s += (texture(u_tex, v_uv + u_dir * 1.38).rgb + texture(u_tex, v_uv - u_dir * 1.38).rgb) * 0.316;
   s += (texture(u_tex, v_uv + u_dir * 3.23).rgb + texture(u_tex, v_uv - u_dir * 3.23).rgb) * 0.070;
   f_color = vec4(s, 1.0); }"""
+SSAO_FRAG = """#version 330
+uniform sampler2D u_depth; uniform vec2 u_px; uniform float u_near; uniform float u_far; uniform float u_proj;
+uniform float u_radius; in vec2 v_uv; out vec4 f_color;
+float lin(float d){ float z = d * 2.0 - 1.0; return 2.0 * u_near * u_far / (u_far + u_near - z * (u_far - u_near)); }
+void main(){  // depth-only ambient occlusion: creases and contact shadows (works on low poly flat faces)
+  float d = texture(u_depth, v_uv).r;
+  if (d >= 0.99999) { f_color = vec4(1.0); return; }
+  float z0 = lin(d); float w0 = 1.0 / z0;
+  float wx1 = 1.0 / lin(texture(u_depth, v_uv + vec2(u_px.x, 0.0)).r) - w0;
+  float wx2 = w0 - 1.0 / lin(texture(u_depth, v_uv - vec2(u_px.x, 0.0)).r);
+  float wy1 = 1.0 / lin(texture(u_depth, v_uv + vec2(0.0, u_px.y)).r) - w0;
+  float wy2 = w0 - 1.0 / lin(texture(u_depth, v_uv - vec2(0.0, u_px.y)).r);
+  float gx = abs(wx1) < abs(wx2) ? wx1 : wx2; float gy = abs(wy1) < abs(wy2) ? wy1 : wy2;
+  float rpx = clamp(u_radius * u_proj / z0, 3.0, 48.0);
+  float a0 = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
+  float occ = 0.0;
+  for (int k = 0; k < 10; k++) {
+    float r = rpx * (float(k) + 0.5) / 10.0; float a = a0 + float(k) * 2.39996;
+    vec2 o = vec2(cos(a), sin(a)) * r;
+    float ws = 1.0 / lin(texture(u_depth, v_uv + o * u_px).r);
+    float we = w0 + gx * o.x + gy * o.y;  // where the surface would be if it were flat here
+    float closer = (ws - we) / max(we, 1e-6);
+    float dz = 1.0 / we - 1.0 / ws;  // metres in front of the expected surface
+    occ += smoothstep(0.015, 0.06, closer) * (1.0 - smoothstep(u_radius * 0.6, u_radius * 1.6, dz));
+  }
+  f_color = vec4(vec3(1.0 - occ / 10.0), 1.0); }"""
 FINAL_FRAG = """#version 330
-uniform sampler2D u_scene; uniform sampler2D u_bloom; uniform float u_bloom_k; uniform vec3 u_fade_col;
-uniform float u_fade; uniform float u_flash; in vec2 v_uv; out vec4 f_color;
-void main(){ vec3 c = texture(u_scene, v_uv).rgb + texture(u_bloom, v_uv).rgb * u_bloom_k;
-  c = c / (1.0 + 0.18 * max(c - 0.8, 0.0));
-  c = clamp(c, 0.0, 1.0);
-  float l = dot(c, vec3(0.299, 0.587, 0.114));
-  c = mix(vec3(l), c, 1.1);                                   // a little more colour
-  c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);                  // gentle contrast curve
-  c += (1.0 - l) * vec3(-0.006, 0.004, 0.010) + l * vec3(0.012, 0.006, -0.008);  // teal shadows, warm light
-  vec2 d = v_uv - 0.5; c *= 1.0 - 0.28 * dot(d, d);
+uniform sampler2D u_scene; uniform sampler2D u_bloom; uniform sampler2D u_ao; uniform sampler2D u_blur;
+uniform sampler2D u_depth; uniform float u_bloom_k; uniform vec3 u_fade_col;
+uniform float u_fade; uniform float u_flash; uniform float u_exposure; uniform float u_sat; uniform float u_contrast;
+uniform vec3 u_lift; uniform vec3 u_gain; uniform float u_vignette; uniform float u_grain; uniform float u_time;
+uniform float u_ao_k; uniform float u_dof; uniform float u_focus; uniform float u_near; uniform float u_far;
+in vec2 v_uv; out vec4 f_color;
+float lin(float d){ float z = d * 2.0 - 1.0; return 2.0 * u_near * u_far / (u_far + u_near - z * (u_far - u_near)); }
+vec3 aces(vec3 x){ return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+void main(){
+  vec3 c = texture(u_scene, v_uv).rgb;
+  if (u_dof > 0.0) {  // depth of field: sharp at the subject, soft before and behind it
+    float z = lin(texture(u_depth, v_uv).r);
+    float coc = clamp(abs(z - u_focus) / max(u_focus * 1.1, 0.05), 0.0, 1.0) * u_dof;
+    c = mix(c, texture(u_blur, v_uv).rgb, smoothstep(0.08, 0.9, coc));
+  }
+  float ao = texture(u_ao, v_uv).r;
+  c *= mix(1.0, ao, u_ao_k);
+  c += texture(u_bloom, v_uv).rgb * u_bloom_k;
+  c = aces(c * u_exposure);                                   // filmic: highlights roll off, never blown out
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(vec3(l), c, u_sat);
+  c = clamp((c - 0.5) * u_contrast + 0.5, 0.0, 1.0);
+  c = c * u_gain + u_lift * (1.0 - c);                        // warm highlights, cool shadows (per look)
+  vec2 d = v_uv - 0.5; c *= 1.0 - u_vignette * dot(d, d) * 1.6;
+  float g = fract(sin(dot(v_uv * 1000.0 + u_time * 37.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+  c += g * u_grain;
   c = mix(c, u_fade_col, u_fade); c = mix(c, vec3(1.0), u_flash);
   f_color = vec4(clamp(c, 0.0, 1.0), 1.0); }"""
 LABEL_VERT = """#version 330
@@ -324,7 +460,8 @@ def create_context():
 
 
 class Renderer:
-    def __init__(self, size: tuple[int, int], msaa: int = 4, shadow_size: int = 2048, ctx=None, style: dict | None = None):
+    def __init__(self, size: tuple[int, int], msaa: int = 4, shadow_size: int = 2048, ctx=None, style: dict | None = None,
+                 effects: bool = True, shadow_taps: int = 12):
         import moderngl  # noqa: PLC0415
 
         self.mgl = moderngl
@@ -334,6 +471,7 @@ class Renderer:
         self.style = {**STYLE, **(style or {})}
         ctx = self.ctx
         self.prog = ctx.program(vertex_shader=VERT, fragment_shader=FRAG)
+        self.cap_prog = ctx.program(vertex_shader=VERT, fragment_shader=FRAG_CAP)  # cut faces (writes depth)
         self.grid_prog = ctx.program(vertex_shader=VERT, fragment_shader=GRID_FRAG)
         self.shadow_prog = ctx.program(vertex_shader=SHADOW_VERT, fragment_shader=SHADOW_FRAG)
         self.part_prog = ctx.program(vertex_shader=PART_VERT, fragment_shader=PART_FRAG)
@@ -341,11 +479,14 @@ class Renderer:
         self.bright_prog = ctx.program(vertex_shader=QUAD_VERT, fragment_shader=BRIGHT_FRAG)
         self.blur_prog = ctx.program(vertex_shader=QUAD_VERT, fragment_shader=BLUR_FRAG)
         self.final_prog = ctx.program(vertex_shader=QUAD_VERT, fragment_shader=FINAL_FRAG)
+        self.ssao_prog = ctx.program(vertex_shader=QUAD_VERT, fragment_shader=SSAO_FRAG)
+        self.effects = effects  # SSAO + depth of field (off = the fastest look, e.g. tiny test frames)
+        self.shadow_taps = int(shadow_taps)  # soft shadow samples: 12 on a GPU, fewer on the CPU (speed)
         self.label_prog = ctx.program(vertex_shader=LABEL_VERT, fragment_shader=LABEL_FRAG)
         quad = ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1], np.float32).tobytes())
         self.quads = {name: self.vertex_array(p, quad, [("2f", "in_pos")])
                       for name, p in (("bg", self.bg_prog), ("bright", self.bright_prog), ("blur", self.blur_prog),
-                                      ("final", self.final_prog), ("label", self.label_prog))}
+                                      ("final", self.final_prog), ("label", self.label_prog), ("ssao", self.ssao_prog))}
         self.meshes: dict = {}
         self.textures: dict = {}
         self.shadow_size = shadow_size
@@ -359,7 +500,20 @@ class Renderer:
                                       depth_attachment=ctx.depth_renderbuffer((self.W, self.H), samples=samples))
         self.scene_tex = ctx.texture((self.W, self.H), 4, dtype="f2")
         self.scene_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
-        self.scene_fbo = ctx.framebuffer(color_attachments=[self.scene_tex])
+        self.depth_tex = ctx.depth_texture((self.W, self.H))  # resolved depth: SSAO + depth of field
+        self.depth_tex.repeat_x = self.depth_tex.repeat_y = False
+        self.scene_fbo = ctx.framebuffer(color_attachments=[self.scene_tex], depth_attachment=self.depth_tex)
+        hw, hh = max(8, self.W // 2), max(8, self.H // 2)
+        self.ao_a = ctx.texture((hw, hh), 4, dtype="f1")
+        self.ao_b = ctx.texture((hw, hh), 4, dtype="f1")
+        self.dof_a = ctx.texture((hw, hh), 4, dtype="f2")
+        self.dof_b = ctx.texture((hw, hh), 4, dtype="f2")
+        for t in (self.ao_a, self.ao_b, self.dof_a, self.dof_b):
+            t.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            t.repeat_x = t.repeat_y = False
+        self.ao_fa, self.ao_fb = ctx.framebuffer([self.ao_a]), ctx.framebuffer([self.ao_b])
+        self.dof_fa, self.dof_fb = ctx.framebuffer([self.dof_a]), ctx.framebuffer([self.dof_b])
+        self.ao_fa.clear(1, 1, 1, 1)
         bw, bh = max(8, self.W // 4), max(8, self.H // 4)
         self.bloom_a = ctx.texture((bw, bh), 4, dtype="f2")
         self.bloom_b = ctx.texture((bw, bh), 4, dtype="f2")
@@ -399,9 +553,10 @@ class Renderer:
             return
         pos, nrm = geo.pos.astype(np.float32), geo.normals()
         vao, vbo = self._vao(self.prog, pos, nrm)
+        cvao = self.vertex_array(self.cap_prog, vbo, [("3f", "in_pos"), ("3f", "in_nrm")])
         svbo = self.ctx.buffer(pos.tobytes())
         svao = self.vertex_array(self.shadow_prog, svbo, [("3f", "in_pos")])
-        self.meshes[key] = (vao, svao, (vbo, svbo))
+        self.meshes[key] = (vao, svao, (vbo, svbo), cvao)
 
     def texture(self, key: str, rgba: np.ndarray):
         if key not in self.textures:
@@ -421,7 +576,7 @@ class Renderer:
         return sun / np.linalg.norm(sun)
 
     def _common(self, prog, fr: Frame, vp, light_vp):
-        st = self.style
+        st = getattr(self, "_st", None) or self.style
         sun = self._sun(fr)
         for name, val in (("u_vp", vp.T.tobytes()), ("u_light", light_vp.T.tobytes())):
             if name in prog:
@@ -430,7 +585,9 @@ class Renderer:
                 "u_ground": hex_rgb(st["ground_light"]), "u_fog": hex_rgb(st["horizon"]), "u_eye": tuple(fr.eye),
                 "u_texel": 1.0 / self.shadow_size, "u_bg_top": hex_rgb(st["background"]),
                 "u_bg_bottom": hex_rgb(st["horizon"]), "u_res": (float(self.W), float(self.H)),
-                "u_nl": len(fr.lights[:4])}
+                "u_nl": len(fr.lights[:4]), "u_sky_mode": int(st.get("sky_mode", 0) or 0), "u_taps": self.shadow_taps,
+                "u_hfog": float(GRADES.get(st.get("grade"), GRADES["bright"])["hfog"] * st.get("hfog_k", 1.0))}
+        vals.update(self._basis(fr))
         dist = float(np.linalg.norm(np.asarray(fr.eye) - np.asarray(fr.target)))
         fog = float(st.get("fog", 1.0))  # < 1 = thicker air (under water, inside the body)
         vals["u_fog_near"] = max(20.0, dist * 1.6) * fog
@@ -447,13 +604,26 @@ class Renderer:
         if "u_shadow" in prog:
             prog["u_shadow"].value = 0
 
+    def _basis(self, fr: Frame) -> dict:
+        """Camera right/up/forward + tan(fov/2): the sky shader turns pixels into view directions."""
+        f = np.asarray(fr.target, np.float64) - np.asarray(fr.eye, np.float64)
+        f /= max(np.linalg.norm(f), 1e-9)
+        up = np.array([0.0, 1.0, 0.0]) if abs(f[1]) < 0.999 else np.array([0.0, 0.0, -1.0])
+        r = np.cross(f, up)
+        r /= max(np.linalg.norm(r), 1e-9)
+        u = np.cross(r, f)
+        ty = math.tan(math.radians(fr.fov) / 2)
+        return {"u_cam_r": tuple(r), "u_cam_u": tuple(u), "u_cam_f": tuple(f), "u_tan": (ty * self.W / self.H, ty)}
+
     def render(self, fr: Frame) -> np.ndarray:
         ctx, mgl = self.ctx, self.mgl
-        st = self.style
+        st = {**self.style, **(fr.style or {})}
+        self._st = st
         aspect = self.W / self.H
         dist = float(np.linalg.norm(np.asarray(fr.eye) - np.asarray(fr.target)))
         near = max(0.02, dist * 0.02)
-        vp = perspective(fr.fov, aspect, near, max(300.0, dist * 30)) @ look_at(fr.eye, fr.target)
+        far = max(300.0, dist * 30)
+        vp = perspective(fr.fov, aspect, near, far) @ look_at(fr.eye, fr.target)
         sun = self._sun(fr)
         rad = max(4.0, fr.focus_radius)
         center = np.asarray(fr.focus, np.float64)
@@ -478,6 +648,11 @@ class Renderer:
         ctx.disable(mgl.DEPTH_TEST)
         set_uniform(self.bg_prog, "u_top", hex_rgb(st["background"]))
         set_uniform(self.bg_prog, "u_bottom", hex_rgb(st["horizon"]))
+        bp = self.bg_prog
+        for k, v in {**self._basis(fr), "u_bg_top": hex_rgb(st["background"]), "u_bg_bottom": hex_rgb(st["horizon"]),
+                     "u_res": (float(self.W), float(self.H)), "u_sky_mode": int(st.get("sky_mode", 0) or 0),
+                     "u_sun_dir": tuple(sun), "u_sun_col": hex_rgb(st["sun"]), "u_time": float(fr.time)}.items():
+            set_uniform(bp, k, v)
         self.quads["bg"].render()
         ctx.enable(mgl.DEPTH_TEST)
         self.shadow_tex.use(0)
@@ -489,37 +664,47 @@ class Renderer:
         set_uniform(gp, "u_center", tuple(float(x) for x in fr.grid_center))
         set_uniform(gp, "u_radius", max(25.0, dist * 3.0))
         self._floor[0].render()
-        p = self.prog
-        self._common(p, fr, vp, light_vp)
-        solid = [d for d in fr.draws if d.opacity >= 0.99 and not d.xray]
-        thick = [d for d in fr.draws if 0.6 <= d.opacity < 0.99 and not d.xray]  # liquids, water: blended, but solid
-        glass = [d for d in fr.draws if d.opacity < 0.6 or d.xray]  # glass, gas, x-ray shells
+        self._common(self.prog, fr, vp, light_vp)
+        if any(d.cap for d in fr.draws):
+            self._common(self.cap_prog, fr, vp, light_vp)
+        beams = [d for d in fr.draws if d.additive]  # headlamp beams, light shafts: light added on top
+        draws = [d for d in fr.draws if not d.additive]
+        solid = [d for d in draws if d.opacity >= 0.99 and not d.xray]
+        thick = [d for d in draws if 0.6 <= d.opacity < 0.99 and not d.xray]  # liquids, water: blended, but solid
+        glass = [d for d in draws if d.opacity < 0.6 or d.xray]  # glass, gas, x-ray shells
         eye = np.asarray(fr.eye)
         far_first = lambda d: -float(np.linalg.norm(d.model[:3, 3] - eye))  # noqa: E731
         thick.sort(key=far_first)
         glass.sort(key=far_first)
-        for group, blend, write in ((solid, False, True), (thick, True, True), (glass, True, False)):
+        for group, blend, write in ((solid, False, True), (thick, True, True), (glass, True, False), (beams, "add", False)):
             if blend:
                 ctx.enable(mgl.BLEND)
-                ctx.blend_func = mgl.SRC_ALPHA, mgl.ONE_MINUS_SRC_ALPHA
+                ctx.blend_func = (mgl.ONE, mgl.ONE) if blend == "add" else (mgl.SRC_ALPHA, mgl.ONE_MINUS_SRC_ALPHA)
                 self.ms_fbo.depth_mask = write  # thin see-through parts don't hide what's behind or inside them
             for d in group:
                 if d.key not in self.meshes:
                     continue
+                p = self.cap_prog if d.cap else self.prog
                 write_uniform(p, "u_model", d.model.T.tobytes())
                 set_uniform(p, "u_color", tuple(d.color))
                 set_uniform(p, "u_emissive", float(d.emissive))
                 set_uniform(p, "u_opacity", float(d.opacity))
                 set_uniform(p, "u_xray", 1 if d.xray else 0)
                 set_uniform(p, "u_shine", float(d.shine))
+                set_uniform(p, "u_additive", 1 if d.additive else 0)
                 set_uniform(p, "u_clip_on", 1 if d.clip is not None else 0)
                 if d.clip is not None:
                     set_uniform(p, "u_clip", tuple(float(x) for x in d.clip))
                     set_uniform(p, "u_inner", tuple(d.inner))
-                self.meshes[d.key][0].render()
+                if d.cap:
+                    set_uniform(p, "u_cap", int(d.cap))
+                    set_uniform(p, "u_rim", float(max(0.002, dist * 0.012)))
+                self.meshes[d.key][3 if d.cap else 0].render()
             if blend:
                 ctx.disable(mgl.BLEND)
                 self.ms_fbo.depth_mask = True
+        if fr.dyn:
+            self._dynamic(fr)
         if fr.particles is not None and len(fr.particles):
             self._particles(fr, vp, light_vp)
 
@@ -542,17 +727,58 @@ class Renderer:
                     self.quads["blur"].render()
         else:
             self.bloom_fa.clear(0, 0, 0, 1)
+        grade = {**GRADES.get(st.get("grade"), GRADES["bright"]), **(st.get("grade_k") or {})}
+        hw, hh = self.ao_a.size
+        if self.effects and grade["ao"] > 0:  # ambient occlusion at half size, blurred once
+            self.ao_fa.use()
+            ctx.viewport = (0, 0, hw, hh)
+            self.depth_tex.use(0)
+            sp = self.ssao_prog
+            set_uniform(sp, "u_depth", 0)
+            set_uniform(sp, "u_px", (1.0 / self.W, 1.0 / self.H))
+            set_uniform(sp, "u_near", float(near))
+            set_uniform(sp, "u_far", float(far))
+            set_uniform(sp, "u_proj", float(self.H / 2 / math.tan(math.radians(fr.fov) / 2)))
+            set_uniform(sp, "u_radius", float(min(1.2, max(0.06, dist * 0.06))))
+            self.quads["ssao"].render()
+            for src, dst, direction in ((self.ao_a, self.ao_fb, (1 / hw, 0)), (self.ao_b, self.ao_fa, (0, 1 / hh))):
+                dst.use()
+                src.use(0)
+                set_uniform(self.blur_prog, "u_tex", 0)
+                set_uniform(self.blur_prog, "u_dir", direction)
+                self.quads["blur"].render()
+        dof = float(fr.dof) if self.effects else 0.0
+        if dof > 0:  # a soft copy of the picture for what is out of focus
+            self.dof_fa.use()
+            ctx.viewport = (0, 0, hw, hh)
+            self.scene_tex.use(0)
+            set_uniform(self.blur_prog, "u_tex", 0)
+            set_uniform(self.blur_prog, "u_dir", (0.0, 0.0))
+            self.quads["blur"].render()
+            for _ in range(2):
+                for src, dst, direction in ((self.dof_a, self.dof_fb, (2.2 / hw, 0)), (self.dof_b, self.dof_fa, (0, 2.2 / hh))):
+                    dst.use()
+                    src.use(0)
+                    set_uniform(self.blur_prog, "u_tex", 0)
+                    set_uniform(self.blur_prog, "u_dir", direction)
+                    self.quads["blur"].render()
         self.out_fbo.use()
         ctx.viewport = (0, 0, self.W, self.H)
         self.scene_tex.use(0)
         self.bloom_a.use(1)
+        self.ao_a.use(2)
+        self.dof_a.use(3)
+        self.depth_tex.use(4)
         fp = self.final_prog
-        set_uniform(fp, "u_scene", 0)
-        set_uniform(fp, "u_bloom", 1)
-        set_uniform(fp, "u_bloom_k", float(fr.bloom))
-        set_uniform(fp, "u_fade_col", hex_rgb(st["background"]))
-        set_uniform(fp, "u_fade", float(min(1.0, max(0.0, fr.fade))))
-        set_uniform(fp, "u_flash", float(min(1.0, max(0.0, fr.flash))))
+        for k, v in {"u_scene": 0, "u_bloom": 1, "u_ao": 2, "u_blur": 3, "u_depth": 4, "u_bloom_k": float(fr.bloom),
+                     "u_fade_col": hex_rgb(st["background"]), "u_fade": float(min(1.0, max(0.0, fr.fade))),
+                     "u_flash": float(min(1.0, max(0.0, fr.flash))), "u_exposure": float(grade["exposure"]),
+                     "u_sat": float(grade["sat"]), "u_contrast": float(grade["contrast"]),
+                     "u_lift": tuple(grade["lift"]), "u_gain": tuple(grade["gain"]), "u_vignette": float(grade["vignette"]),
+                     "u_grain": float(grade["grain"]), "u_time": float(fr.time % 1000.0),
+                     "u_ao_k": float(grade["ao"]) if self.effects else 0.0, "u_dof": dof,
+                     "u_focus": float(fr.focus_dist or dist), "u_near": float(near), "u_far": float(far)}.items():
+            set_uniform(fp, k, v)
         self.quads["final"].render()
 
         # 4) labels on top
@@ -574,6 +800,28 @@ class Renderer:
         data = self.out_fbo.read(components=3)
         img = np.frombuffer(data, np.uint8).reshape(self.H, self.W, 3)
         return img[::-1]
+
+    def _dynamic(self, fr: Frame):
+        """Meshes made for this frame only (the flat cut faces of a hero part)."""
+        p = self.prog
+        write_uniform(p, "u_model", np.eye(4, dtype=np.float32).tobytes())
+        for k, v in (("u_opacity", 1.0), ("u_xray", 0), ("u_shine", 0.0), ("u_additive", 0), ("u_clip_on", 0)):
+            set_uniform(p, k, v)
+        for tris, rgb, emi in fr.dyn:
+            pos = np.asarray(tris, np.float32).reshape(-1, 3)
+            if len(pos) < 3:
+                continue
+            from .mesh import Geo  # noqa: PLC0415
+
+            nrm = Geo(pos).normals()
+            data = np.hstack([pos, nrm]).astype(np.float32).tobytes()
+            vbo = self.ctx.buffer(data)
+            vao = self.vertex_array(p, vbo, [("3f", "in_pos"), ("3f", "in_nrm")])
+            set_uniform(p, "u_color", tuple(rgb))
+            set_uniform(p, "u_emissive", float(emi))
+            vao.render()
+            vao.release()
+            vbo.release()
 
     def _particles(self, fr: Frame, vp, light_vp):
         """Small glowing octahedra (gas, bubbles, sparks, electrons, flow dots)."""

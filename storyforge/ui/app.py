@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .. import config, doctor, pipeline
 from .. import script as script_mod
+from .. import videos as videos_mod
 from ..audio import music, tts
 from ..messages import FriendlyError, explain
 from ..project import EpisodeOptions, Series, list_series, read_json, slugify, write_json
@@ -144,19 +145,29 @@ def series_choices():
     return [("✨ Auto (a series from the topic)", AUTO)] + items + [("➕ New series", NEW)]
 
 
+DURATIONS = [("⏱️ Auto (How it works 80 s · documentary ~2.5 min · long ~9 min)", 0), ("30 s", 30), ("60 s", 60),
+             ("80 s", 80), ("90 s", 90), ("2 min", 120), ("3 min (max for vertical)", 180),
+             ("Long 16:9 · 8 min", 480), ("Long 16:9 · 9 min", 540), ("Long 16:9 · 10 min", 600)]
+
+
 def opts_from(text, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_card, final, qc, fmt="auto",
-              source="paste") -> EpisodeOptions:
+              seconds=0, source="paste") -> EpisodeOptions:
+    sec = int(seconds or 0)
+    if sec >= 240:  # 8-10 min is a long 16:9 video
+        length = "long"
+    elif sec and length == "long":
+        length = "short"
     return EpisodeOptions.from_dict({
         "script_text": text or "", "idea": idea or "", "creator_note": note or "", "languages": langs or ["en"],
         "length": length, "resolution": res, "captions": bool(cap_on), "music_mood": mood, "music_volume": float(vol),
         "sfx": bool(sfx), "end_card": bool(end_card), "final_episode": bool(final), "quality_check": bool(qc),
-        "source": source, "video_format": fmt or "auto",
+        "source": source, "video_format": fmt or "auto", "seconds": sec,
     })
 
 
 def opts_to_values(o: EpisodeOptions):
     return [o.script_text, o.idea, o.creator_note, o.languages, o.length, o.resolution, o.captions, o.music_mood,
-            o.music_volume, o.sfx, o.end_card, o.final_episode, o.quality_check, o.video_format]
+            o.music_volume, o.sfx, o.end_card, o.final_episode, o.quality_check, o.video_format, int(o.seconds or 0)]
 
 
 def add_style_line(text: str, style: str) -> str:
@@ -245,9 +256,11 @@ def build_app():
                                     'the AI write it above. Several scripts? A line of <b>=====</b> between them.</div>')
                             paste_box = gr.Textbox(show_label=False, lines=16, max_lines=40,
                                                    placeholder=SCRIPT_PLACEHOLDER, elem_classes="sf-script")
-                            length = gr.Radio([("⚡ Short · ~60 s · 9:16 · 1080×1920", "short"),
-                                               ("🎬 Long · ~10 min · 16:9 · 1920×1080 · chapters", "long")],
+                            length = gr.Radio([("⚡ Vertical · 30 s - 3 min · 9:16 · 1080×1920", "short"),
+                                               ("🎬 Long · 8-10 min · 16:9 · 1920×1080 · chapters", "long")],
                                               value=default_opts.length, show_label=False)
+                            secs_dd = gr.Dropdown(DURATIONS, value=int(default_opts.seconds or 0),
+                                                  label="⏱️ Video length")
                             fmt_dd = gr.Dropdown(formats.CHOICES, value=default_opts.video_format,
                                                  label="🎞️ Video format (how it works, what happens if, story…)")
                         with gr.Group(elem_classes="sf-card"):
@@ -341,6 +354,13 @@ def build_app():
 
                                 fix_btn.click(_fix, fix_box, [progress_box])
 
+                with gr.Accordion("📋 Paste plan (JSON): use a plan you wrote (cheaper than AI planning)", open=False):
+                    gr.HTML('<div class="sf-card-sub">Paste your script on step 1 and the plan here (format: '
+                            '<b>docs/PLAN_CHEATSHEET.md</b>). It is checked and repaired like every plan; then press '
+                            '🚀 Make the video with this plan.</div>')
+                    paste_plan = gr.Code(language="json", lines=14, show_label=False)
+                    paste_plan_btn = gr.Button("📋 Check and use this plan", variant="secondary")
+                    paste_plan_out = gr.HTML()
                 with gr.Accordion("⚙️ Advanced: the plan as JSON (edit and save)", open=False):
                     plan_json = gr.Code(language="json", lines=20, show_label=False)
                     save_plan_btn = gr.Button("💾 Check and save the plan", variant="secondary")
@@ -396,8 +416,22 @@ def build_app():
                         gr.HTML('<div class="sf-empty">Your finished videos will appear here.</div>')
                         return
                     vids = [v for v in res_.get("videos", []) if Path(v).exists()]
-                    gr.HTML(f'<div class="sf-donebox">🎉 Done! Saved in Google Drive: <b>{html.escape(str(ep.export_dir))}'
-                            f'</b></div>')
+                    lib = [v for v in res_.get("library", []) if Path(v).exists()]
+                    link = res_.get("library_link") or ""
+                    where = (f'<a href="{html.escape(link)}" target="_blank">📂 {videos_mod.FOLDER}</a>' if link
+                             else f'<b>{html.escape(str(Path(lib[0]).parent if lib else ep.export_dir))}</b>')
+                    gr.HTML(f'<div class="sf-donebox">🎉 Done! Your video is in {where}'
+                            + (f'<br><small>{html.escape(Path(lib[0]).name)}</small>' if lib else "") + '</div>')
+                    for v in lib:
+                        cb = gr.Checkbox(label=f"Posted ✅ (moves it to {videos_mod.FOLDER}/{videos_mod.POSTED})",
+                                         value=False)
+
+                        def _posted(on, path=v):
+                            if on and Path(path).exists():
+                                new = videos_mod.mark_posted(Path(path))
+                                gr.Info(f"✅ Moved to {new.parent}")
+
+                        cb.input(_posted, cb, None)
                     with gr.Row(elem_classes="sf-grid"):
                         for v in vids:
                             with gr.Column(elem_classes=["sf-scene", "sf-result-video"], min_width=280):
@@ -426,6 +460,8 @@ def build_app():
                     gr.HTML(usage_html(res_))
 
                 with gr.Row(elem_classes="sf-row-stack"):
+                    open_btn = gr.Button("📂 Open my videos", variant="primary",
+                                         link=videos_mod.drive_link() or None)
                     clean_btn = gr.Button("🧹 Free up Drive space (delete re-makeable shot clips)", variant="secondary")
 
         timer = gr.Timer(1.0)
@@ -433,7 +469,8 @@ def build_app():
                             show_progress="hidden")
 
         # ------------------------------------------------------------ wiring
-        settings = [paste_box, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_cb, final_cb, qc_cb, fmt_dd]
+        settings = [paste_box, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_cb, final_cb, qc_cb, fmt_dd,
+                    secs_dd]
         refreshers = [r_script, r_plan, r_export]
 
         JOB_BUTTONS = {"gen": (gen_btn, "🚀 Make the video"), "plan": (plan_btn, "🧭 Plan first (see every shot)"),
@@ -584,6 +621,33 @@ def build_app():
                 return gr.skip()
 
         job_click("make", on_make, [])
+        open_btn.click(lambda: gr.Info(f"📂 Your videos: {videos_mod.folder()}"), None, None)
+
+        def on_paste_plan(choice, name, number, *vals):
+            *vals, plan_text = vals
+            try:
+                o = opts_from(*vals)
+                plan = json.loads(plan_text or "{}")
+                s = resolve_series(choice, name, o)
+                n = None if choice in (AUTO, None, "") else pipeline.episode_number(s, int(number) if number else None, o)
+                from ..messages import Reporter as _Rep  # noqa: PLC0415
+
+                res_ = pipeline.use_plan(s, o, o.script_text, plan, _Rep(echo=False), n)
+                set_current(s.slug, res_["episode"])
+                fixes = "".join(f"<li>{html.escape(f)}</li>" for f in res_["fixes"][:15])
+                gr.Info(f"📋 Plan saved: {res_['shots']} shots. Press 🚀 Make the video with this plan.")
+                return (f'<div class="sf-note">✅ {res_["shots"]} shots, {len(res_["fixes"])} auto-fix(es)'
+                        + (f'<ul style="margin:4px 0 0 18px">{fixes}</ul>' if fixes else "") + "</div>",
+                        int(time.time()))
+            except json.JSONDecodeError as exc:
+                gr.Warning(f"That isn't valid JSON (line {exc.lineno}, column {exc.colno}).")
+                return gr.skip(), gr.skip()
+            except Exception as exc:  # noqa: BLE001
+                _toast(exc)
+                return gr.skip(), gr.skip()
+
+        sync_click(paste_plan_btn, "📋 Check and use this plan", on_paste_plan,
+                   [series_dd, new_name, ep_no] + settings + [paste_plan], [paste_plan_out, r_plan])
 
         def on_fix(k, instruction):
             try:
@@ -619,30 +683,35 @@ def build_app():
 
         job_click("quick", on_quick, [paste_box, langs, length])
 
-        def on_write(topic, length_, langs_, note_, fmt_="auto"):
+        def on_write(topic, length_, langs_, note_, fmt_="auto", secs_=0):
             try:
                 if not (topic or "").strip():
                     raise FriendlyError("Type a topic first.", "For example: how cow poop becomes electricity.")
-                gr.Info("✍️ Writing the script (10-40 s)…")
+                gr.Info("✍️ Writing the script (10-60 s; if Gemini is busy it retries a few times)…")
                 text, provider = script_mod.write_from_topic(topic.split("=====")[0], length_, (langs_ or ["en"])[0],
-                                                             note_ or "", None, fmt_ or "auto")
+                                                             note_ or "", None, fmt_ or "auto", int(secs_ or 0))
                 gr.Info(f"Script written by {provider}. Check the doctor's score below, then press 🚀 or 🧭.")
                 return text
             except Exception as exc:  # noqa: BLE001
                 _toast(exc)
                 return gr.skip()
 
-        sync_click(write_btn, "✍️ Write the script (free AI, retention rules)", on_write, [idea, length, langs, note, fmt_dd],
+        sync_click(write_btn, "✍️ Write the script (free AI, retention rules)", on_write,
+                   [idea, length, langs, note, fmt_dd, secs_dd],
                    paste_box)
 
         # ---- 🩺 Script doctor
-        def on_score(text, length_):
-            r = doctor.score(text or "", length_)
+        def fmt_of(fmt_, text):
+            return formats.resolve(fmt_ or "auto", text or "")
+
+        def on_score(text, length_, fmt_="auto"):
+            r = doctor.score(text or "", length_, fmt_of(fmt_, text))
             return doctor.report_html(r), gr.update(visible=bool(r.words) and not r.has_style)
 
-        paste_box.change(on_score, [paste_box, length], [doctor_box, style_btn], trigger_mode="always_last",
+        paste_box.change(on_score, [paste_box, length, fmt_dd], [doctor_box, style_btn], trigger_mode="always_last",
                          show_progress="hidden")
-        length.change(on_score, [paste_box, length], [doctor_box, style_btn], show_progress="hidden")
+        length.change(on_score, [paste_box, length, fmt_dd], [doctor_box, style_btn], show_progress="hidden")
+        fmt_dd.change(on_score, [paste_box, length, fmt_dd], [doctor_box, style_btn], show_progress="hidden")
 
         def on_style(text, length_):
             r = doctor.score(text or "", length_)
@@ -651,24 +720,25 @@ def build_app():
 
         style_btn.click(on_style, [paste_box, length], paste_box)
 
-        def on_improve(text, length_):
+        def on_improve(text, length_, fmt_="auto"):
             if not (text or "").strip():
                 gr.Warning("Paste your script first.")
                 return [gr.skip()] * 5
             gr.Info("✨ Improving your script for retention (10-60 s)…")
+            vf = fmt_of(fmt_, text)
             try:
-                res_ = doctor.improve(text, length_)
+                res_ = doctor.improve(text, length_, None, vf)
             except Exception as exc:  # noqa: BLE001
                 _toast(exc)
                 return [gr.skip()] * 5
             first = (split_scripts(text) or [text])[0]
-            old_r, new_r = doctor.score(first, length_), doctor.score(res_["script"], length_)
+            old_r, new_r = doctor.score(first, length_, vf), doctor.score(res_["script"], length_, vf)
             notes = "".join(f"<li>{html.escape(c)}</li>" for c in res_["changes"])
             note_html = (f'<div class="sf-note">Rewritten by <b>{html.escape(res_["provider"])}</b>'
                          + (f'<ul style="margin:4px 0 0 18px">{notes}</ul>' if notes else "") + "</div>")
             return gr.update(visible=True), first, res_["script"], doctor.compare_html(old_r, new_r), note_html
 
-        sync_click(improve_btn, "✨ Improve script (for retention)", on_improve, [paste_box, length],
+        sync_click(improve_btn, "✨ Improve script (for retention)", on_improve, [paste_box, length, fmt_dd],
                    [cmp_box, old_txt, new_txt, cmp_scores, cmp_notes])
 
         def on_use_new(new_text, text):

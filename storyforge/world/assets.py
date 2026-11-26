@@ -135,6 +135,87 @@ def focus_points(name: str) -> list[str]:
     return _FOCUS[name]
 
 
+_PARTS: dict[str, tuple[list, list, list]] = {}
+
+
+def part_list(name: str) -> tuple[list[str], list[str], list[str]]:
+    """(part names, anchor points, paths) of a library object, exactly as the engine knows them.
+    Numbered copies are one name ('piston1..4' → 'piston'); the planner may only use these."""
+    if name not in _PARTS:
+        import re  # noqa: PLC0415
+
+        try:
+            m = build(name)
+            stems = list(dict.fromkeys(re.sub(r"\d+$", "", p.name) for p in m.parts if p.name))
+            heads = [s.split("_")[0] for s in stems if "_" in s]
+            groups = sorted({h for h in heads if heads.count(h) >= 2 and h not in stems})
+            _PARTS[name] = (groups + stems, [a for a in m.anchors if a not in ("label", "center")], list(m.paths))
+        except Exception:  # noqa: BLE001
+            _PARTS[name] = ([], [], [])
+    return _PARTS[name]
+
+
+def _norm_word(w: str) -> str:
+    """Singular: 'doors' → 'door', 'brakes' → 'brake', 'boxes' → 'box', 'pulleys' → 'pulley'."""
+    w = w.lower()
+    if len(w) <= 3 or w.endswith("ss"):
+        return w
+    if w.endswith("ies") and len(w) > 4:
+        return w[:-3] + "y"
+    if w.endswith(("ches", "shes", "xes", "zes", "sses")):
+        return w[:-2]
+    if w.endswith("s"):
+        return w[:-1]
+    return w
+
+
+def snap_part(model: "Model", name: str) -> str | None:
+    """The real part or anchor a name means: exact, then singular ('doors' → 'door'), then shared words
+    ('safety_brakes' → 'brake', 'motor_shaft' → 'motor'), then the closest spelling. None if nothing is close."""
+    import difflib  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    name = re.sub(r"[^a-z0-9_]+", "_", str(name or "").lower()).strip("_")
+    if not name:
+        return None
+    stems = list(dict.fromkeys(re.sub(r"\d+$", "", p.name) for p in model.parts if p.name))
+    heads = list(dict.fromkeys(s.split("_")[0] for s in stems if "_" in s))
+    cands = list(dict.fromkeys(list(model.anchors) + stems + heads))
+    if name in cands:
+        return name
+    words = [_norm_word(w) for w in name.split("_") if w]
+    sing = "_".join(words)
+    if sing in cands:
+        return sing
+    best, score = None, 0.0
+    for c in cands:
+        cw = [_norm_word(w) for w in c.split("_") if w]
+        shared = len(set(words) & set(cw))
+        if shared:
+            sc = shared / max(len(words), len(cw)) + 0.5 * shared - 0.01 * len(c)
+            if sc > score:
+                best, score = c, sc
+    if best:
+        return best
+    close = difflib.get_close_matches(sing, cands, n=1, cutoff=0.72)
+    return close[0] if close else None
+
+
+def part_center(model: "Model", name: str):
+    """Model-space point of a part (top middle of its box) or anchor; None if the model has no such thing."""
+    import numpy as np  # noqa: PLC0415
+
+    if name in model.anchors:
+        return np.asarray(model.anchors[name], np.float32)
+    ks = [p for p in model.parts if p.name == name or p.name.startswith(name + "_") or
+          (p.name.startswith(name) and p.name[len(name):].isdigit())]
+    pts = [p.geo.bounds() for p in ks if p.geo.tris]
+    if not pts:
+        return None
+    lo, hi = np.min([b[0] for b in pts], 0), np.max([b[1] for b in pts], 0)
+    return np.asarray([(lo[0] + hi[0]) / 2, hi[1], (lo[2] + hi[2]) / 2], np.float32)
+
+
 def catalog(compact: bool = True) -> str:
     """The list the AI sees: name: what it is [real size] [params] [focus: parts the camera can aim at]."""
     lines = []
@@ -150,6 +231,13 @@ def catalog(compact: bool = True) -> str:
             pts = focus_points(info.name)
             if pts:
                 line += " [focus: " + ", ".join(pts) + "]"
+            names, anchors, paths = part_list(info.name)
+            if names:  # the EXACT real part names (camera "obj.part", actions on "obj.part"): never invent others
+                line += " [parts: " + ", ".join(names[:40]) + "]"
+            if anchors:
+                line += " [mount/ports: " + ", ".join(anchors[:16]) + "]"
+            if paths:
+                line += " [paths: " + ", ".join(paths) + "]"
         lines.append(line)
     return "\n".join(lines)
 
@@ -693,6 +781,7 @@ def person(shirt="#d9534f", pants="#2f5fa8", skin="skin", hat="", hair="#5a3a22"
 # Real sizes (largest side, meters) of objects whose library model is drawn bigger or smaller than life. The plan
 # checker scales them to real size, so a bottle is never bigger than the person holding it.
 REAL_SIZE = {
+    "shot_glass": 0.06, "human_hair": 0.05, "seesaw": 4.0, "ruler": 0.3, "water_drop": 0.005,
     "bottle": 0.3, "phone": 0.15, "laptop": 0.35, "coin": 0.025, "coin_stack": 0.04, "cash": 0.16, "hammer": 0.33,
     "wrench": 0.25, "lightbulb": 0.12, "beaker": 0.22, "sugar_cube": 0.016, "money_bag": 0.5, "gold_bar": 0.25,
     "chicken": 0.45, "dog": 0.9, "bird": 0.3, "fish": 0.4, "bus": 12.0, "truck": 9.0, "airplane": 37.0,

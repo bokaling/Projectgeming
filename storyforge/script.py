@@ -19,43 +19,66 @@ from .paste import NARRATOR
 from .project import Episode, EpisodeOptions, Series
 
 SCRIPT_SYSTEM = """You write scripts for a viral low poly 3D "how it works" explainer channel (YouTube Shorts, TikTok, long YouTube videos).
-Topics: how things work, what happens if, how things are made, inside machines, science, engineering, history of inventions.
-Retention rules:
-- The first line is a shocking statement or question, max 10 words. No slow intros ("Have you ever wondered", "In this video", "Once upon a time").
-- Something new every 5 seconds: a new step, object, number or twist. Short, punchy, spoken sentences.
-- Use specific, true numbers (tons, degrees, days, kilowatt hours, percent) - never vague words.
-- Facts must be safe: only well-known, accurate facts that an engineer would agree with. If a number is an estimate or
-  varies, say so ("about", "up to", "engineers estimate", "a typical fridge"). Never invent technologies, records,
-  studies or quotes. If you are not sure of a number, leave it out.
-- Every shot can be shown in 3D: objects, machines, liquids, gas, particles, cutaways, zooming into tiny things.
-- Machines: name the REAL parts (piston, valve, compressor, float, sheave…) and show each one working in its own shot,
-  in the order things really happen. [SCENE] says literally what we see (the part, what moves, where it flows).
-- End with a satisfying payoff, then a cliffhanger line for the next episode.
+Topics: how things work, what happens if, how things are made, inside machines, science, engineering, history, true stories.
+Hook (the first 10 seconds):
+- Line 1 is a short question (max 10 words) that the first shot SHOWS ("What happens when you press the gas pedal?").
+- Then, within the first 10 seconds, a surprising myth buster: what most people believe, and what really happens
+  ("The gas pedal doesn't give the engine more gas. It lets in more air."). No slow intros ("Have you ever wondered",
+  "In this video", "Once upon a time").
+Explain step by step:
+- Follow the REAL order the thing works, from start to finish. One clear idea per step, with a simple "why".
+- Each step is one [SCENE] with 1-3 sentences (about 10-20 words, 4-8 seconds) that match ONE shot. Several sentences
+  about the same thing stay in the same [SCENE].
+- Every NARRATOR line describes something the viewer can SEE at that moment (a part moving, a liquid flowing, a light
+  turning on, a number appearing). [SCENE] says literally what we see.
+- Name the REAL parts (piston, valve, compressor, float, sheave...) and show each one working, in order.
+Tone:
+- A strong hook, then a calm, curious tone. Punchy short sentences only for the hook, the reveals and the ending.
+- No jargon or unit soup (kN, MPa, degrees, microseconds) unless you explain it simply. Turn big or tiny numbers into
+  everyday comparisons ("as heavy as 9 cars", "thinner than a human hair", "a water bottle squeezed to the size of a
+  shot glass"); 1 or 2 such comparisons per video, each in its own [SCENE].
+- Only well-known, accurate facts an engineer would agree with. When a number varies or is an estimate, say so
+  ("about", "up to", "engineers estimate", "a typical fridge"). Never invent technologies, records, studies or quotes.
+  If you are not sure of a number, leave it out.
+- Put [PAUSE] right after a reveal or an important result (the voice stops for a moment): "It never needed more gas.
+  [PAUSE]".
+- End with a satisfying payoff (the whole thing working), then a short line that makes people want the next video.
 Format (exactly):
 [TITLE] title
 [STYLE] a short visual style line
-[SCENE] what we see in this shot (objects and what moves)
-NARRATOR: the narration for this shot (1-2 sentences)
+[SCENE] what we see in this shot (objects, the part in focus, what moves)
+NARRATOR: the narration for this shot (1-3 sentences)
 ...repeat [SCENE] + NARRATOR for every shot...
+Long videos: [CHAPTER] name lines between parts.
 Reply with JSON only: {"script": "the full script text with \\n between lines"}"""
 
 
 def write_from_topic(topic: str, length: str = "short", language: str = "en", note: str = "", rep=None,
-                     video_format: str = "auto") -> tuple[str, str]:
-    """Topic → script text in our format. Returns (text, provider). Never fails: a simple template if no AI works."""
+                     video_format: str = "auto", seconds: int | float = 0) -> tuple[str, str]:
+    """Topic → script text in our format. Returns (text, provider).
+
+    The script must hit the target length (about 150 words a minute): a short reply is sent back once with the
+    word count. With a Gemini key that stays busy: stop with "Gemini is busy" (no garbage). No key: a template."""
+    from . import config, formats, net  # noqa: PLC0415
+    from .messages import StopRequested  # noqa: PLC0415
+
     topic = (topic or "").strip()
     if not topic:
         raise FriendlyError("Type a topic first.", "For example: how cow poop becomes electricity.")
-    words = paste.TARGET_WORDS.get(length, 150)
-    payload = {"topic": topic, "target_words": words, "shots": "12-14" if length == "short" else "70-90",
-               "language": "Persian (Farsi)" if language == "fa" else "English",
-               "length": "about 60 seconds" if length == "short" else "about 10 minutes, a mini cliffhanger every 2 minutes, "
-                                                                     "[CHAPTER] lines between parts",
-               "creator_note": note}
-    from . import formats  # noqa: PLC0415
-
     fkey = formats.resolve(video_format, topic)
+    words = paste.target_words(length, seconds, fkey)
+    secs = paste.target_seconds(length, seconds, fkey)
+    shots = max(5, round(words / paste.WORDS_PER_SCENE.get(length, 15)))
+    payload = {"topic": topic, "target_words": words,
+               "word_rule": f"The NARRATOR lines together must have {int(words * 0.95)}-{int(words * 1.1)} words "
+                            f"(about {secs} seconds at 150 words a minute). Count them before you answer.",
+               "shots": f"{max(4, shots - 2)}-{shots + 2}",
+               "language": "Persian (Farsi)" if language == "fa" else "English",
+               "length": f"about {secs} seconds" if secs < 240 else
+                         f"about {round(secs / 60)} minutes, a mini cliffhanger every 2 minutes, [CHAPTER] lines between parts",
+               "creator_note": note}
     payload["format"] = {"name": formats.get(fkey)["label"], "rules": formats.get(fkey)["rules"]}
+    best = {"n": 0, "text": ""}
 
     def validate(obj):
         text = str((obj or {}).get("script", "")) if isinstance(obj, dict) else ""
@@ -63,21 +86,38 @@ def write_from_topic(topic: str, length: str = "short", language: str = "en", no
         n = sum(len(b["lines"]) for b in parsed["blocks"])
         if n < 4:
             raise ValueError("the script needs at least 4 NARRATOR lines with [SCENE] lines")
+        said = paste.count_words(" ".join(ln["text"] for b in parsed["blocks"] for ln in b["lines"]))
+        if said > best["n"]:
+            best.update(n=said, text=text)
+        if said < words * 0.85:
+            raise ValueError(f"the NARRATOR lines have only {said} words, but this {secs} s video needs about {words} "
+                             f"words. Keep every line and add {words - said} more words: more real steps, a "
+                             "comparison, a 'why'")
+        if said > words * 1.35:
+            raise ValueError(f"the NARRATOR lines have {said} words, too long: it needs about {words} words")
+
+    def finish(text: str) -> str:
+        text = text.strip() + "\n"
+        if not text.lstrip().startswith("[TITLE]"):
+            text = f"[TITLE] {topic[:1].upper() + topic[1:]}\n" + text
+        return text
 
     try:
         provider, obj = llm.generate_json(SCRIPT_SYSTEM, json.dumps(payload, ensure_ascii=False), validate=validate,
                                           rep=rep, task="script", temperature=0.85, max_tokens=8000, strong=True)
-        text = str(obj["script"]).strip() + "\n"
-        if not text.lstrip().startswith("[TITLE]"):
-            text = f"[TITLE] {topic[:1].upper() + topic[1:]}\n" + text
-        return text, provider
+        return finish(str(obj["script"])), provider
+    except StopRequested:
+        raise
     except Exception as exc:  # noqa: BLE001
-        from .messages import StopRequested  # noqa: PLC0415
-
-        if isinstance(exc, StopRequested):
-            raise
+        if best["n"] >= words * 0.6:  # close enough: better than no script
+            if rep is not None:
+                rep.warn(f"The AI script has {best['n']} words (the target is {words}). The video will be a bit "
+                         "shorter; you can add lines on the Script step.")
+            return finish(best["text"]), "Gemini (shorter than asked)"
+        if config.secret("GEMINI_API_KEY") and isinstance(exc, net.AllProvidersFailed):
+            raise FriendlyError(*llm.BUSY_TEXT) from None
         if rep is not None:
-            rep.warn("All free AI writers are busy, so I made a simple starter script. Edit it, or try again later.")
+            rep.warn("No free AI key, so I made a simple starter script. Edit it, or add a free GEMINI_API_KEY.")
         return template_script(topic), "Template (no AI)"
 
 
