@@ -495,6 +495,8 @@ the Colab port link (`serve_kernel_port_as_window`). Every one of these has a te
 * Not run against the real Gemini (scripts, ideas, plans with the new prompts), not on a T4 (GPU time of the new
   lighting passes, NVENC with the new look), the long 8-10 min path was not rendered this round.
 * HyperFrames was not prototyped and Blender was not run (research notes above).
+* The hero cut of a hollow casing (the rescue capsule) still shows a lot of pink inside; the elevator counterweight
+  (a merged plate stack) shows one big pink face.
 
 ### Lessons learned (keep these)
 * GPU drivers remove shader inputs and uniforms a shader never uses (NVIDIA: `in_nrm` of the grid floor). Bind
