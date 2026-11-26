@@ -17,7 +17,7 @@ from .labels import LabelMaker, card_image
 from .scene import World
 
 FPS = 30
-RENDER_VERSION = "3d-9-light"  # change when the look changes, so finished clips are made again
+RENDER_VERSION = "3d-10-round2"  # change when the look changes, so finished clips are made again
 
 
 def make_renderer(size: tuple[int, int]) -> tuple[gl.Renderer, tuple[int, int], str]:

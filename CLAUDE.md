@@ -26,15 +26,17 @@ The owner is a beginner coder. Explain things simply, in short sentences.
    ≤4 labels) and lists the fixes. `plan.md` shows it in plain words. No AI → `offline_plan` (finds known objects
    and machine parts in the words, runs/lifts/opens machines by their motions). The cow demo script → the
    hand-made example plan. The planner sees `examples.MACHINE_EXAMPLE_PLAN` as its example.
-3. **Voice** (made in a thread at the same time as the plan): Kokoro am_fenrir at 1.1x; word timings.
-4. **Timeline** (`Pipeline.timeline`): every shot lasts exactly its voice line + a short breath (whole frames).
+3. **Voice** (made in a thread at the same time as the plan): Kokoro am_fenrir at 1.0x (stories 1.1x); word timings;
+   `[PAUSE]` = 0.75 s of silence.
+4. **Timeline** (`Pipeline.timeline`): every shot lasts exactly its voice line + a breath (3D formats 0.5 s, min 3 s;
+   stories 0.22 s), whole frames.
 5. **3D render** (`world/video.py`): one clip per shot, encoded ONCE at final quality with the keyword
    captions burned in (NVENC or x264 `stitchable=1`), saved to Drive with a fingerprint (resume).
 6. Music + sound design → clips joined with `-c copy` + audio → thumbnail (a still of the best shot),
    title, description, hashtags, chapters (long) → ⏱ timing report.
 
-* **Short** = ~60 s (~150 words), 9:16, 1080×1920. **Long** = ~10 min (~1500 words), 16:9, 1920×1080,
-  YouTube chapters in the description.
+* **Short** = vertical 9:16, 1080×1920, 30 s - 3 min (How it works 80 s, documentary ~150 s by default), 150 words a
+  minute. **Long** = 8-10 min (~1300-1500 words), 16:9, 1920×1080, YouTube chapters in the description.
 * **Script doctor** (`doctor.py`, `beats.py`): instant offline score + weak lines; "✨ Improve" via the LLM chain
   keeps [TITLE]/[STYLE]/[SCENE] and speaker names; old vs new side by side, the user picks.
 * **Speed target:** a 60 s Short in under 5 min on a T4. Every video ends with a ⏱ timing report and logs
@@ -408,6 +410,9 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
   i.e. about 0.4-1.2 or 3-8 compute units at ~1.8 units/hour. Measure before building: one 10 s test shot.
 
 ### Verified only on CPU (needs a real Colab run)
+Round 2 additions: the new lighting passes on NVIDIA (SSAO depth resolve, `FRAG_CAP` variant, 12 shadow taps),
+the Gemini retry/Flash-Lite chain and the new prompts with real replies, `videos.drive_link()` (Drive folder id via
+xattr), the app's 📋 Paste plan box, 📂 Open my videos and Posted ✅ on a phone.
 NVIDIA EGL rendering on a T4/L4 (the `in_nrm` fix is tested with a Mesa program that drops the input, not on
 NVIDIA), NVENC, Kokoro (torch), Edge TTS, Gemini/Groq calls (script, visual ideas, plan, object designs, vision QC:
 the round-6 test loop used replies written by Claude from the exact prompts, not real Gemini), wav2vec2 alignment,
@@ -429,6 +434,30 @@ the Colab port link (`serve_kernel_port_as_window`). Every one of these has a te
   frame can miss it (the hook adds a glow on the spark).
 * Not tested against the real Gemini: its replies may be weaker than the recorded ones; the validator, literal
   check, retry, library machines and the no-AI tours are the safety net.
+
+### Round 2 test loop (CPU, 720p, Kokoro ONNX voice, plans written the way the planner prompt asks)
+* "How an elevator works" (1:17) and "How a car engine works" (~1:20) rendered end to end with
+  `python -m storyforge.make`; "The 33 miners trapped in Chile" (~2 min, 3D Documentary) the same way. Loop 1 found
+  (fixed in the engine/checker, not in single videos): the quality check turned hero/macro shots into orbits (it
+  measured all four pistons) → it now judges the box the shot frames and leaves isolated shots alone; a 1.8 s shot
+  from a trailing `[PAUSE]` → trailing pauses hold the picture, 3 s minimum; the passenger close-up cut his head off
+  (only "passenger" matched) → all pieces are "passenger_…"; "CAR + HALF A LOAD" cut at "+" → symbols don't count as
+  words; documentary shots were not dark (outdoor rule first) and headlamp beams blew out close shots; grass in front
+  of the underground cut; a 300 m camera culled everything (fixed 260 m cut); mounted groups stood beside the
+  shelter. CPU render ≈ 7-9 s of render per second of video at 720p (≈ 9-12 min for an 80 s Short).
+
+### Round 2: known problems (not fixed)
+* Hero cut faces are the convex outline of each part: a part made of merged pieces (the counterweight's plate stack,
+  the crankshaft) gets one big pink face. Real capping would need a stencil pass (moderngl has no stencil API).
+* Macro shots in big machines still show the neighbouring parts lit by the sun; the dark look darkens the background
+  only. Engine close-ups show the red panels of the cut-open car around the engine (busy picture).
+* Comparisons work at everyday sizes (bottle vs shot glass, seesaw); microscopic ones (a droplet next to a hair) break
+  the depth buffer (near/far ratio) and are not usable yet.
+* Documentary: the mine is a diagram (a 70 m slab for 700 m; the stat card says the real number), the map inset uses
+  coarse hand-made continents, karaoke key-word "boxes" are thick libass outlines (rounded), not rectangles.
+* Not run against the real Gemini (scripts, ideas, plans with the new prompts), not on a T4 (GPU time of the new
+  lighting passes, NVENC with the new look), the long 8-10 min path was not rendered this round.
+* HyperFrames was not prototyped and Blender was not run (research notes above).
 
 ### Lessons learned (keep these)
 * GPU drivers remove shader inputs and uniforms a shader never uses (NVIDIA: `in_nrm` of the grid floor). Bind
@@ -481,3 +510,9 @@ the Colab port link (`serve_kernel_port_as_window`). Every one of these has a te
 * Tests that register objects must restore `assets.REGISTRY`/`ALIASES` (other tests count the library).
 * `plan.validate` must be idempotent (numbers always float, label `count` kept): saved plans are checked again
   after every edit, and any drift changes every fingerprint (= the whole video re-renders).
+* Checks must judge what the shot really draws: a hero/macro shot frames ONE member of a part group; judging the whole
+  group made the quality check "fix" every hero shot into an orbit. Isolated shots skip the "something in the way" test.
+* A culling distance must scale with the camera distance (a 60 m cross-section needs a camera 300 m away).
+* Additive light beams right at the lens white out the picture: draw only a few, never near the camera.
+* A stand-in object for a machine's own part ("doors" on "lift1.doors") must be folded into that part, never grounded.
+* GLSL: a local variable may not shadow another (`n` for the tap count clashed with the normal `n`).

@@ -68,7 +68,11 @@ def local_problems(world, i: int, at: float = 0.6, label_tex=None) -> list[str]:
     if eye[1] < 0.3:
         out.append("under_floor")
     spec = world._cams[i]
-    lo, hi = world.focus_box(i, T)  # what the line talks about (the same box the camera frames)
+    iso = world.isolated(i) if hasattr(world, "isolated") else ""
+    if iso in ("hero", "macro"):  # ONE part alone (one piston of four): judge the box this shot really frames
+        lo, hi = spec["lo"], spec["hi"]
+    else:
+        lo, hi = world.focus_box(i, T)  # what the line talks about (the same box the camera frames)
     corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
     pts = project_points(eye, tgt, fov, (W, H), corners)
     front = pts[pts[:, 2] > 0.05]
@@ -83,14 +87,16 @@ def local_problems(world, i: int, at: float = 0.6, label_tex=None) -> list[str]:
         size = max((x1 - x0) / W, (y1 - y0) / H)  # how much of the frame the subject fills
         if size < MIN_FILL:
             out.append("target_too_small")
-        elif spec["move"] not in ("zoom_into", "close_up") and (
+        elif spec["move"] not in ("zoom_into", "close_up", "macro") and (
                 x0 < -0.02 * W or x1 > 1.02 * W or y0 < (SAFE_TOP - 0.03) * H or y1 > (1 - SAFE_BOTTOM + 0.03) * H):
             out.append("cut_off")  # not fully visible, or under the captions / the app buttons
         if (x1 - x0) > W * 2.6 and (y1 - y0) > H * 2.6 and spec["move"] not in ("zoom_into", "close_up"):
             out.append("target_too_big")
-        if coverage(world, i, T, eye, tgt, fov) < MIN_COVERAGE:
+        if not iso and coverage(world, i, T, eye, tgt, fov) < MIN_COVERAGE:  # (a hero part is alone on purpose)
             out.append("mostly_empty")
     for inst in world.insts:  # the camera inside something solid
+        if iso in ("hero", "macro", "subject"):
+            break  # only the subject is drawn in these shots: nothing else can be in the way
         st = world.state(inst, T)
         if st["vis"] < 0.5 or st["cut"] > 0 or st["xray"]:
             continue
@@ -320,11 +326,16 @@ def logic_problems(world, i: int) -> list[str]:
                     break
     T = sc["start"] + sc["dur"] * 0.6
     eye, tgt, fov, fade = world.camera(i, sc["dur"] * 0.6)
-    if fade < 0.5:
+    iso = world.isolated(i) if hasattr(world, "isolated") else ""
+    parents = {world.mounts[f][0].oid for f in world._focus[i] if f in getattr(world, "mounts", {})}
+    if fade < 0.5 and iso not in ("hero", "macro", "subject"):  # isolated shots draw only the subject
         world._aim_i = i
         for inst in world.insts:
             if inst.oid.startswith("_env") or inst.oid in world._focus[i] or inst.asset in CONNECTORS:
                 continue
+            if inst.oid in parents:
+                continue  # the thing it sits in (a car around its engine, a mine around its shelter): its parts in
+                # the way are left out when the picture is drawn
             if any(p.shell for p in inst.model.parts):
                 continue  # walls and roofs in the way are left out automatically
             st = world.state(inst, T)
