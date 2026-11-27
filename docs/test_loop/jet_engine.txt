@@ -1,0 +1,21 @@
+[TITLE] How a Jet Engine Works
+[SCENE] the jet engine in the hangar, the fan spins
+NARRATOR: This engine swallows half a ton of air every second.
+[SCENE] the engine cut open
+NARRATOR: Let's cut it in half. Everything turns on one long shaft.
+[SCENE] close on the fan
+NARRATOR: At the front, a giant fan pulls the air in.
+[SCENE] the bypass air
+NARRATOR: Most of that air goes around the core. It makes most of the push.
+[SCENE] the compressor squeezes the air
+NARRATOR: The rest goes into the compressor. Rows of small blades squeeze it tighter and tighter.
+[SCENE] fuel burns in the combustor
+NARRATOR: In the combustor, fuel is sprayed in and burns at over 1,500 degrees.
+[SCENE] the turbine spins
+NARRATOR: The hot gas rushes through the turbine and spins it.
+[SCENE] the shafts connect turbine and fan
+NARRATOR: Shafts carry that spin back to the fan and the compressor at the front.
+[SCENE] the exhaust blasts out
+NARRATOR: The hot gas blasts out of the back and pushes the plane forward.
+[SCENE] the whole engine running
+NARRATOR: So what happens when a bird flies into the fan?

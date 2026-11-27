@@ -11,3 +11,4 @@ edge-tts>=7.2
 arabic-reshaper
 python-bidi
 pytest
+manifold3d>=3.0

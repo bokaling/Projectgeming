@@ -1,0 +1,21 @@
+[TITLE] How a Dishwasher Works
+[SCENE] the dishwasher door opens
+NARRATOR: A dishwasher uses less water than washing by hand.
+[SCENE] the dishwasher cut open
+NARRATOR: Let's look inside while it works.
+[SCENE] the inlet valve lets water in
+NARRATOR: First, a valve lets in just a few liters of clean water.
+[SCENE] the water collects in the sump
+NARRATOR: The water collects in a small cup at the bottom, called the sump.
+[SCENE] the heater warms the water
+NARRATOR: A heating element warms it to sixty degrees.
+[SCENE] the wash pump pushes water up
+NARRATOR: A pump pushes the hot water up a tube to the spray arms.
+[SCENE] the spray arms spin
+NARRATOR: The water jets push the arms around, and they blast every plate from below.
+[SCENE] the filter catches food
+NARRATOR: The water runs back down through a filter that catches the food scraps.
+[SCENE] the drain pump
+NARRATOR: Then a second pump pushes the dirty water out.
+[SCENE] the whole dishwasher working
+NARRATOR: So why are the plates still wet when it finishes?

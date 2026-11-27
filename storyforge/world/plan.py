@@ -34,7 +34,7 @@ CAMERA_MOVES = {
     "zoom_into": "dive into the target (then the next scene is inside it)", "cutaway": "orbit while it is cut open",
     "static": "almost still", "reveal": "start close and pull far back",
     "hero": "HERO PART CUTAWAY: target 'obj.part' (one piston, one valve): that ONE part alone, big, cut in half "
-            "(cut faces in our pink), clean light studio, nothing else in frame",
+            "(cut faces in deep red), inside its machine (shown as a faint ghost) on its floor",
     "macro": "extreme close-up on a dark background with glow and shallow depth of field (the most dramatic "
              "moment: add glow / sparks / flow)",
 }

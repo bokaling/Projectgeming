@@ -70,24 +70,29 @@ def test_machines_keep_their_part_names_when_merging(clean_registry):
     assert {"nozzle", "fuel_nozzles"} <= {p.name for p in assets.build("two_nozzles").parts}
 
 
-def test_self_check_redesigns_until_it_looks_right(sf_root, monkeypatch, clean_registry):
+def test_checks_redesign_until_it_makes_sense_and_looks_right(sf_root, monkeypatch, clean_registry):
     from storyforge import llm
 
     bad = {"name": "x", "about": "a washing machine", "key_part": "drum",
            "parts": [{"name": "cabinet", "shape": "box", "size": [0.6, 0.85, 0.6], "pos": [0, 0.42, 0], "shell": True}]}
     good = json.loads(json.dumps(bad))
     good["parts"].append({"kit": "drum", "name": "drum", "pos": [0, 0.5, 0], "size": 0.22, "axis": "z"})
-    designs, asked = [bad, good], []
+    good["parts"].append({"name": "drum_shaft", "shape": "box", "size": [0.04, 0.04, 0.3], "pos": [0, 0.5, -0.15]})
+    blueprint = {"what": "a washing machine", "parts": [{"name": "cabinet"}, {"name": "drum", "moves": "spins"},
+                                                       {"name": "drum_shaft"}]}
+    designs, asked = [blueprint, bad, good], []  # 1) the blueprint, then the designs
     monkeypatch.setattr(llm, "generate_json", lambda system, user, **k: (asked.append(json.loads(user)) or
                                                                          ("FakeAI", json.loads(json.dumps(designs.pop(0))))))
-    verdicts = [{"ok": False, "problems": ["no drum inside"], "fix": "add a drum"}, {"ok": True}]
+    verdicts = [{"ok": True}]
     monkeypatch.setattr(builder, "preview_stills", lambda m, size=320, running=0.7: [np.zeros((8, 8, 3), np.uint8)] * 3)
     monkeypatch.setattr(llm, "vision_json", lambda *a, **k: verdicts.pop(0))
     name = builder.design("washer_test", "a washing machine")
     assert name == "washer_test" and not designs and not verdicts
-    assert asked[1]["fix_this"]["problems"] == ["no drum inside"]  # the 2nd design saw what was wrong
+    assert asked[1]["blueprint"]["what"] == "a washing machine"  # the design is built from the blueprint
+    assert any("drum is missing" in x for x in asked[2]["fix_this"]["problems"])  # the sense check caught it first
     saved = json.loads((builder.user_dir() / "washer_test.json").read_text(encoding="utf-8"))
     assert saved["checked"] == "checked" and any(p.get("kit") == "drum" for p in saved["parts"])
+    assert saved["blueprint"]["what"] == "a washing machine" and saved["sense"] == []  # stored with the object
     assert (builder.user_dir() / "washer_test_check.jpg").exists()
 
 

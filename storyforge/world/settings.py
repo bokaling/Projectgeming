@@ -337,6 +337,16 @@ def turntable(r=1.0):
 # Dressing an area
 # ---------------------------------------------------------------------------------------------------------------
 
+def _cc0(*names: str) -> bool:
+    """Are these free CC0 models already on Drive? (else the box-built pieces are used: no download mid-render)"""
+    try:
+        from . import imported  # noqa: PLC0415
+
+        return all(imported.available(n) for n in names)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
     """The setting's pieces around the area's main objects (world coordinates in 'at')."""
     from . import assets as assets_mod  # noqa: PLC0415
@@ -382,14 +392,48 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
             tile_h=1.6 if setting == "bathroom" else 0.6)
         put("wall", x0 - 0.06, (bz + fz) / 2, rot=-90.0, length=round(room_d, 2), h=h, color=wall_col,
             window=1.1 if setting != "garage" else 0.0, window_x=0.0, tiles=tiles if setting == "bathroom" else "")
+        for inst in insts:  # what the main objects stand on / hang from (place_on_surfaces lifted them)
+            sup = getattr(inst, "support", "")
+            ilo, ihi = inst_box(inst)
+            icx, icz = float(ilo[0] + ihi[0]) / 2, float(ilo[2] + ihi[2]) / 2
+            w = float(ihi[0] - ilo[0]) + 0.3
+            if sup == "counter":
+                if _cc0("worktop") and w <= 1.4:
+                    put("worktop", icx, bz + 0.31, rot=0.0)
+                    if w > 1.0:
+                        put("worktop", icx + 0.95, bz + 0.31)
+                else:
+                    put("kitchen_counter", icx, bz + 0.32, length=round(max(1.0, w), 2), sink=False, stove=False)
+            elif sup == "table":
+                put("desk_table", icx, icz, length=round(max(1.0, w), 2))
+            elif sup == "ceiling":
+                put("slab", icx, icz, elev=float(assets_mod.CEILING_Y), w=round(max(1.6, w + 0.6), 2),
+                    d=round(max(1.6, w + 0.6), 2), h=0.06, color="#f1ede6")
         right = float(hi[0]) + 0.35  # free wall space to the right of the main objects
         left = float(lo[0]) - 0.3
         if setting == "kitchen":
             L = max(1.2, min(2.6, x1 - right - 0.3))
-            put("kitchen_counter", right + L / 2, bz + 0.32, length=round(L, 2))
-            put("upper_cabinets", right + L / 2, bz + 0.18, length=round(L, 2))
+            if _cc0("kitchen_sink", "worktop", "stove", "kitchen_cabinet"):  # real kitchen units (free CC0 models)
+                x = right
+                for unit, w in (("kitchen_sink", 1.0), ("stove", 0.6), ("worktop", 1.0)):
+                    if x + w > x1 - 0.2:
+                        break
+                    put(unit, x + w / 2, bz + 0.31)
+                    if unit == "stove" and _cc0("extractor_hood"):
+                        put("extractor_hood", x + w / 2, bz + 0.3, elev=1.55)
+                    elif unit == "worktop":
+                        for k, (thing, dx, dz) in enumerate((("cutting_board", -0.2, 0.05), ("jar", 0.25, -0.12),
+                                                             ("paper_towel", 0.4, -0.15))):
+                            if _cc0(thing):
+                                put(thing, x + w / 2 + dx, bz + 0.31 + dz, elev=0.92, rot=8.0 * k)
+                    else:
+                        put("kitchen_cabinet", x + w / 2, bz + 0.18, elev=1.45)
+                    x += w
+            else:
+                put("kitchen_counter", right + L / 2, bz + 0.32, length=round(L, 2))
+                put("upper_cabinets", right + L / 2, bz + 0.18, length=round(L, 2))
             if left - x0 > 0.9:
-                put("potted_plant", x0 + 0.45, bz + 0.4, h=0.9)
+                put("cactus" if _cc0("cactus") else "potted_plant", x0 + 0.45, bz + 0.4, h=0.9)
         elif setting == "bathroom":
             if x1 - right > 1.0:
                 put("vanity", right + 0.55, bz + 0.25)
@@ -406,10 +450,20 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
             put("shelf", x0 + 0.25, bz + 1.6, rot=90.0, length=1.4)
         elif setting == "living_room":
             put("sofa", right + 1.1, bz + 0.5, color="#4f6d8f")
-            put("potted_plant", x0 + 0.4, bz + 0.4, h=1.1)
+            if _cc0("coffee_table", "floor_lamp"):
+                put("coffee_table", right + 1.1, bz + 1.5)
+                put("floor_lamp", right + 2.35, bz + 0.35)
+            if _cc0("bookshelf") and left - x0 > 1.0:
+                put("bookshelf", x0 + 0.2, bz + 0.9, rot=90.0)
+            else:
+                put("potted_plant", x0 + 0.4, bz + 0.4, h=1.1)
         elif setting == "office":
             put("desk_table", right + 0.8, bz + 0.45)
-            put("potted_plant", x0 + 0.4, bz + 0.4, h=1.0)
+            if _cc0("chair", "table_lamp", "books"):
+                put("chair", right + 0.8, bz + 1.05, rot=180.0)
+                put("table_lamp", right + 0.35, bz + 0.3, elev=0.75)
+                put("books", right + 1.25, bz + 0.3, elev=0.75)
+            put("bookshelf" if _cc0("bookshelf") else "potted_plant", x0 + 0.4, bz + 0.4, h=1.0)
         elif setting == "laundry":
             put("shelf", right + 0.7, bz + 0.2, length=1.2)
             put("bucket", right + 0.5, bz + 0.8)
@@ -430,8 +484,16 @@ def dress(world, area: dict, setting: str, insts: list) -> list[dict]:
         L = max(16.0, min(size * 2 + 14, 2 * float(world.area_r.get(aid, size)) + 12))  # stays in its own area
         put("street_road", cx, float(hi[2]) + 4.6, length=round(L, 1))
         for k, dx in enumerate((-1, 1)):
-            put("city_block", cx + dx * (size / 2 + 5.5), float(lo[2]) + 1.0, w=7.0, h=10.0 + 4 * k, seed=k + 1,
-                color=["#9fa8b3", "#c2a98f"][k])
+            b = ("apartment_building", "shop_building")[k]
+            if _cc0(b):  # real little buildings (free CC0 models)
+                put(b, cx + dx * (size / 2 + 5.5), float(lo[2]) + 1.0)
+            else:
+                put("city_block", cx + dx * (size / 2 + 5.5), float(lo[2]) + 1.0, w=7.0, h=10.0 + 4 * k, seed=k + 1,
+                    color=["#9fa8b3", "#c2a98f"][k])
+        if _cc0("taxi", "fire_hydrant", "bench"):  # a parked car on the road, a hydrant and a bench on the pavement
+            put("taxi", cx + size / 2 + 4.0, float(hi[2]) + 5.6, rot=90.0)
+            put("fire_hydrant", cx - size / 2 - 2.6, float(hi[2]) + 1.4)
+            put("bench", cx + size / 2 + 2.6, float(hi[2]) + 0.9)
         for dx in (-1, 1):
             put("lamp_post", cx + dx * (size / 2 + 1.6), float(hi[2]) + 1.0, rot=-90.0)
             put("tree", cx + dx * (size / 2 + 3.4), float(hi[2]) + 1.0)

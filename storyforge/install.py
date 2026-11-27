@@ -117,7 +117,26 @@ def setup() -> bool:
     else:
         print("   ⚠️ Piper (offline backup voices) skipped:")
         _show_error(out, 6)
+    setup_cad()
     if str(REPO_DIR) not in sys.path:
         sys.path.insert(0, str(REPO_DIR))
     print(f"{'✅' if ok else '⚠️'} Setup finished in {time.time() - t0:.0f} s.")
     return ok
+
+
+CAD_PACKAGES = ["build123d>=0.13", "bd_warehouse>=0.4", "manifold3d>=3.0"]
+
+
+def setup_cad() -> bool:
+    """CAD tools for NEW objects (build123d + bd_warehouse: rounded casings, real gears, bolts, bearings; manifold3d:
+    clean cuts). Wheels exist for Python 3.10-3.13 (tested on 3.12 and 3.13, about 250 MB). Without them new objects are
+    built from our own mesh shapes and the library's built-in parts still look the same (their meshes are cached)."""
+    good, out = _pip(*CAD_PACKAGES)
+    if good:
+        print("   ✅ CAD tools (build123d, bd_warehouse, manifold3d) for new objects")
+    else:
+        good2, _ = _pip("manifold3d>=3.0")
+        print("   ⚠️ CAD tools skipped (new objects are built from simple shapes)" +
+              (", clean cuts ✅" if good2 else "") + ":")
+        _show_error(out, 4)
+    return good

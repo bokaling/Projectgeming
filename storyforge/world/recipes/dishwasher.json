@@ -1,0 +1,1889 @@
+{
+ "name": "dishwasher",
+ "about": "a dishwasher (racks, spray arms, sump, wash pump, heater, drain pump)",
+ "tags": [
+  "machine",
+  "home",
+  "appliance",
+  "kitchen"
+ ],
+ "aliases": [
+  "dish_washer",
+  "dishwashers"
+ ],
+ "key_part": "sump",
+ "blueprint": {
+  "what": "A dishwasher: water comes in through a valve and collects in a sump at the bottom; a pump pushes it up to spinning spray arms that blast the dishes in two racks; a heater warms it; a drain pump pumps the dirty water out.",
+  "size_m": [
+   0.6,
+   0.82,
+   0.58
+  ],
+  "sits_on": "floor",
+  "front": "a door that opens downwards with a handle and buttons on its top edge",
+  "casing": "cabinet",
+  "parts": [
+   {
+    "name": "cabinet",
+    "shape": "a stainless steel box",
+    "size_m": [
+     0.6,
+     0.82,
+     0.58
+    ],
+    "pos": [
+     0,
+     0.41,
+     0
+    ]
+   },
+   {
+    "name": "door",
+    "shape": "a flat panel hinged at the bottom",
+    "size_m": [
+     0.6,
+     0.7,
+     0.05
+    ],
+    "faces": "front",
+    "moves": "opens",
+    "axis": "x"
+   },
+   {
+    "name": "lower_rack",
+    "shape": "a wire basket with plates",
+    "size_m": [
+     0.5,
+     0.18,
+     0.48
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "upper_rack",
+    "shape": "a wire basket with cups",
+    "size_m": [
+     0.5,
+     0.14,
+     0.48
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "lower_spray_arm",
+    "shape": "a flat arm with nozzles",
+    "size_m": [
+     0.44,
+     0.03,
+     0.06
+    ],
+    "inside": "cabinet",
+    "moves": "spins",
+    "axis": "y"
+   },
+   {
+    "name": "upper_spray_arm",
+    "shape": "a flat arm with nozzles",
+    "size_m": [
+     0.4,
+     0.03,
+     0.05
+    ],
+    "inside": "cabinet",
+    "moves": "spins",
+    "axis": "y"
+   },
+   {
+    "name": "sump",
+    "shape": "a round cup at the bottom with a filter",
+    "size_m": [
+     0.16,
+     0.08,
+     0.16
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "wash_pump",
+    "shape": "a pump with a motor under the sump",
+    "size_m": [
+     0.12,
+     0.12,
+     0.16
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "heater",
+    "shape": "a U-shaped heating element on the floor",
+    "size_m": [
+     0.4,
+     0.02,
+     0.3
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "wash_tube",
+    "shape": "a pipe up the back wall",
+    "size_m": [
+     0.04,
+     0.5,
+     0.04
+    ],
+    "inside": "cabinet"
+   }
+  ],
+  "shared_axes": [
+   [
+    "lower_spray_arm",
+    "lower_arm_hub"
+   ]
+  ],
+  "visible_details": [
+   "door handle",
+   "buttons",
+   "plates",
+   "cups",
+   "spray arms"
+  ]
+ },
+ "parts": [
+  {
+   "name": "cabinet",
+   "cad": "box",
+   "size": [
+    0.6,
+    0.82,
+    0.58
+   ],
+   "pos": [
+    0,
+    0.41,
+    0
+   ],
+   "fillet": 0.008,
+   "hollow": 0.01,
+   "open": "front",
+   "color": "#c9d0d6",
+   "material": "metal",
+   "shell": true
+  },
+  {
+   "name": "door",
+   "cad": "box",
+   "size": [
+    0.6,
+    0.72,
+    0.05
+   ],
+   "pos": [
+    0,
+    0.44,
+    0.315
+   ],
+   "fillet": 0.01,
+   "color": "#dfe4e8",
+   "material": "metal",
+   "shell": true,
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "control_strip",
+   "cad": "box",
+   "size": [
+    0.6,
+    0.07,
+    0.055
+   ],
+   "pos": [
+    0,
+    0.765,
+    0.315
+   ],
+   "fillet": 0.008,
+   "color": "#3a4048",
+   "material": "plastic",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.012,
+    0.01
+   ],
+   "pos": [
+    0.08,
+    0.765,
+    0.345
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.012,
+    0.01
+   ],
+   "pos": [
+    0.125,
+    0.765,
+    0.345
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.012,
+    0.01
+   ],
+   "pos": [
+    0.16999999999999998,
+    0.765,
+    0.345
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.012,
+    0.01
+   ],
+   "pos": [
+    0.21500000000000002,
+    0.765,
+    0.345
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "door_handle",
+   "cad": "sweep",
+   "path": [
+    [
+     -0.18,
+     0.7,
+     0.34
+    ],
+    [
+     -0.18,
+     0.7,
+     0.37
+    ],
+    [
+     0.18,
+     0.7,
+     0.37
+    ],
+    [
+     0.18,
+     0.7,
+     0.34
+    ]
+   ],
+   "r": 0.008,
+   "bend": 0.02,
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "detergent_dispenser",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.08,
+    0.03
+   ],
+   "pos": [
+    0.12,
+    0.48,
+    0.275
+   ],
+   "fillet": 0.006,
+   "color": "#e8ecef",
+   "material": "plastic",
+   "motion": {
+    "type": "open",
+    "axis": "x",
+    "deg": 85
+   },
+   "pivot": [
+    0,
+    0.08,
+    0.315
+   ]
+  },
+  {
+   "name": "toe_kick",
+   "cad": "box",
+   "size": [
+    0.6,
+    0.08,
+    0.03
+   ],
+   "pos": [
+    0,
+    0.04,
+    0.29
+   ],
+   "color": "#2b3036",
+   "material": "plastic"
+  },
+  {
+   "name": "sump",
+   "cad": "cylinder",
+   "size": [
+    0.08,
+    0.08
+   ],
+   "pos": [
+    0,
+    0.06,
+    0.0
+   ],
+   "bore": 0.07,
+   "color": "#6c757d",
+   "material": "plastic"
+  },
+  {
+   "name": "filter",
+   "cad": "cylinder",
+   "size": [
+    0.05,
+    0.1
+   ],
+   "pos": [
+    0,
+    0.07,
+    0.0
+   ],
+   "color": "#d8dee3",
+   "opacity": 0.6,
+   "material": "plastic"
+  },
+  {
+   "name": "water",
+   "cad": "cylinder",
+   "size": [
+    0.07,
+    0.05
+   ],
+   "pos": [
+    0,
+    0.045,
+    0.0
+   ],
+   "color": "#3aa6d9",
+   "opacity": 0.6,
+   "material": "water",
+   "kind": "liquid"
+  },
+  {
+   "name": "wash_pump",
+   "cad": "cylinder",
+   "size": [
+    0.05,
+    0.12
+   ],
+   "axis": "z",
+   "pos": [
+    0,
+    0.06,
+    -0.14
+   ],
+   "fillet": 0.006,
+   "color": "#4b525a",
+   "material": "metal"
+  },
+  {
+   "name": "pump_motor",
+   "cad": "cylinder",
+   "size": [
+    0.045,
+    0.08
+   ],
+   "axis": "z",
+   "pos": [
+    0,
+    0.06,
+    -0.24
+   ],
+   "fillet": 0.006,
+   "color": "#58606a",
+   "material": "metal"
+  },
+  {
+   "name": "wash_tube",
+   "shape": "tube",
+   "points": [
+    [
+     0,
+     0.06,
+     -0.09
+    ],
+    [
+     0,
+     0.06,
+     -0.26
+    ],
+    [
+     0,
+     0.45,
+     -0.26
+    ],
+    [
+     0,
+     0.45,
+     -0.02
+    ]
+   ],
+   "size": [
+    0.02
+   ],
+   "color": "#aeb6bd",
+   "material": "plastic"
+  },
+  {
+   "name": "lower_arm_hub",
+   "cad": "cylinder",
+   "size": [
+    0.025,
+    0.04
+   ],
+   "pos": [
+    0,
+    0.12,
+    0.0
+   ],
+   "color": "#aeb6bd",
+   "material": "plastic",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.12,
+    0
+   ]
+  },
+  {
+   "name": "lower_spray_arm",
+   "cad": "box",
+   "size": [
+    0.44,
+    0.022,
+    0.055
+   ],
+   "pos": [
+    0,
+    0.145,
+    0
+   ],
+   "fillet": 0.008,
+   "color": "#9aa2a9",
+   "material": "plastic",
+   "holes": [
+    {
+     "at": [
+      0,
+      0.011,
+      0
+     ],
+     "r": 0.003,
+     "axis": "y",
+     "grid": [
+      9,
+      1,
+      0.045
+     ]
+    }
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.145,
+    0
+   ]
+  },
+  {
+   "name": "upper_spray_arm",
+   "cad": "box",
+   "size": [
+    0.38,
+    0.02,
+    0.05
+   ],
+   "pos": [
+    0,
+    0.445,
+    -0.02
+   ],
+   "fillet": 0.007,
+   "color": "#9aa2a9",
+   "material": "plastic",
+   "holes": [
+    {
+     "at": [
+      0,
+      0.01,
+      0
+     ],
+     "r": 0.003,
+     "axis": "y",
+     "grid": [
+      8,
+      1,
+      0.042
+     ]
+    }
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.9
+   },
+   "pivot": [
+    0,
+    0.445,
+    -0.02
+   ]
+  },
+  {
+   "name": "heater",
+   "shape": "tube",
+   "points": [
+    [
+     -0.2,
+     0.03,
+     0.15
+    ],
+    [
+     -0.2,
+     0.03,
+     -0.12
+    ],
+    [
+     0.2,
+     0.03,
+     -0.12
+    ],
+    [
+     0.2,
+     0.03,
+     0.15
+    ]
+   ],
+   "size": [
+    0.006
+   ],
+   "color": "#8c7f73",
+   "material": "metal",
+   "kind": "heater"
+  },
+  {
+   "name": "drain_pump",
+   "cad": "cylinder",
+   "size": [
+    0.03,
+    0.06
+   ],
+   "axis": "x",
+   "pos": [
+    0.12,
+    0.04,
+    -0.12
+   ],
+   "color": "#3a4048",
+   "material": "plastic"
+  },
+  {
+   "name": "drain_hose",
+   "shape": "tube",
+   "points": [
+    [
+     0.15,
+     0.04,
+     -0.12
+    ],
+    [
+     0.24,
+     0.04,
+     -0.2
+    ],
+    [
+     0.24,
+     0.3,
+     -0.3
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#606870",
+   "material": "rubber"
+  },
+  {
+   "name": "inlet_valve",
+   "cad": "box",
+   "size": [
+    0.06,
+    0.05,
+    0.05
+   ],
+   "pos": [
+    -0.22,
+    0.04,
+    0.12
+   ],
+   "fillet": 0.006,
+   "color": "#2f3540",
+   "material": "plastic"
+  },
+  {
+   "name": "inlet_hose",
+   "shape": "tube",
+   "points": [
+    [
+     -0.22,
+     0.04,
+     0.12
+    ],
+    [
+     -0.22,
+     0.04,
+     -0.2
+    ],
+    [
+     -0.24,
+     0.2,
+     -0.3
+    ]
+   ],
+   "size": [
+    0.01
+   ],
+   "color": "#6c757d",
+   "material": "rubber"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.2,
+     -0.24
+    ],
+    [
+     0.25,
+     0.2,
+     -0.24
+    ],
+    [
+     0.25,
+     0.2,
+     0.24
+    ],
+    [
+     -0.25,
+     0.2,
+     0.24
+    ],
+    [
+     -0.25,
+     0.2,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.36,
+     -0.24
+    ],
+    [
+     0.25,
+     0.36,
+     -0.24
+    ],
+    [
+     0.25,
+     0.36,
+     0.24
+    ],
+    [
+     -0.25,
+     0.36,
+     0.24
+    ],
+    [
+     -0.25,
+     0.36,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.2,
+     -0.24
+    ],
+    [
+     -0.25,
+     0.36,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.25,
+     0.2,
+     -0.24
+    ],
+    [
+     0.25,
+     0.36,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.25,
+     0.2,
+     0.24
+    ],
+    [
+     0.25,
+     0.36,
+     0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.2,
+     0.24
+    ],
+    [
+     -0.25,
+     0.36,
+     0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.1875,
+     0.2,
+     -0.24
+    ],
+    [
+     -0.1875,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.125,
+     0.2,
+     -0.24
+    ],
+    [
+     -0.125,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.0625,
+     0.2,
+     -0.24
+    ],
+    [
+     -0.0625,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.0,
+     0.2,
+     -0.24
+    ],
+    [
+     0.0,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.0625,
+     0.2,
+     -0.24
+    ],
+    [
+     0.0625,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.125,
+     0.2,
+     -0.24
+    ],
+    [
+     0.125,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.1875,
+     0.2,
+     -0.24
+    ],
+    [
+     0.1875,
+     0.2,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    -0.26,
+    0.2,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    0.26,
+    0.2,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "lower_rack_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    -0.275,
+    0.2,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.5,
+     -0.24
+    ],
+    [
+     0.25,
+     0.5,
+     -0.24
+    ],
+    [
+     0.25,
+     0.5,
+     0.24
+    ],
+    [
+     -0.25,
+     0.5,
+     0.24
+    ],
+    [
+     -0.25,
+     0.5,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.62,
+     -0.24
+    ],
+    [
+     0.25,
+     0.62,
+     -0.24
+    ],
+    [
+     0.25,
+     0.62,
+     0.24
+    ],
+    [
+     -0.25,
+     0.62,
+     0.24
+    ],
+    [
+     -0.25,
+     0.62,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.5,
+     -0.24
+    ],
+    [
+     -0.25,
+     0.62,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.25,
+     0.5,
+     -0.24
+    ],
+    [
+     0.25,
+     0.62,
+     -0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.25,
+     0.5,
+     0.24
+    ],
+    [
+     0.25,
+     0.62,
+     0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.25,
+     0.5,
+     0.24
+    ],
+    [
+     -0.25,
+     0.62,
+     0.24
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.1875,
+     0.5,
+     -0.24
+    ],
+    [
+     -0.1875,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.125,
+     0.5,
+     -0.24
+    ],
+    [
+     -0.125,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     -0.0625,
+     0.5,
+     -0.24
+    ],
+    [
+     -0.0625,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.0,
+     0.5,
+     -0.24
+    ],
+    [
+     0.0,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.0625,
+     0.5,
+     -0.24
+    ],
+    [
+     0.0625,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.125,
+     0.5,
+     -0.24
+    ],
+    [
+     0.125,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack",
+   "shape": "tube",
+   "points": [
+    [
+     0.1875,
+     0.5,
+     -0.24
+    ],
+    [
+     0.1875,
+     0.5,
+     0.24
+    ]
+   ],
+   "size": [
+    0.003
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    -0.26,
+    0.5,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    0.26,
+    0.5,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "upper_rack_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    -0.275,
+    0.5,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "plates",
+   "cad": "cylinder",
+   "size": [
+    0.11,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0.0,
+    0.31,
+    -0.18
+   ],
+   "chamfer": 0.004,
+   "color": "#f4f1ea",
+   "material": "ceramic"
+  },
+  {
+   "name": "plates",
+   "cad": "cylinder",
+   "size": [
+    0.11,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0.0,
+    0.31,
+    -0.10999999999999999
+   ],
+   "chamfer": 0.004,
+   "color": "#f4f1ea",
+   "material": "ceramic"
+  },
+  {
+   "name": "plates",
+   "cad": "cylinder",
+   "size": [
+    0.11,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0.0,
+    0.31,
+    -0.03999999999999998
+   ],
+   "chamfer": 0.004,
+   "color": "#f4f1ea",
+   "material": "ceramic"
+  },
+  {
+   "name": "plates",
+   "cad": "cylinder",
+   "size": [
+    0.11,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0.0,
+    0.31,
+    0.030000000000000027
+   ],
+   "chamfer": 0.004,
+   "color": "#f4f1ea",
+   "material": "ceramic"
+  },
+  {
+   "name": "plates",
+   "cad": "cylinder",
+   "size": [
+    0.11,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0.0,
+    0.31,
+    0.10000000000000003
+   ],
+   "chamfer": 0.004,
+   "color": "#f4f1ea",
+   "material": "ceramic"
+  },
+  {
+   "name": "plates",
+   "cad": "cylinder",
+   "size": [
+    0.11,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0.0,
+    0.31,
+    0.17000000000000004
+   ],
+   "chamfer": 0.004,
+   "color": "#f4f1ea",
+   "material": "ceramic"
+  },
+  {
+   "name": "cups",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.035,
+     0.0
+    ],
+    [
+     0.04,
+     0.09
+    ],
+    [
+     0.034,
+     0.09
+    ],
+    [
+     0.03,
+     0.005
+    ],
+    [
+     0.0,
+     0.005
+    ]
+   ],
+   "pos": [
+    -0.15,
+    0.594,
+    0.05
+   ],
+   "rot": [
+    180,
+    0,
+    0
+   ],
+   "color": "#7fb7d6",
+   "material": "ceramic"
+  },
+  {
+   "name": "cups",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.035,
+     0.0
+    ],
+    [
+     0.04,
+     0.09
+    ],
+    [
+     0.034,
+     0.09
+    ],
+    [
+     0.03,
+     0.005
+    ],
+    [
+     0.0,
+     0.005
+    ]
+   ],
+   "pos": [
+    -0.04999999999999999,
+    0.594,
+    0.05
+   ],
+   "rot": [
+    180,
+    0,
+    0
+   ],
+   "color": "#7fb7d6",
+   "material": "ceramic"
+  },
+  {
+   "name": "cups",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.035,
+     0.0
+    ],
+    [
+     0.04,
+     0.09
+    ],
+    [
+     0.034,
+     0.09
+    ],
+    [
+     0.03,
+     0.005
+    ],
+    [
+     0.0,
+     0.005
+    ]
+   ],
+   "pos": [
+    0.05000000000000002,
+    0.594,
+    0.05
+   ],
+   "rot": [
+    180,
+    0,
+    0
+   ],
+   "color": "#7fb7d6",
+   "material": "ceramic"
+  },
+  {
+   "name": "cups",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.035,
+     0.0
+    ],
+    [
+     0.04,
+     0.09
+    ],
+    [
+     0.034,
+     0.09
+    ],
+    [
+     0.03,
+     0.005
+    ],
+    [
+     0.0,
+     0.005
+    ]
+   ],
+   "pos": [
+    0.15000000000000005,
+    0.594,
+    0.05
+   ],
+   "rot": [
+    180,
+    0,
+    0
+   ],
+   "color": "#7fb7d6",
+   "material": "ceramic"
+  },
+  {
+   "name": "cabinet_rails",
+   "cad": "box",
+   "size": [
+    0.02,
+    0.02,
+    0.5
+   ],
+   "pos": [
+    0.27,
+    0.2,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  }
+ ],
+ "ports": {
+  "inlet": [
+   -0.24,
+   0.2,
+   -0.3
+  ],
+  "outlet": [
+   0.24,
+   0.3,
+   -0.3
+  ],
+  "power": [
+   0.2,
+   0.1,
+   -0.29
+  ]
+ },
+ "paths": {
+  "water": [
+   [
+    -0.24,
+    0.2,
+    -0.3
+   ],
+   [
+    -0.22,
+    0.04,
+    -0.2
+   ],
+   [
+    -0.22,
+    0.04,
+    0.12
+   ],
+   [
+    -0.05,
+    0.06,
+    0.05
+   ],
+   [
+    0,
+    0.06,
+    0
+   ]
+  ],
+  "spray": [
+   [
+    0,
+    0.06,
+    0.0
+   ],
+   [
+    0,
+    0.06,
+    -0.14
+   ],
+   [
+    0,
+    0.06,
+    -0.26
+   ],
+   [
+    0,
+    0.45,
+    -0.26
+   ],
+   [
+    0,
+    0.45,
+    -0.02
+   ],
+   [
+    0.15,
+    0.36,
+    0.05
+   ],
+   [
+    0.1,
+    0.2,
+    0.1
+   ],
+   [
+    0,
+    0.07,
+    0.02
+   ]
+  ],
+  "drain": [
+   [
+    0,
+    0.05,
+    0
+   ],
+   [
+    0.12,
+    0.04,
+    -0.12
+   ],
+   [
+    0.24,
+    0.04,
+    -0.2
+   ],
+   [
+    0.24,
+    0.3,
+    -0.3
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "inlet_valve",
+   "A valve lets clean water in, and it collects in a sump at the bottom."
+  ],
+  [
+   "heater",
+   "A heating element warms the water."
+  ],
+  [
+   "wash_pump",
+   "A pump pushes the water up into the spray arms."
+  ],
+  [
+   "lower_spray_arm",
+   "The water jets spin the arms, blasting every plate."
+  ],
+  [
+   "filter",
+   "A filter catches the food scraps."
+  ],
+  [
+   "drain_pump",
+   "A second pump pushes the dirty water out."
+  ]
+ ],
+ "label": [
+  0,
+  1.0,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

@@ -162,7 +162,8 @@ class Frame:
     dof: float = 0.0  # depth of field (0 = sharp everywhere, 1 = close-up/macro blur outside the subject)
     focus_dist: float = 0.0  # metres from the eye to what is sharp (0 = the target)
     time: float = 0.0  # seconds (film grain, drifting clouds)
-    dyn: list = field(default_factory=list)  # [(world triangles (K*3, 3), rgb, emissive)]: cut faces made this frame
+    dyn: list = field(default_factory=list)  # [(world triangles (K*3, 3), rgb, emissive[, shine, normals])]: made
+    # this frame (hero cuts: the cut body and its cut face)
 
 
 STYLE = {
@@ -934,13 +935,17 @@ class Renderer:
         write_uniform(p, "u_model", np.eye(4, dtype=np.float32).tobytes())
         for k, v in (("u_opacity", 1.0), ("u_xray", 0.0), ("u_shine", 0.0), ("u_additive", 0), ("u_clip_on", 0)):
             set_uniform(p, k, v)
-        for tris, rgb, emi in fr.dyn:
+        for item in fr.dyn:
+            tris, rgb, emi = item[:3]
+            shine = float(item[3]) if len(item) > 3 else 0.0
             pos = np.asarray(tris, np.float32).reshape(-1, 3)
             if len(pos) < 3:
                 continue
             from .mesh import Geo  # noqa: PLC0415
 
-            nrm = Geo(pos).normals()
+            given = item[4] if len(item) > 4 else None
+            nrm = np.asarray(given, np.float32) if given is not None and len(given) == len(pos) else Geo(pos).normals()
+            set_uniform(p, "u_shine", shine)
             data = np.hstack([pos, nrm]).astype(np.float32).tobytes()
             vbo = self.ctx.buffer(data)
             vao = self.vertex_array(p, vbo, [("3f", "in_pos"), ("3f", "in_nrm")])

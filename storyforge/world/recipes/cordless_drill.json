@@ -1,0 +1,515 @@
+{
+ "name": "cordless_drill",
+ "about": "a cordless power drill (battery, motor, planetary gearbox, clutch, chuck, bit)",
+ "tags": [
+  "tool",
+  "machine",
+  "home"
+ ],
+ "aliases": [
+  "power_drill",
+  "electric_drill",
+  "drill_driver"
+ ],
+ "key_part": "gearbox",
+ "blueprint": {
+  "what": "A cordless drill: a battery at the bottom powers a motor in the barrel; a planetary gearbox slows it and makes it stronger; a clutch collar and a chuck hold the drill bit, all on one axis.",
+  "size_m": [
+   0.3,
+   0.26,
+   0.09
+  ],
+  "sits_on": "table",
+  "front": "the side: the bit points right (+x)",
+  "casing": "barrel",
+  "parts": [
+   {
+    "name": "battery",
+    "shape": "a rounded block at the bottom",
+    "size_m": [
+     0.11,
+     0.07,
+     0.08
+    ],
+    "faces": "bottom"
+   },
+   {
+    "name": "handle",
+    "shape": "a grip leaning slightly back",
+    "size_m": [
+     0.05,
+     0.13,
+     0.05
+    ]
+   },
+   {
+    "name": "barrel",
+    "shape": "a rounded tube on top",
+    "size_m": [
+     0.15,
+     0.07,
+     0.07
+    ],
+    "faces": "top"
+   },
+   {
+    "name": "motor",
+    "shape": "a small electric motor",
+    "size_m": [
+     0.06,
+     0.05,
+     0.05
+    ],
+    "inside": "barrel",
+    "moves": "spins",
+    "axis": "x"
+   },
+   {
+    "name": "gearbox",
+    "shape": "small gears in a ring",
+    "size_m": [
+     0.04,
+     0.05,
+     0.05
+    ],
+    "inside": "barrel",
+    "moves": "spins",
+    "axis": "x"
+   },
+   {
+    "name": "chuck",
+    "shape": "a rounded cone with jaws",
+    "size_m": [
+     0.055,
+     0.045,
+     0.045
+    ],
+    "faces": "right",
+    "moves": "spins",
+    "axis": "x"
+   },
+   {
+    "name": "bit",
+    "shape": "a long thin steel rod",
+    "size_m": [
+     0.09,
+     0.008,
+     0.008
+    ],
+    "faces": "right",
+    "moves": "spins",
+    "axis": "x"
+   },
+   {
+    "name": "trigger",
+    "shape": "a small button under the barrel",
+    "size_m": [
+     0.02,
+     0.03,
+     0.015
+    ]
+   }
+  ],
+  "shared_axes": [
+   [
+    "motor",
+    "gearbox",
+    "chuck",
+    "bit"
+   ]
+  ],
+  "visible_details": [
+   "trigger",
+   "battery",
+   "chuck",
+   "clutch numbers",
+   "vents"
+  ]
+ },
+ "parts": [
+  {
+   "name": "battery",
+   "cad": "box",
+   "size": [
+    0.11,
+    0.07,
+    0.085
+   ],
+   "pos": [
+    0.0,
+    0.035,
+    0
+   ],
+   "fillet": 0.012,
+   "color": "#2b2f35",
+   "material": "plastic"
+  },
+  {
+   "name": "battery_latch",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.012,
+    0.05
+   ],
+   "pos": [
+    0.05,
+    0.072,
+    0
+   ],
+   "fillet": 0.004,
+   "color": "#e8731c"
+  },
+  {
+   "name": "handle",
+   "cad": "box",
+   "size": [
+    0.045,
+    0.13,
+    0.05
+   ],
+   "pos": [
+    0.005,
+    0.135,
+    0
+   ],
+   "rot": [
+    0,
+    0,
+    -8
+   ],
+   "fillet": 0.015,
+   "color": "#e8731c",
+   "material": "plastic"
+  },
+  {
+   "name": "barrel",
+   "cad": "cylinder",
+   "size": [
+    0.036,
+    0.15
+   ],
+   "axis": "x",
+   "pos": [
+    0.0,
+    0.22,
+    0.0
+   ],
+   "fillet": 0.012,
+   "color": "#e8731c",
+   "material": "plastic",
+   "shell": true,
+   "holes": [
+    {
+     "at": [
+      -0.055,
+      0.0,
+      0.03
+     ],
+     "r": 0.003,
+     "axis": "z",
+     "grid": [
+      4,
+      2,
+      0.01
+     ]
+    }
+   ]
+  },
+  {
+   "name": "motor",
+   "cad": "cylinder",
+   "size": [
+    0.024,
+    0.06
+   ],
+   "axis": "x",
+   "pos": [
+    -0.035,
+    0.22,
+    0.0
+   ],
+   "color": "#8e979f",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "x",
+    "speed": 3
+   },
+   "pivot": [
+    0,
+    0.22,
+    0.0
+   ]
+  },
+  {
+   "name": "motor_shaft",
+   "cad": "cylinder",
+   "size": [
+    0.004,
+    0.05
+   ],
+   "axis": "x",
+   "pos": [
+    0.01,
+    0.22,
+    0.0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "x",
+    "speed": 3
+   },
+   "pivot": [
+    0,
+    0.22,
+    0.0
+   ]
+  },
+  {
+   "name": "gearbox",
+   "cad": "gear",
+   "module": 0.0012,
+   "teeth": 24,
+   "thickness": 0.008,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "pos": [
+    0.03,
+    0.22,
+    0.0
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "x",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    0.22,
+    0.0
+   ]
+  },
+  {
+   "name": "gearbox",
+   "cad": "gear",
+   "module": 0.0012,
+   "teeth": 24,
+   "thickness": 0.008,
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "pos": [
+    0.041999999999999996,
+    0.22,
+    0.0
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "x",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    0.22,
+    0.0
+   ]
+  },
+  {
+   "name": "clutch_collar",
+   "cad": "cylinder",
+   "size": [
+    0.038,
+    0.02
+   ],
+   "axis": "x",
+   "pos": [
+    0.085,
+    0.22,
+    0.0
+   ],
+   "chamfer": 0.003,
+   "color": "#2b2f35",
+   "material": "plastic"
+  },
+  {
+   "name": "chuck",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.023,
+     0.0
+    ],
+    [
+     0.023,
+     0.035
+    ],
+    [
+     0.013,
+     0.055
+    ],
+    [
+     0.0,
+     0.055
+    ]
+   ],
+   "rot": [
+    0,
+    0,
+    -90
+   ],
+   "pos": [
+    0.095,
+    0.22,
+    0.0
+   ],
+   "color": "#3d434a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "x",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    0.22,
+    0.0
+   ]
+  },
+  {
+   "name": "bit",
+   "cad": "cylinder",
+   "size": [
+    0.004,
+    0.09
+   ],
+   "axis": "x",
+   "pos": [
+    0.195,
+    0.22,
+    0.0
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "x",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    0.22,
+    0.0
+   ]
+  },
+  {
+   "name": "trigger",
+   "cad": "box",
+   "size": [
+    0.016,
+    0.03,
+    0.014
+   ],
+   "pos": [
+    0.035,
+    0.17,
+    0
+   ],
+   "fillet": 0.004,
+   "color": "#2b2f35",
+   "material": "plastic"
+  },
+  {
+   "name": "direction_switch",
+   "cad": "cylinder",
+   "size": [
+    0.006,
+    0.06
+   ],
+   "axis": "z",
+   "pos": [
+    0.02,
+    0.19,
+    0
+   ],
+   "color": "#2b2f35"
+  },
+  {
+   "name": "led_light",
+   "cad": "box",
+   "size": [
+    0.008,
+    0.008,
+    0.01
+   ],
+   "pos": [
+    0.05,
+    0.08,
+    0
+   ],
+   "color": "#fff2b0",
+   "kind": "light",
+   "emissive": 0.3
+  }
+ ],
+ "paths": {
+  "power": [
+   [
+    0.0,
+    0.04,
+    0
+   ],
+   [
+    0.0,
+    0.12,
+    0
+   ],
+   [
+    -0.035,
+    0.22,
+    0
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "battery",
+   "A battery in the handle powers a small motor."
+  ],
+  [
+   "motor",
+   "The motor spins very fast, but it is weak."
+  ],
+  [
+   "gearbox",
+   "Tiny gears slow it down and make it much stronger."
+  ],
+  [
+   "chuck",
+   "The chuck grips the bit and spins it into the wall."
+  ]
+ ],
+ "label": [
+  0,
+  0.35,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

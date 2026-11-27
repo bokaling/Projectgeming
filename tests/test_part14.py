@@ -1,5 +1,7 @@
 """Part 14: stable shadows, no z-fighting, no pops, no flicker, quiet sound, new object tools."""
 
+from pathlib import Path
+
 import numpy as np
 
 from test_round2 import _world
@@ -222,3 +224,144 @@ def test_new_one_shot_sounds_are_short_soft_and_low():
         spec = np.abs(np.fft.rfft(x[:, 0]))
         f = np.fft.rfftfreq(len(x), 1 / music.SR)
         assert spec[f > 4000].sum() < 0.03 * spec.sum(), name  # lowpassed: nothing sharp
+
+
+# ---------------------------------------------------------------- Part 4: CC0 models, CAD, exact cuts, sense
+def _tiny_gltf(folder):
+    """A 2-triangle quad as a real .gltf + .bin + 2x1 palette texture (red left, grey right)."""
+    import json
+    import struct
+
+    from PIL import Image
+
+    pos = np.array([[0, 0, 0], [1, 0, 0], [1, 2, 0], [0, 2, 0]], np.float32)
+    uv = np.array([[0.1, 0.5], [0.1, 0.5], [0.1, 0.5], [0.1, 0.5]], np.float32)
+    idx = np.array([0, 1, 2, 0, 2, 3], np.uint16)
+    blob = pos.tobytes() + uv.tobytes() + idx.tobytes()
+    (folder / "quad.bin").write_bytes(blob)
+    Image.fromarray(np.array([[[200, 40, 40], [128, 128, 128]]], np.uint8)).save(folder / "pal.png")
+    g = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}],
+         "nodes": [{"mesh": 0, "translation": [5, 0, 0]}],
+         "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2, "material": 0}]}],
+         "materials": [{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}],
+         "textures": [{"source": 0}], "images": [{"uri": "pal.png"}],
+         "buffers": [{"uri": "quad.bin", "byteLength": len(blob)}],
+         "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 48}, {"buffer": 0, "byteOffset": 48, "byteLength": 32},
+                         {"buffer": 0, "byteOffset": 80, "byteLength": 12}],
+         "accessors": [{"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3"},
+                       {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC2"},
+                       {"bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR"}]}
+    (folder / "quad.gltf").write_text(json.dumps(g))
+    assert struct
+    return folder / "quad.gltf"
+
+
+def test_gltf_models_load_in_our_look_and_real_size(tmp_path):
+    from storyforge.world import imported
+
+    prims = imported.read_gltf(_tiny_gltf(tmp_path))
+    assert len(prims) == 1 and prims[0]["tris"].shape == (2, 3, 3)
+    assert abs(float(prims[0]["tris"][..., 0].min()) - 5.0) < 1e-6  # the node's translation is applied
+    m = imported.to_model(prims, ("h", 0.9))
+    lo, hi = m.bounds()
+    assert abs(float(hi[1] - lo[1]) - 0.9) < 1e-4 and abs(float(lo[1])) < 1e-6  # real height, on the floor
+    assert abs(float(lo[0] + hi[0])) < 1e-4  # centred
+    r, g, b = (int(m.parts[0].color[i:i + 2], 16) for i in (1, 3, 5))
+    assert r > g + 60  # the palette texture's red, pulled only a little toward our palette
+
+
+def test_cc0_objects_fall_back_offline_and_settings_use_boxes(sf_root):
+    from storyforge.world import assets, imported
+
+    assert "sofa" in assets.REGISTRY and "cc0" in assets.REGISTRY["stove"].tags
+    assert not imported.available("stove")  # tests never download
+    m = assets.build("sofa")  # the old box-built sofa stands in
+    assert m.parts and m.tris > 0
+    assert all(i.size[1] > 0 for i in imported.CATALOG) and all(i.pack in imported.PACKS for i in imported.CATALOG)
+    lic = (Path(__file__).resolve().parents[1] / "LICENSES" / "assets.md").read_text()
+    assert "CC0" in lic and all(p in lic for p in imported.PACKS)
+
+
+def test_cad_shapes_build_with_or_without_the_cad_kernel():
+    from storyforge.world import cad
+
+    specs = [{"cad": "box", "size": [0.6, 0.85, 0.6], "fillet": 0.03},
+             {"cad": "revolve", "profile": [[0.3, 0.0], [0.28, 0.4], [0.18, 0.8]]},
+             {"cad": "gear", "module": 0.003, "teeth": 20, "thickness": 0.01},
+             {"cad": "sweep", "path": [[0, 0, 0], [0.3, 0, 0], [0.3, 0.3, 0]], "r": 0.02},
+             {"cad": "extrude", "poly": [[0, 0], [0.2, 0], [0.2, 0.05], [0.05, 0.05], [0.05, 0.2], [0, 0.2]],
+              "size": [0.03]}]
+    for s in specs:
+        for g in ([cad._build_cad(s)] if cad.available() else []) + [cad.fallback(s)]:
+            lo, hi = g.bounds()
+            assert g.tris > 0 and np.all(np.isfinite(g.pos)) and float(np.max(hi - lo)) < 1.5, s["cad"]
+    box = cad.fallback(specs[0])
+    lo, hi = box.bounds()
+    assert np.allclose(hi - lo, [0.6, 0.85, 0.6], atol=1e-4)
+
+
+def test_cad_parts_in_a_recipe_are_smooth_and_cached(sf_root):
+    from storyforge.world import builder, cad
+
+    recipe = {"name": "test_drum", "parts": [
+        {"name": "cabinet", "cad": "box", "size": [0.6, 0.85, 0.6], "pos": [0, 0.425, 0], "fillet": 0.02, "shell": True},
+        {"name": "drum", "cad": "cylinder", "size": [0.22, 0.4], "axis": "z", "pos": [0, 0.45, 0], "color": "#c8cdd2"}]}
+    m = builder.model_from_recipe(recipe)
+    drum = next(p for p in m.parts if p.name == "drum")
+    assert drum.geo.nrm is not None or not cad.available()  # CAD parts carry smooth normals
+    lo, hi = drum.geo.bounds()
+    assert abs(float(hi[2] - lo[2]) - 0.4) < 0.02  # along z, as asked
+
+
+def test_exact_cut_gives_each_blade_its_own_small_face():
+    from storyforge.world import cad
+    from storyforge.world import mesh as M
+
+    if not cad.manifold_available():
+        return
+    blades = M.merge(*[M.xf(M.box(0.3, 0.04, 0.01), (0.2, 0, 0), (0, 0, 360.0 * k / 8)) for k in range(8)])
+    kept, caps, loose = cad.cut(blades.pos, (0, 0, 1), 0.0)
+    assert len(loose) == 0 and len(kept) and len(caps)
+    cap_area = float(np.linalg.norm(np.cross(caps[:, 1] - caps[:, 0], caps[:, 2] - caps[:, 0]), axis=1).sum() / 2)
+    assert cap_area < 8 * 0.3 * 0.04 * 1.05  # the blades' own sections, not the convex 'comb' around them
+    shell = M.cylinder(0.2, 0.6, 16, base=False)
+    _, solid_cap, _ = cad.cut(shell.pos, (1, 0, 0), 0.0)
+    _, rim_cap, _ = cad.cut(shell.pos, (1, 0, 0), 0.0, hollow=0.01)
+    area = lambda t: float(np.linalg.norm(np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]), axis=1).sum() / 2)  # noqa: E731
+    assert area(rim_cap) < 0.3 * area(solid_cap)  # a hollow capsule shows a thin rim, not a big slab
+
+
+def test_sense_check_finds_floating_parts_wrong_axes_and_supports_them():
+    from storyforge.world import mesh as M
+    from storyforge.world import sense
+
+    m = M.Model()
+    m.add("cabinet", M.xf(M.box(0.6, 0.85, 0.6), (0, 0.425, 0)), shell=True)
+    m.add("drum", M.xf(M.cylinder(0.2, 0.3, 16, base=False), (0, 0.45, 0), (90, 0, 0)),
+          motion={"type": "spin", "axis": "z"}, pivot=(0, 0.45, 0))
+    m.add("pulley", M.xf(M.cylinder(0.08, 0.02, 16, base=False), (0.1, 0.45, -0.25), (90, 0, 0)),
+          motion={"type": "spin", "axis": "z"}, pivot=(0.1, 0.45, -0.25))
+    bp = {"size_m": [0.6, 0.85, 0.6], "parts": [{"name": "drum", "moves": "spins", "axis": "z"},
+                                                {"name": "door", "faces": "front"}],
+          "shared_axes": [["drum", "pulley"]]}
+    problems = sense.check(m, bp)
+    text = " | ".join(problems)
+    assert "float" in text and "door is missing" in text and "not on the drum's axis" in text
+    notes = sense.add_supports(m)
+    assert notes and not sense.floating_parts(m)  # every floating part now stands on a support
+
+
+def test_no_closed_part_is_inside_out_and_boxes_are_bevelled():
+    from storyforge.world import assets
+
+    for name in ("car_engine", "elevator", "house", "fridge", "tractor", "generator"):
+        m = assets.build(name)
+        for p in m.parts:
+            if p.geo.nrm is not None or not p.geo.closed():
+                continue
+            t = p.geo.pos.reshape(-1, 3, 3).astype(np.float64)
+            vol = np.einsum("ij,ij->i", np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]), t[:, 0]).sum() / 6
+            assert vol >= -1e-9, (name, p.name)  # faces point out (a cut would show inside-out faces dark)
+    raw = assets.REGISTRY["house"].fn()
+    assert assets.build("house").tris > raw.tris  # bevelled edges
+    assert any(p.geo.nrm is not None for p in assets.build("tank").parts)  # round parts are smooth

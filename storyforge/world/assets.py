@@ -47,6 +47,16 @@ def asset(name: str, about: str, tags=(), aliases=()):
     return wrap
 
 
+PLACE: dict = {"laptop": "table", "phone": "table", "lightbulb": "table", "battery": "table"}  # where things sit
+SURFACE_Y = {"counter": 0.92, "table": 0.75}  # real worktop / desk heights (m)
+CEILING_Y = 2.7  # room ceiling height (the room walls are this tall)
+
+
+def placement(name: str) -> str:
+    """Where a thing normally stands: floor (default), counter, table, wall or ceiling (blueprints, CC0 catalog)."""
+    return PLACE.get(resolve(name) if name not in REGISTRY else name, "floor")
+
+
 def build(name: str, **params) -> Model:
     info = REGISTRY[resolve(name)]
     ok = {k: v for k, v in params.items() if k in info.params}
@@ -54,7 +64,14 @@ def build(name: str, **params) -> Model:
     for p in model.parts:  # the old library's steel, gold and copper parts look like metal
         if not p.material and str(p.color).lower() in METALS:
             p.material = "metal"
+    if not ({"animal", "people", "nature", "terrain", "micro", "body", "imported"} & set(info.tags)) and name != "person":
+        M.bevel_boxes(model)  # made things: bevelled edges and smooth round parts (Part 14); nature stays faceted
+        M.smooth_round(model)
     M.resolve_coplanar(model)  # faces of two parts in the same plane would flicker (z-fighting): nudge them apart
+    if {"machine", "cutaway"} & set(info.tags) and "built" not in info.tags:
+        from . import sense  # noqa: PLC0415
+
+        sense.add_supports(model)  # a machine's part with nothing under it gets a bracket (nothing floats)
     model = _merge_static(model, by_name=bool({"machine", "cutaway", "kit"} & set(info.tags)))
     lo, hi = model.bounds()
     model.anchors.setdefault("top", (0.0, float(hi[1]), 0.0))
@@ -239,7 +256,7 @@ def catalog(compact: bool = True) -> str:
                 line += " [focus: " + ", ".join(pts) + "]"
             names, anchors, paths = part_list(info.name)
             if names:  # the EXACT real part names (camera "obj.part", actions on "obj.part"): never invent others
-                line += " [parts: " + ", ".join(names[:40]) + "]"
+                line += " [parts: " + ", ".join(names[:64]) + "]"
             if anchors:
                 line += " [mount/ports: " + ", ".join(anchors[:16]) + "]"
             if paths:
@@ -822,3 +839,6 @@ from . import builder as _builder  # noqa: E402  (built-in recipes: objects made
 _builder.assets = sys.modules[__name__]  # (the builder may be imported first: give it this module now)
 _builder.load_dir(_builder.RECIPES_DIR)
 _builder.register_kit()  # the mechanism kit pieces are library objects too
+from . import imported as _imported  # noqa: E402  (free CC0 models for everyday things: sofas, stoves, street lights…)
+
+_imported.register()

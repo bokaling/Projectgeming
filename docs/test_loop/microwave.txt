@@ -1,0 +1,21 @@
+[TITLE] How a Microwave Heats Food
+[SCENE] a microwave on the kitchen counter
+NARRATOR: Your microwave shakes the water in your food billions of times a second.
+[SCENE] the microwave cut open
+NARRATOR: Here it is, cut open. Most of the magic hides on the right.
+[SCENE] close on the magnetron
+NARRATOR: This is the magnetron. It turns electricity into invisible microwaves.
+[SCENE] the transformer
+NARRATOR: A heavy transformer feeds it four thousand volts.
+[SCENE] the waves travel through the waveguide
+NARRATOR: A metal tube called a waveguide carries the waves into the cooking box.
+[SCENE] the waves bounce inside the cavity
+NARRATOR: The metal walls bounce the waves around and around inside.
+[SCENE] the food heats up
+NARRATOR: The waves make the water in the food spin back and forth, and that friction makes heat.
+[SCENE] the turntable turns
+NARRATOR: The glass plate turns, so no spot stays cold.
+[SCENE] close on the door window
+NARRATOR: The holes in the door mesh are too small for the waves, so they stay inside.
+[SCENE] the whole microwave working
+NARRATOR: So why does metal spark in a microwave?

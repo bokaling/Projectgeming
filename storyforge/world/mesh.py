@@ -14,15 +14,19 @@ import numpy as np
 
 @dataclass
 class Geo:
-    """Triangles: pos (N*3, 3). Normals are computed flat."""
+    """Triangles: pos (N*3, 3). Normals are flat (low poly look) unless `nrm` holds smooth per-corner normals
+    (CAD parts: fillets and round parts look smooth, no visible facets)."""
 
     pos: np.ndarray
+    nrm: np.ndarray | None = None
 
     @property
     def tris(self) -> int:
         return len(self.pos) // 3
 
     def normals(self) -> np.ndarray:
+        if self.nrm is not None and len(self.nrm) == len(self.pos):
+            return self.nrm.astype(np.float32)
         t = self.pos.reshape(-1, 3, 3)
         n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
         ln = np.linalg.norm(n, axis=1, keepdims=True)
@@ -61,8 +65,13 @@ def geo(tris) -> Geo:
 
 
 def merge(*gs: Geo) -> Geo:
-    parts = [g.pos for g in gs if g is not None and len(g.pos)]
-    return Geo(np.concatenate(parts).astype(np.float32) if parts else np.zeros((0, 3), np.float32))
+    gs = [g for g in gs if g is not None and len(g.pos)]
+    if not gs:
+        return Geo(np.zeros((0, 3), np.float32))
+    pos = np.concatenate([g.pos for g in gs]).astype(np.float32)
+    if any(g.nrm is not None for g in gs):  # keep smooth normals (flat ones for the flat pieces)
+        return Geo(pos, np.concatenate([g.normals() for g in gs]).astype(np.float32))
+    return Geo(pos)
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +95,17 @@ def xf(g: Geo, t=(0, 0, 0), r=(0, 0, 0), s=1.0) -> Geo:
     if any(r):
         p = p @ rot_matrix(*r).T
     p = p + np.asarray(t, np.float32)
+    n = None
+    if g.nrm is not None:  # smooth normals turn with the shape (inverse transpose of the scale)
+        n = g.nrm / np.where(np.asarray(s, np.float32) == 0, 1, np.asarray(s, np.float32))
+        if any(r):
+            n = n @ rot_matrix(*r).T
+        n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
     if np.prod(np.sign(np.asarray(s, np.float32) * np.ones(3))) < 0:  # mirrored: keep faces pointing out
         p = p.reshape(-1, 3, 3)[:, ::-1].reshape(-1, 3)
-    return Geo(p.astype(np.float32))
+        if n is not None:
+            n = n.reshape(-1, 3, 3)[:, ::-1].reshape(-1, 3)
+    return Geo(p.astype(np.float32), None if n is None else n.astype(np.float32))
 
 
 def jitter(g: Geo, amount: float, seed: int = 0) -> Geo:
@@ -379,6 +396,7 @@ class Part:
     boxes: list = field(default_factory=list)  # boxes of the pieces merged into this part (for "camera inside" checks)
     motion: object = None  # how a working part moves (dict or list of dicts, see motion.py): pistons, doors, ropes…
     material: str = ""  # metal, paint, glass, plastic, rubber, water: how shiny it looks
+    hollow: float = 0.0  # wall thickness (m) of a hollow solid (a capsule, a tank): a hero cut shows a thin rim
 
 
 @dataclass
@@ -563,8 +581,140 @@ def _coplanar_pass(model: "Model", total: dict | None = None) -> list[str]:
         p = parts[pi]
         if total is not None:
             total[id(p)] = total.get(id(p), np.zeros(3)) + v
-        p.geo = Geo((p.geo.pos.astype(np.float64) + v).astype(np.float32))
+        p.geo = Geo((p.geo.pos.astype(np.float64) + v).astype(np.float32), p.geo.nrm)
         p.pivot = tuple(float(a + b) for a, b in zip(p.pivot, v))
         if p.boxes:
             p.boxes = [(np.asarray(b0) + v, np.asarray(b1) + v) for b0, b1 in p.boxes]
     return notes
+
+
+def smooth_normals(pos: np.ndarray, crease_deg: float = 35.0) -> np.ndarray:
+    """Per-corner normals averaged over the triangles around a corner that bend less than `crease_deg` (round
+    surfaces look round, sharp edges stay sharp)."""
+    t = np.asarray(pos, np.float64).reshape(-1, 3, 3)
+    fn = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    fl = np.linalg.norm(fn, axis=1, keepdims=True)
+    fu = fn / np.maximum(fl, 1e-12)
+    keys = np.round(t.reshape(-1, 3), 5)
+    _, inv = np.unique(keys, axis=0, return_inverse=True)
+    inv = inv.reshape(-1)
+    corner_f = np.repeat(np.arange(len(t)), 3)
+    acc = np.zeros((inv.max() + 1, 3))
+    np.add.at(acc, inv, fn[corner_f])
+    avg = acc[inv]
+    avg /= np.maximum(np.linalg.norm(avg, axis=1, keepdims=True), 1e-12)
+    own = fu[corner_f]
+    cos = np.einsum("ij,ij->i", avg, own)
+    out = np.where((cos > math.cos(math.radians(crease_deg)))[:, None], avg, own)
+    return out.astype(np.float32)
+
+
+_CHAMFER_CACHE: dict = {}
+
+
+def chamfer_box(hx: float, hy: float, hz: float, r: float) -> np.ndarray:
+    """A box (half sizes) with bevelled edges and corners: 44 triangles, (44, 3, 3) local coordinates."""
+    key = (round(hx, 6), round(hy, 6), round(hz, 6), round(r, 6))
+    if key in _CHAMFER_CACHE:
+        return _CHAMFER_CACHE[key]
+    from scipy.spatial import ConvexHull  # noqa: PLC0415
+
+    pts = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            for sz in (-1, 1):
+                pts += [(sx * hx, sy * (hy - r), sz * (hz - r)), (sx * (hx - r), sy * hy, sz * (hz - r)),
+                        (sx * (hx - r), sy * (hy - r), sz * hz)]
+    P = np.asarray(pts, np.float64)
+    hull = ConvexHull(P)
+    tris = P[hull.simplices]
+    fn = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+    out = np.einsum("ij,ij->i", fn, tris.mean(1)) < 0  # face away from the centre
+    tris[out] = tris[out][:, ::-1]
+    _CHAMFER_CACHE[key] = tris
+    return tris
+
+
+def _cuboid(tri: np.ndarray):
+    """(centre, axes 3x3 rows, half sizes) if 12 triangles form a box (any orientation), else None."""
+    v = np.unique(np.round(tri.reshape(-1, 3), 6), axis=0)
+    if len(v) != 8:
+        return None
+    c = v.mean(0)
+    v0 = v[0]
+    others = v[1:] - v0
+    import itertools  # noqa: PLC0415
+
+    for a, b, cc in itertools.combinations(range(7), 3):
+        e = others[[a, b, cc]]
+        ln = np.linalg.norm(e, axis=1)
+        if np.min(ln) < 1e-6:
+            continue
+        u = e / ln[:, None]
+        if abs(u[0] @ u[1]) > 1e-3 or abs(u[0] @ u[2]) > 1e-3 or abs(u[1] @ u[2]) > 1e-3:
+            continue
+        far = v0 + e.sum(0)
+        if np.min(np.linalg.norm(v - far, axis=1)) > 1e-5 * max(1.0, float(ln.max())):
+            continue
+        return c, u, ln / 2
+    return None
+
+
+def bevel_boxes(model: "Model", rel: float = 0.14, cap: float = 0.025) -> int:
+    """Every box in the model gets bevelled edges (a thin highlight along each edge, like real made things).
+    Returns how many boxes were bevelled."""
+    count = 0
+    for p in model.parts:
+        if not p.geo.tris or p.kind in ("liquid", "chamber", "flame", "beam") or p.opacity < 0.5 or p.geo.nrm is not None:
+            continue
+        t = p.geo.pos.astype(np.float64).reshape(-1, 3, 3)
+        if len(t) > 20000:
+            continue
+        keys = np.round(t.reshape(-1, 3), 6)
+        _, inv = np.unique(keys, axis=0, return_inverse=True)
+        inv = inv.reshape(-1, 3)
+        parent = np.arange(inv.max() + 1)
+
+        def find(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+
+        for a, b, c in inv:
+            ra = find(a)
+            parent[find(b)] = ra
+            parent[find(c)] = ra
+        roots = np.array([find(a) for a in inv[:, 0]])
+        new, changed = [], False
+        for r_ in np.unique(roots):
+            comp = t[roots == r_]
+            box = _cuboid(comp) if len(comp) == 12 else None
+            if box is None:
+                new.append(comp)
+                continue
+            c, u, h = box
+            if np.linalg.det(u) < 0:  # a mirrored frame would turn the new box inside out
+                u = u.copy()
+                u[2] = -u[2]
+            r = min(rel * float(h.min()) * 2, cap)
+            if r < 0.0015 or float(h.min()) < 0.004:
+                new.append(comp)
+                continue
+            loc = chamfer_box(float(h[0]), float(h[1]), float(h[2]), r)
+            new.append(loc @ u + c)
+            changed = True
+            count += 1
+        if changed:
+            p.geo = Geo(np.concatenate(new).reshape(-1, 3).astype(np.float32))
+    return count
+
+
+def smooth_round(model: "Model", crease: float = 40.0) -> None:
+    """Round parts (cylinders, spheres, lathes) get smooth normals: no visible facets; box edges stay sharp."""
+    for p in model.parts:
+        if p.geo.tris and p.geo.nrm is None and p.geo.tris <= 30000:
+            n = smooth_normals(p.geo.pos, crease)
+            flat = p.geo.normals()
+            if float(np.mean(np.einsum("ij,ij->i", n, flat))) < 0.9999:  # something got smoother
+                p.geo = Geo(p.geo.pos, n)

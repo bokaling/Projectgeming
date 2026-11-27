@@ -1,0 +1,655 @@
+{
+ "name": "ceiling_fan",
+ "about": "a ceiling fan (canopy, downrod, motor housing, five blades, light kit)",
+ "tags": [
+  "home",
+  "appliance",
+  "machine"
+ ],
+ "aliases": [
+  "ceiling_fans",
+  "ceilingfan"
+ ],
+ "key_part": "motor_housing",
+ "blueprint": {
+  "what": "A ceiling fan: it hangs from the ceiling on a short rod; an electric motor in a round housing spins five tilted blades that push air down; a light sits under the motor.",
+  "size_m": [
+   1.36,
+   0.5,
+   1.36
+  ],
+  "sits_on": "ceiling",
+  "front": "seen from below and the side",
+  "parts": [
+   {
+    "name": "canopy",
+    "shape": "a small cup on the ceiling",
+    "size_m": [
+     0.14,
+     0.07,
+     0.14
+    ],
+    "faces": "top"
+   },
+   {
+    "name": "downrod",
+    "shape": "a short rod",
+    "size_m": [
+     0.03,
+     0.14,
+     0.03
+    ]
+   },
+   {
+    "name": "motor_housing",
+    "shape": "a round housing",
+    "size_m": [
+     0.26,
+     0.11,
+     0.26
+    ]
+   },
+   {
+    "name": "blades",
+    "shape": "five long flat tilted blades",
+    "size_m": [
+     1.36,
+     0.03,
+     1.36
+    ],
+    "moves": "spins",
+    "axis": "y"
+   },
+   {
+    "name": "light_kit",
+    "shape": "a glass bowl under the motor",
+    "size_m": [
+     0.2,
+     0.12,
+     0.2
+    ],
+    "faces": "bottom"
+   }
+  ],
+  "shared_axes": [
+   [
+    "blades",
+    "rotor",
+    "motor_housing",
+    "downrod",
+    "light_kit"
+   ]
+  ],
+  "visible_details": [
+   "five blades",
+   "glass light bowl",
+   "pull chain",
+   "canopy"
+  ]
+ },
+ "parts": [
+  {
+   "name": "canopy",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.03,
+     0.0
+    ],
+    [
+     0.065,
+     0.02
+    ],
+    [
+     0.07,
+     0.07
+    ],
+    [
+     0.0,
+     0.07
+    ]
+   ],
+   "pos": [
+    0,
+    0.43,
+    0
+   ],
+   "color": "#f1efe8",
+   "material": "paint"
+  },
+  {
+   "name": "downrod",
+   "cad": "cylinder",
+   "size": [
+    0.012,
+    0.15
+   ],
+   "pos": [
+    0,
+    0.36,
+    0
+   ],
+   "color": "#d6d1c4",
+   "material": "metal"
+  },
+  {
+   "name": "motor_housing",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.06,
+     0.11
+    ],
+    [
+     0.12,
+     0.09
+    ],
+    [
+     0.13,
+     0.05
+    ],
+    [
+     0.12,
+     0.0
+    ],
+    [
+     0.05,
+     0.0
+    ]
+   ],
+   "pos": [
+    0,
+    0.2,
+    0
+   ],
+   "color": "#f1efe8",
+   "material": "paint"
+  },
+  {
+   "name": "rotor",
+   "cad": "cylinder",
+   "size": [
+    0.12,
+    0.025
+   ],
+   "pos": [
+    0,
+    0.195,
+    0
+   ],
+   "color": "#d6d1c4",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blade_irons",
+   "shape": "tube",
+   "points": [
+    [
+     0.11,
+     0.19,
+     0.0
+    ],
+    [
+     0.2,
+     0.2,
+     0.0
+    ]
+   ],
+   "size": [
+    0.008
+   ],
+   "color": "#d6d1c4",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blades",
+   "cad": "box",
+   "size": [
+    0.5,
+    0.008,
+    0.13
+   ],
+   "fillet": 0.003,
+   "pos": [
+    0.43,
+    0.2,
+    0.0
+   ],
+   "rot": [
+    12,
+    -0.0,
+    0
+   ],
+   "color": "#9b6b43",
+   "material": "paint",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blade_irons",
+   "shape": "tube",
+   "points": [
+    [
+     0.03399186938124422,
+     0.19,
+     0.1046162167924669
+    ],
+    [
+     0.06180339887498949,
+     0.2,
+     0.1902113032590307
+    ]
+   ],
+   "size": [
+    0.008
+   ],
+   "color": "#d6d1c4",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blades",
+   "cad": "box",
+   "size": [
+    0.5,
+    0.008,
+    0.13
+   ],
+   "fillet": 0.003,
+   "pos": [
+    0.1328773075812274,
+    0.2,
+    0.408954302006916
+   ],
+   "rot": [
+    12,
+    -72.0,
+    0
+   ],
+   "color": "#9b6b43",
+   "material": "paint",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blade_irons",
+   "shape": "tube",
+   "points": [
+    [
+     -0.0889918693812442,
+     0.19,
+     0.06465637775217206
+    ],
+    [
+     -0.16180339887498948,
+     0.2,
+     0.11755705045849466
+    ]
+   ],
+   "size": [
+    0.008
+   ],
+   "color": "#d6d1c4",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blades",
+   "cad": "box",
+   "size": [
+    0.5,
+    0.008,
+    0.13
+   ],
+   "fillet": 0.003,
+   "pos": [
+    -0.34787730758122737,
+    0.2,
+    0.25274765848576347
+   ],
+   "rot": [
+    12,
+    -144.0,
+    0
+   ],
+   "color": "#9b6b43",
+   "material": "paint",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blade_irons",
+   "shape": "tube",
+   "points": [
+    [
+     -0.08899186938124423,
+     0.19,
+     -0.06465637775217203
+    ],
+    [
+     -0.1618033988749895,
+     0.2,
+     -0.11755705045849461
+    ]
+   ],
+   "size": [
+    0.008
+   ],
+   "color": "#d6d1c4",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blades",
+   "cad": "box",
+   "size": [
+    0.5,
+    0.008,
+    0.13
+   ],
+   "fillet": 0.003,
+   "pos": [
+    -0.3478773075812274,
+    0.2,
+    -0.2527476584857634
+   ],
+   "rot": [
+    12,
+    -216.0,
+    0
+   ],
+   "color": "#9b6b43",
+   "material": "paint",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blade_irons",
+   "shape": "tube",
+   "points": [
+    [
+     0.0339918693812442,
+     0.19,
+     -0.1046162167924669
+    ],
+    [
+     0.06180339887498945,
+     0.2,
+     -0.19021130325903074
+    ]
+   ],
+   "size": [
+    0.008
+   ],
+   "color": "#d6d1c4",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "blades",
+   "cad": "box",
+   "size": [
+    0.5,
+    0.008,
+    0.13
+   ],
+   "fillet": 0.003,
+   "pos": [
+    0.13287730758122732,
+    0.2,
+    -0.40895430200691607
+   ],
+   "rot": [
+    12,
+    -288.0,
+    0
+   ],
+   "color": "#9b6b43",
+   "material": "paint",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.2,
+    0
+   ]
+  },
+  {
+   "name": "switch_housing",
+   "cad": "cylinder",
+   "size": [
+    0.06,
+    0.06
+   ],
+   "pos": [
+    0,
+    0.17,
+    0
+   ],
+   "fillet": 0.01,
+   "color": "#f1efe8",
+   "material": "paint"
+  },
+  {
+   "name": "light_kit",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.07,
+     0.01
+    ],
+    [
+     0.1,
+     0.06
+    ],
+    [
+     0.09,
+     0.12
+    ],
+    [
+     0.0,
+     0.12
+    ]
+   ],
+   "pos": [
+    0,
+    0.02,
+    0
+   ],
+   "color": "#fff4d6",
+   "opacity": 0.6,
+   "material": "glass"
+  },
+  {
+   "name": "bulb",
+   "shape": "sphere",
+   "size": [
+    0.03
+   ],
+   "pos": [
+    0,
+    0.08,
+    0
+   ],
+   "color": "#fff2b0",
+   "kind": "light",
+   "emissive": 0.3
+  },
+  {
+   "name": "pull_chain",
+   "shape": "tube",
+   "points": [
+    [
+     0.03,
+     0.14,
+     0.0
+    ],
+    [
+     0.03,
+     0.0,
+     0.0
+    ]
+   ],
+   "size": [
+    0.0015
+   ],
+   "color": "#c9a85a",
+   "material": "metal"
+  },
+  {
+   "name": "pull_bead",
+   "shape": "sphere",
+   "size": [
+    0.006
+   ],
+   "pos": [
+    0.03,
+    0.0,
+    0.0
+   ],
+   "color": "#c9a85a",
+   "material": "metal"
+  }
+ ],
+ "paths": {
+  "air": [
+   [
+    0.5,
+    0.25,
+    0
+   ],
+   [
+    0.5,
+    0.0,
+    0
+   ],
+   [
+    0.4,
+    -0.5,
+    0
+   ],
+   [
+    0.2,
+    -1.2,
+    0
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "motor_housing",
+   "An electric motor hides in the round housing."
+  ],
+  [
+   "blades",
+   "It spins five tilted blades."
+  ],
+  [
+   "blades",
+   "The tilt pushes air down and cools you by moving air over your skin."
+  ]
+ ],
+ "label": [
+  0,
+  0.7,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

@@ -1,0 +1,1596 @@
+{
+ "name": "washing_machine",
+ "about": "a front-loading washing machine (drum, tub, motor, belt, pump, valve)",
+ "tags": [
+  "machine",
+  "home",
+  "appliance",
+  "laundry"
+ ],
+ "aliases": [
+  "washer",
+  "washing_machines",
+  "laundry_machine"
+ ],
+ "key_part": "drum",
+ "blueprint": {
+  "what": "A front-loading washing machine: a steel drum full of holes spins inside a sealed plastic tub, turned by a belt from a motor under the tub; springs hang the tub from the top, dampers hold it from below.",
+  "size_m": [
+   0.6,
+   0.85,
+   0.6
+  ],
+  "sits_on": "floor",
+  "front": "a round door with a glass window, a detergent drawer top left, a dial and a small display top right",
+  "casing": "cabinet",
+  "parts": [
+   {
+    "name": "cabinet",
+    "shape": "white box with rounded edges and a round opening in front",
+    "size_m": [
+     0.6,
+     0.85,
+     0.6
+    ],
+    "pos": [
+     0,
+     0.425,
+     0
+    ],
+    "moves": "still",
+    "material": "paint",
+    "importance": "key"
+   },
+   {
+    "name": "door",
+    "shape": "a round chrome ring with a domed glass window",
+    "size_m": [
+     0.38,
+     0.38,
+     0.06
+    ],
+    "pos": [
+     0,
+     0.45,
+     0.32
+    ],
+    "faces": "front",
+    "moves": "opens",
+    "connects_to": [
+     "cabinet"
+    ]
+   },
+   {
+    "name": "tub",
+    "shape": "a sealed plastic cylinder lying on its side",
+    "size_m": [
+     0.5,
+     0.5,
+     0.42
+    ],
+    "pos": [
+     0,
+     0.45,
+     -0.02
+    ],
+    "inside": "cabinet",
+    "moves": "still",
+    "connects_to": [
+     "springs",
+     "dampers"
+    ]
+   },
+   {
+    "name": "drum",
+    "shape": "a stainless steel cylinder full of small holes, open at the front",
+    "size_m": [
+     0.46,
+     0.46,
+     0.36
+    ],
+    "pos": [
+     0,
+     0.45,
+     0.0
+    ],
+    "inside": "tub",
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "drum_bearing",
+    "shape": "a ball bearing (6206) in the tub back that the drum shaft turns in",
+    "size_m": [
+     0.062,
+     0.062,
+     0.016
+    ],
+    "pos": [
+     0,
+     0.45,
+     -0.25
+    ],
+    "inside": "cabinet",
+    "moves": "still",
+    "connects_to": [
+     "tub_back",
+     "drum_shaft"
+    ]
+   },
+   {
+    "name": "drum_pulley",
+    "shape": "a big flat pulley on the drum's shaft at the back",
+    "size_m": [
+     0.3,
+     0.3,
+     0.025
+    ],
+    "pos": [
+     0,
+     0.45,
+     -0.27
+    ],
+    "inside": "cabinet",
+    "moves": "spins",
+    "axis": "z",
+    "connects_to": [
+     "drum"
+    ]
+   },
+   {
+    "name": "motor",
+    "shape": "a cylinder bolted under the tub",
+    "size_m": [
+     0.12,
+     0.12,
+     0.16
+    ],
+    "pos": [
+     0.13,
+     0.15,
+     -0.19
+    ],
+    "inside": "cabinet",
+    "moves": "still",
+    "connects_to": [
+     "tub"
+    ]
+   },
+   {
+    "name": "motor_pulley",
+    "shape": "a small pulley on the motor's shaft",
+    "size_m": [
+     0.05,
+     0.05,
+     0.025
+    ],
+    "inside": "cabinet",
+    "moves": "spins",
+    "axis": "z",
+    "connects_to": [
+     "motor"
+    ]
+   },
+   {
+    "name": "belt",
+    "shape": "a rubber belt from the motor pulley to the drum pulley",
+    "size_m": [
+     0.36,
+     0.42,
+     0.01
+    ],
+    "inside": "cabinet",
+    "moves": "still"
+   },
+   {
+    "name": "springs",
+    "shape": "two coil springs from the cabinet top down to the tub",
+    "size_m": [
+     0.05,
+     0.12,
+     0.05
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "dampers",
+    "shape": "two shock absorbers from the base up to the tub",
+    "size_m": [
+     0.05,
+     0.2,
+     0.05
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "heater",
+    "shape": "a U-shaped heating element in the bottom of the tub",
+    "size_m": [
+     0.08,
+     0.04,
+     0.3
+    ],
+    "inside": "tub"
+   },
+   {
+    "name": "drain_pump",
+    "shape": "a small pump at the bottom front with a filter cap",
+    "size_m": [
+     0.1,
+     0.1,
+     0.12
+    ],
+    "pos": [
+     0.2,
+     0.08,
+     0.17
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "inlet_valve",
+    "shape": "a plastic valve with two coils at the top back",
+    "size_m": [
+     0.08,
+     0.06,
+     0.06
+    ],
+    "pos": [
+     0.2,
+     0.77,
+     -0.25
+    ],
+    "inside": "cabinet"
+   },
+   {
+    "name": "control_panel",
+    "shape": "a strip with a dial, a display and buttons",
+    "size_m": [
+     0.56,
+     0.1,
+     0.02
+    ],
+    "faces": "front"
+   },
+   {
+    "name": "detergent_drawer",
+    "shape": "a pull-out drawer top left",
+    "size_m": [
+     0.18,
+     0.07,
+     0.03
+    ],
+    "faces": "front"
+   }
+  ],
+  "shared_axes": [
+   [
+    "drum",
+    "drum_shaft",
+    "drum_pulley"
+   ]
+  ],
+  "visible_details": [
+   "round door with glass",
+   "dial",
+   "display",
+   "detergent drawer",
+   "feet"
+  ]
+ },
+ "parts": [
+  {
+   "name": "cabinet",
+   "cad": "box",
+   "size": [
+    0.6,
+    0.85,
+    0.6
+   ],
+   "pos": [
+    0,
+    0.425,
+    0
+   ],
+   "fillet": 0.02,
+   "hollow": 0.012,
+   "color": "#eef1f3",
+   "material": "paint",
+   "shell": true,
+   "holes": [
+    {
+     "at": [
+      0,
+      0.025000000000000022,
+      0.3
+     ],
+     "r": 0.165,
+     "axis": "z",
+     "depth": 0.08
+    }
+   ]
+  },
+  {
+   "name": "control_panel",
+   "cad": "box",
+   "size": [
+    0.56,
+    0.1,
+    0.02
+   ],
+   "pos": [
+    0,
+    0.79,
+    0.305
+   ],
+   "fillet": 0.006,
+   "color": "#f6f7f8",
+   "material": "plastic"
+  },
+  {
+   "name": "dial",
+   "cad": "cylinder",
+   "size": [
+    0.035,
+    0.025
+   ],
+   "axis": "z",
+   "pos": [
+    0.19,
+    0.79,
+    0.325
+   ],
+   "chamfer": 0.006,
+   "color": "#cfd6dc",
+   "material": "metal"
+  },
+  {
+   "name": "display",
+   "shape": "box",
+   "size": [
+    0.11,
+    0.035,
+    0.006
+   ],
+   "pos": [
+    0.04,
+    0.79,
+    0.318
+   ],
+   "color": "#18323a",
+   "emissive": 0.4
+  },
+  {
+   "name": "buttons",
+   "shape": "box",
+   "size": [
+    0.025,
+    0.015,
+    0.008
+   ],
+   "pos": [
+    -0.04,
+    0.79,
+    0.318
+   ],
+   "color": "#c9cfd4"
+  },
+  {
+   "name": "detergent_drawer",
+   "cad": "box",
+   "size": [
+    0.18,
+    0.07,
+    0.04
+   ],
+   "pos": [
+    -0.18,
+    0.79,
+    0.3
+   ],
+   "fillet": 0.006,
+   "color": "#f6f7f8",
+   "material": "plastic"
+  },
+  {
+   "name": "drawer_handle",
+   "cad": "box",
+   "size": [
+    0.1,
+    0.012,
+    0.01
+   ],
+   "pos": [
+    -0.18,
+    0.775,
+    0.322
+   ],
+   "fillet": 0.004,
+   "color": "#d5dade"
+  },
+  {
+   "name": "door",
+   "cad": "cylinder",
+   "size": [
+    0.19,
+    0.045
+   ],
+   "bore": 0.135,
+   "axis": "z",
+   "pos": [
+    0,
+    0.45,
+    0.325
+   ],
+   "fillet": 0.01,
+   "color": "#cfd6dc",
+   "material": "metal",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": -100
+   },
+   "pivot": [
+    -0.19,
+    0.45,
+    0.325
+   ]
+  },
+  {
+   "name": "door_glass",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.14,
+     0.0
+    ],
+    [
+     0.13,
+     -0.04
+    ],
+    [
+     0.09,
+     -0.08
+    ],
+    [
+     0.0,
+     -0.09
+    ]
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    0.45,
+    0.335
+   ],
+   "color": "#bfe9ff",
+   "opacity": 0.35,
+   "material": "glass",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": -100
+   },
+   "pivot": [
+    -0.19,
+    0.45,
+    0.325
+   ]
+  },
+  {
+   "name": "door_handle",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.09,
+    0.025
+   ],
+   "pos": [
+    0.17,
+    0.45,
+    0.345
+   ],
+   "fillet": 0.008,
+   "color": "#d5dade",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": -100
+   },
+   "pivot": [
+    -0.19,
+    0.45,
+    0.325
+   ]
+  },
+  {
+   "name": "tub",
+   "cad": "cylinder",
+   "size": [
+    0.25,
+    0.42
+   ],
+   "bore": 0.24,
+   "axis": "z",
+   "pos": [
+    0,
+    0.45,
+    -0.02
+   ],
+   "color": "#8f979e",
+   "material": "plastic"
+  },
+  {
+   "name": "tub_back",
+   "cad": "cylinder",
+   "size": [
+    0.25,
+    0.012
+   ],
+   "axis": "z",
+   "pos": [
+    0,
+    0.45,
+    -0.236
+   ],
+   "color": "#8f979e",
+   "material": "plastic"
+  },
+  {
+   "name": "bellow",
+   "cad": "cylinder",
+   "size": [
+    0.2,
+    0.08
+   ],
+   "bore": 0.17,
+   "axis": "z",
+   "pos": [
+    0,
+    0.45,
+    0.23
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "drum",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     -0.18
+    ],
+    [
+     0.23,
+     -0.18
+    ],
+    [
+     0.23,
+     0.15
+    ],
+    [
+     0.2,
+     0.18
+    ]
+   ],
+   "hollow": 0.004,
+   "open": "top",
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    0.45,
+    0.0
+   ],
+   "color": "#d7dde2",
+   "material": "metal",
+   "holes": [
+    {
+     "at": [
+      0,
+      0.0,
+      0.23
+     ],
+     "r": 0.006,
+     "axis": "z",
+     "grid": [
+      6,
+      5,
+      0.05
+     ]
+    }
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.45,
+    0
+   ]
+  },
+  {
+   "name": "drum_paddle1",
+   "cad": "box",
+   "size": [
+    0.04,
+    0.04,
+    0.3
+   ],
+   "fillet": 0.01,
+   "color": "#c8cfd5",
+   "material": "metal",
+   "pos": [
+    1.2246467991473533e-17,
+    0.65,
+    0.0
+   ],
+   "rot": [
+    0,
+    0,
+    90
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.45,
+    0
+   ]
+  },
+  {
+   "name": "drum_paddle2",
+   "cad": "box",
+   "size": [
+    0.04,
+    0.04,
+    0.3
+   ],
+   "fillet": 0.01,
+   "color": "#c8cfd5",
+   "material": "metal",
+   "pos": [
+    -0.17320508075688773,
+    0.35,
+    0.0
+   ],
+   "rot": [
+    0,
+    0,
+    210
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.45,
+    0
+   ]
+  },
+  {
+   "name": "drum_paddle3",
+   "cad": "box",
+   "size": [
+    0.04,
+    0.04,
+    0.3
+   ],
+   "fillet": 0.01,
+   "color": "#c8cfd5",
+   "material": "metal",
+   "pos": [
+    0.17320508075688767,
+    0.3499999999999999,
+    0.0
+   ],
+   "rot": [
+    0,
+    0,
+    330
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.45,
+    0
+   ]
+  },
+  {
+   "name": "drum_shaft",
+   "cad": "cylinder",
+   "size": [
+    0.02,
+    0.1
+   ],
+   "axis": "z",
+   "pos": [
+    0,
+    0.45,
+    -0.23
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.45,
+    0
+   ]
+  },
+  {
+   "name": "drum_pulley",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.02,
+     -0.0125
+    ],
+    [
+     0.15,
+     -0.0125
+    ],
+    [
+     0.145,
+     0.0
+    ],
+    [
+     0.15,
+     0.0125
+    ],
+    [
+     0.02,
+     0.0125
+    ]
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    0.45,
+    -0.27
+   ],
+   "color": "#7d868e",
+   "material": "metal",
+   "holes": [
+    {
+     "at": [
+      0,
+      0,
+      0.08
+     ],
+     "r": 0.03,
+     "axis": "z",
+     "grid": [
+      1,
+      1,
+      0
+     ]
+    }
+   ],
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.8
+   },
+   "pivot": [
+    0,
+    0.45,
+    -0.27
+   ]
+  },
+  {
+   "name": "motor",
+   "cad": "cylinder",
+   "size": [
+    0.06,
+    0.15
+   ],
+   "axis": "z",
+   "pos": [
+    0.13,
+    0.15,
+    -0.19
+   ],
+   "fillet": 0.01,
+   "color": "#58606a",
+   "material": "metal"
+  },
+  {
+   "name": "drum_bearing",
+   "cad": "bearing",
+   "od": 0.062,
+   "pos": [
+    0,
+    0.45,
+    -0.25
+   ],
+   "color": "#aeb6bd",
+   "material": "metal"
+  },
+  {
+   "name": "motor_bracket",
+   "cad": "box",
+   "size": [
+    0.05,
+    0.2,
+    0.03
+   ],
+   "pos": [
+    0.13,
+    0.27,
+    -0.19
+   ],
+   "fillet": 0.004,
+   "color": "#3d434a",
+   "material": "metal"
+  },
+  {
+   "name": "bracket_bolts",
+   "cad": "bolt",
+   "d": 0.008,
+   "length": 0.025,
+   "pos": [
+    0.13,
+    0.22,
+    -0.175
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "color": "#b4bcc4",
+   "material": "metal"
+  },
+  {
+   "name": "bracket_bolts",
+   "cad": "bolt",
+   "d": 0.008,
+   "length": 0.025,
+   "pos": [
+    0.13,
+    0.32,
+    -0.175
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "color": "#b4bcc4",
+   "material": "metal"
+  },
+  {
+   "name": "motor_pulley",
+   "cad": "cylinder",
+   "size": [
+    0.025,
+    0.025
+   ],
+   "axis": "z",
+   "pos": [
+    0.13,
+    0.15,
+    -0.27
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 4.5
+   },
+   "pivot": [
+    0.13,
+    0.15,
+    -0.27
+   ]
+  },
+  {
+   "name": "motor_shaft",
+   "cad": "cylinder",
+   "size": [
+    0.01,
+    0.06
+   ],
+   "axis": "z",
+   "pos": [
+    0.13,
+    0.15,
+    -0.255
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 4.5
+   },
+   "pivot": [
+    0.13,
+    0.15,
+    -0.27
+   ]
+  },
+  {
+   "name": "belt",
+   "shape": "tube",
+   "points": [
+    [
+     0.159,
+     0.15,
+     -0.27
+    ],
+    [
+     0.154,
+     0.45,
+     -0.27
+    ],
+    [
+     0.1487525772485165,
+     0.4898581329457882,
+     -0.27
+    ],
+    [
+     0.13336791218280356,
+     0.527,
+     -0.27
+    ],
+    [
+     0.10889444430272832,
+     0.5588944443027283,
+     -0.27
+    ],
+    [
+     0.07700000000000001,
+     0.5833679121828036,
+     -0.27
+    ],
+    [
+     0.03985813294578823,
+     0.5987525772485165,
+     -0.27
+    ],
+    [
+     9.429780353434619e-18,
+     0.604,
+     -0.27
+    ],
+    [
+     -0.039858132945788174,
+     0.5987525772485165,
+     -0.27
+    ],
+    [
+     -0.07699999999999997,
+     0.5833679121828036,
+     -0.27
+    ],
+    [
+     -0.10889444430272831,
+     0.5588944443027284,
+     -0.27
+    ],
+    [
+     -0.13336791218280353,
+     0.527,
+     -0.27
+    ],
+    [
+     -0.1487525772485165,
+     0.4898581329457882,
+     -0.27
+    ],
+    [
+     -0.154,
+     0.45,
+     -0.27
+    ],
+    [
+     -0.14875257724851654,
+     0.41014186705421185,
+     -0.27
+    ],
+    [
+     -0.13336791218280358,
+     0.37300000000000005,
+     -0.27
+    ],
+    [
+     -0.10889444430272838,
+     0.34110555569727175,
+     -0.27
+    ],
+    [
+     0.10949390334559012,
+     0.12949390334559013,
+     -0.27
+    ],
+    [
+     0.11549999999999999,
+     0.12488526329025128,
+     -0.27
+    ],
+    [
+     0.12249424769202688,
+     0.12198815103761702,
+     -0.27
+    ],
+    [
+     0.13,
+     0.121,
+     -0.27
+    ],
+    [
+     0.1375057523079731,
+     0.12198815103761701,
+     -0.27
+    ],
+    [
+     0.1445,
+     0.12488526329025126,
+     -0.27
+    ],
+    [
+     0.1505060966544099,
+     0.1294939033455901,
+     -0.27
+    ],
+    [
+     0.1551147367097487,
+     0.13549999999999998,
+     -0.27
+    ],
+    [
+     0.158011848962383,
+     0.14249424769202687,
+     -0.27
+    ],
+    [
+     0.159,
+     0.15,
+     -0.27
+    ]
+   ],
+   "size": [
+    0.006
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "springs",
+   "shape": "spring",
+   "size": [
+    0.02,
+    0.13,
+    0.004
+   ],
+   "turns": 7,
+   "pos": [
+    -0.16,
+    0.765,
+    -0.02
+   ],
+   "color": "#aeb6bd",
+   "material": "metal"
+  },
+  {
+   "name": "springs",
+   "shape": "spring",
+   "size": [
+    0.02,
+    0.13,
+    0.004
+   ],
+   "turns": 7,
+   "pos": [
+    0.16,
+    0.765,
+    -0.02
+   ],
+   "color": "#aeb6bd",
+   "material": "metal"
+  },
+  {
+   "name": "dampers",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.22
+   ],
+   "pos": [
+    -0.16,
+    0.115,
+    -0.02
+   ],
+   "color": "#4b525a",
+   "material": "metal"
+  },
+  {
+   "name": "dampers",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.22
+   ],
+   "pos": [
+    0.16,
+    0.115,
+    -0.02
+   ],
+   "color": "#4b525a",
+   "material": "metal"
+  },
+  {
+   "name": "base_plate",
+   "cad": "box",
+   "size": [
+    0.56,
+    0.02,
+    0.56
+   ],
+   "pos": [
+    0,
+    0.01,
+    0
+   ],
+   "color": "#3d434a",
+   "material": "metal"
+  },
+  {
+   "name": "heater",
+   "shape": "tube",
+   "points": [
+    [
+     -0.04,
+     0.24,
+     0.15
+    ],
+    [
+     -0.04,
+     0.24,
+     -0.15
+    ],
+    [
+     0.04,
+     0.24,
+     -0.15
+    ],
+    [
+     0.04,
+     0.24,
+     0.15
+    ]
+   ],
+   "size": [
+    0.007
+   ],
+   "color": "#8c7f73",
+   "material": "metal",
+   "kind": "heater"
+  },
+  {
+   "name": "water",
+   "cad": "cylinder",
+   "size": [
+    0.235,
+    0.36
+   ],
+   "axis": "z",
+   "pos": [
+    0,
+    0.45,
+    -0.02
+   ],
+   "color": "#3aa6d9",
+   "opacity": 0.55,
+   "material": "water",
+   "kind": "liquid"
+  },
+  {
+   "name": "drain_pump",
+   "cad": "cylinder",
+   "size": [
+    0.045,
+    0.1
+   ],
+   "axis": "z",
+   "pos": [
+    0.2,
+    0.07,
+    0.17
+   ],
+   "fillet": 0.006,
+   "color": "#3a4048",
+   "material": "plastic"
+  },
+  {
+   "name": "pump_filter_cap",
+   "cad": "cylinder",
+   "size": [
+    0.03,
+    0.02
+   ],
+   "axis": "z",
+   "pos": [
+    0.2,
+    0.07,
+    0.23
+   ],
+   "color": "#d9dde1"
+  },
+  {
+   "name": "sump_hose",
+   "shape": "tube",
+   "points": [
+    [
+     0.0,
+     0.2,
+     -0.02
+    ],
+    [
+     0.0,
+     0.1,
+     0.05
+    ],
+    [
+     0.15,
+     0.07,
+     0.1
+    ],
+    [
+     0.2,
+     0.07,
+     0.12
+    ]
+   ],
+   "size": [
+    0.018
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "drain_hose",
+   "shape": "tube",
+   "points": [
+    [
+     0.2,
+     0.07,
+     0.12
+    ],
+    [
+     0.24,
+     0.07,
+     -0.1
+    ],
+    [
+     0.24,
+     0.4,
+     -0.24
+    ],
+    [
+     0.24,
+     0.55,
+     -0.31
+    ]
+   ],
+   "size": [
+    0.015
+   ],
+   "color": "#606870",
+   "material": "rubber"
+  },
+  {
+   "name": "inlet_valve",
+   "cad": "box",
+   "size": [
+    0.08,
+    0.05,
+    0.05
+   ],
+   "pos": [
+    0.2,
+    0.77,
+    -0.25
+   ],
+   "fillet": 0.008,
+   "color": "#2f3540",
+   "material": "plastic"
+  },
+  {
+   "name": "inlet_valve_coil",
+   "cad": "cylinder",
+   "size": [
+    0.014,
+    0.03
+   ],
+   "pos": [
+    0.18000000000000002,
+    0.81,
+    -0.25
+   ],
+   "color": "#c27b33",
+   "material": "metal"
+  },
+  {
+   "name": "inlet_valve_coil",
+   "cad": "cylinder",
+   "size": [
+    0.014,
+    0.03
+   ],
+   "pos": [
+    0.22,
+    0.81,
+    -0.25
+   ],
+   "color": "#c27b33",
+   "material": "metal"
+  },
+  {
+   "name": "inlet_hose",
+   "shape": "tube",
+   "points": [
+    [
+     0.2,
+     0.77,
+     -0.25
+    ],
+    [
+     0.05,
+     0.8,
+     -0.1
+    ],
+    [
+     -0.18,
+     0.8,
+     0.2
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#6c757d",
+   "material": "rubber"
+  },
+  {
+   "name": "drawer_chute",
+   "shape": "tube",
+   "points": [
+    [
+     -0.18,
+     0.76,
+     0.24
+    ],
+    [
+     -0.15,
+     0.7,
+     0.2
+    ],
+    [
+     -0.05,
+     0.66,
+     0.16
+    ]
+   ],
+   "size": [
+    0.02
+   ],
+   "color": "#9aa2a9",
+   "material": "plastic"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.02
+   ],
+   "pos": [
+    -0.25,
+    0.01,
+    -0.25
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.02
+   ],
+   "pos": [
+    -0.25,
+    0.01,
+    0.25
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.02
+   ],
+   "pos": [
+    0.25,
+    0.01,
+    -0.25
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.02
+   ],
+   "pos": [
+    0.25,
+    0.01,
+    0.25
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  }
+ ],
+ "ports": {
+  "inlet": [
+   0.24,
+   0.77,
+   -0.31
+  ],
+  "outlet": [
+   0.24,
+   0.55,
+   -0.31
+  ],
+  "power": [
+   -0.2,
+   0.3,
+   -0.31
+  ]
+ },
+ "paths": {
+  "water": [
+   [
+    0.24,
+    0.77,
+    -0.31
+   ],
+   [
+    0.2,
+    0.77,
+    -0.25
+   ],
+   [
+    0.05,
+    0.8,
+    -0.1
+   ],
+   [
+    -0.18,
+    0.8,
+    0.2
+   ],
+   [
+    -0.15,
+    0.7,
+    0.2
+   ],
+   [
+    -0.05,
+    0.62,
+    0.14
+   ],
+   [
+    0.0,
+    0.45,
+    0.05
+   ]
+  ],
+  "drain": [
+   [
+    0.0,
+    0.22,
+    0.0
+   ],
+   [
+    0.0,
+    0.1,
+    0.05
+   ],
+   [
+    0.15,
+    0.07,
+    0.1
+   ],
+   [
+    0.2,
+    0.07,
+    0.15
+   ],
+   [
+    0.24,
+    0.07,
+    -0.1
+   ],
+   [
+    0.24,
+    0.4,
+    -0.24
+   ],
+   [
+    0.24,
+    0.55,
+    -0.31
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "inlet_valve",
+   "A valve opens and lets water in through the soap drawer."
+  ],
+  [
+   "drum",
+   "The clothes tumble in a steel drum full of small holes."
+  ],
+  [
+   "heater",
+   "A heating element warms the water at the bottom of the tub."
+  ],
+  [
+   "motor",
+   "A motor under the tub turns the drum with a rubber belt."
+  ],
+  [
+   "drain_pump",
+   "A pump pushes the dirty water out through the drain hose."
+  ],
+  [
+   "springs",
+   "Springs and dampers hold the heavy tub so it can shake without breaking."
+  ]
+ ],
+ "label": [
+  0,
+  0.95,
+  0
+ ]
+}

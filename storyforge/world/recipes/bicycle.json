@@ -1,0 +1,2155 @@
+{
+ "name": "bicycle",
+ "about": "a bicycle (frame, wheels with spokes, chainring, chain, rear cog, cranks, pedals)",
+ "tags": [
+  "vehicle",
+  "machine",
+  "city",
+  "transport"
+ ],
+ "aliases": [
+  "bike",
+  "bicycles",
+  "push_bike"
+ ],
+ "key_part": "chainring",
+ "blueprint": {
+  "what": "A bicycle: a diamond frame of tubes, two wheels with spokes, pedals on cranks turn a chainring that pulls a chain around a small cog on the rear wheel.",
+  "size_m": [
+   1.75,
+   1.0,
+   0.6
+  ],
+  "sits_on": "floor",
+  "front": "the side of the bike (it rolls to the right, +x)",
+  "parts": [
+   {
+    "name": "frame",
+    "shape": "tubes in a diamond",
+    "size_m": [
+     0.95,
+     0.55,
+     0.12
+    ]
+   },
+   {
+    "name": "front_wheel",
+    "shape": "a thin tyre on a rim with spokes",
+    "size_m": [
+     0.68,
+     0.68,
+     0.05
+    ],
+    "moves": "spins",
+    "axis": "z",
+    "faces": "right"
+   },
+   {
+    "name": "rear_wheel",
+    "shape": "a thin tyre on a rim with spokes",
+    "size_m": [
+     0.68,
+     0.68,
+     0.05
+    ],
+    "moves": "spins",
+    "axis": "z",
+    "faces": "left"
+   },
+   {
+    "name": "chainring",
+    "shape": "a big toothed ring at the pedals",
+    "size_m": [
+     0.18,
+     0.18,
+     0.004
+    ],
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "rear_cog",
+    "shape": "a small toothed ring on the rear hub",
+    "size_m": [
+     0.075,
+     0.075,
+     0.004
+    ],
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "chain",
+    "shape": "a loop of links around the chainring and the cog",
+    "size_m": [
+     0.58,
+     0.19,
+     0.01
+    ]
+   },
+   {
+    "name": "cranks",
+    "shape": "two arms, one on each side, to the pedals",
+    "size_m": [
+     0.03,
+     0.17,
+     0.012
+    ],
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "handlebar",
+    "shape": "a bar across the top front",
+    "size_m": [
+     0.06,
+     0.06,
+     0.46
+    ],
+    "faces": "top"
+   },
+   {
+    "name": "saddle",
+    "shape": "a narrow seat",
+    "size_m": [
+     0.27,
+     0.06,
+     0.15
+    ],
+    "faces": "top"
+   }
+  ],
+  "shared_axes": [
+   [
+    "front_wheel_hub",
+    "front_wheel_rim"
+   ],
+   [
+    "rear_wheel_hub",
+    "rear_wheel_rim",
+    "rear_cog"
+   ],
+   [
+    "chainring",
+    "cranks"
+   ]
+  ],
+  "visible_details": [
+   "spokes",
+   "chain",
+   "pedals",
+   "handlebar grips",
+   "saddle"
+  ]
+ },
+ "parts": [
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.05,
+     0.28,
+     0
+    ],
+    [
+     -0.19,
+     0.76,
+     0
+    ]
+   ],
+   "size": [
+    0.016
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.19,
+     0.76,
+     0
+    ],
+    [
+     0.4,
+     0.77,
+     0
+    ]
+   ],
+   "size": [
+    0.016
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.05,
+     0.28,
+     0
+    ],
+    [
+     0.44,
+     0.62,
+     0
+    ]
+   ],
+   "size": [
+    0.016
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     0.4,
+     0.77,
+     0
+    ],
+    [
+     0.44,
+     0.62,
+     0
+    ]
+   ],
+   "size": [
+    0.02
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.05,
+     0.28,
+     -0.036
+    ],
+    [
+     -0.5,
+     0.34,
+     -0.066
+    ]
+   ],
+   "size": [
+    0.011
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.19,
+     0.74,
+     -0.018
+    ],
+    [
+     -0.5,
+     0.34,
+     -0.066
+    ]
+   ],
+   "size": [
+    0.01
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "fork",
+   "shape": "tube",
+   "points": [
+    [
+     0.44,
+     0.62,
+     -0.03
+    ],
+    [
+     0.52,
+     0.34,
+     -0.06
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#aeb6bd",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.05,
+     0.28,
+     0.036
+    ],
+    [
+     -0.5,
+     0.34,
+     0.066
+    ]
+   ],
+   "size": [
+    0.011
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "frame",
+   "shape": "tube",
+   "points": [
+    [
+     -0.19,
+     0.74,
+     0.018
+    ],
+    [
+     -0.5,
+     0.34,
+     0.066
+    ]
+   ],
+   "size": [
+    0.01
+   ],
+   "color": "#d64545",
+   "material": "paint"
+  },
+  {
+   "name": "fork",
+   "shape": "tube",
+   "points": [
+    [
+     0.44,
+     0.62,
+     0.03
+    ],
+    [
+     0.52,
+     0.34,
+     0.06
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#aeb6bd",
+   "material": "paint"
+  },
+  {
+   "name": "seat_post",
+   "shape": "tube",
+   "points": [
+    [
+     -0.19,
+     0.76,
+     0
+    ],
+    [
+     -0.23,
+     0.9,
+     0
+    ]
+   ],
+   "size": [
+    0.012
+   ],
+   "color": "#aeb6bd",
+   "material": "paint"
+  },
+  {
+   "name": "stem",
+   "shape": "tube",
+   "points": [
+    [
+     0.4,
+     0.77,
+     0
+    ],
+    [
+     0.38,
+     0.92,
+     0
+    ]
+   ],
+   "size": [
+    0.014
+   ],
+   "color": "#aeb6bd",
+   "material": "paint"
+  },
+  {
+   "name": "handlebar",
+   "cad": "cylinder",
+   "size": [
+    0.012,
+    0.46
+   ],
+   "axis": "z",
+   "pos": [
+    0.38,
+    0.93,
+    0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal"
+  },
+  {
+   "name": "grips",
+   "cad": "cylinder",
+   "size": [
+    0.017,
+    0.1
+   ],
+   "axis": "z",
+   "pos": [
+    0.38,
+    0.93,
+    -0.19
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "grips",
+   "cad": "cylinder",
+   "size": [
+    0.017,
+    0.1
+   ],
+   "axis": "z",
+   "pos": [
+    0.38,
+    0.93,
+    0.19
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "saddle",
+   "cad": "loft",
+   "sections": [
+    {
+     "y": 0.0,
+     "size": [
+      0.26,
+      0.14
+     ],
+     "round": 0.05
+    },
+    {
+     "y": 0.05,
+     "size": [
+      0.24,
+      0.1
+     ],
+     "round": 0.04
+    }
+   ],
+   "pos": [
+    -0.24,
+    0.9,
+    0
+   ],
+   "color": "#2b2f35",
+   "material": "rubber"
+  },
+  {
+   "name": "bottom_bracket",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.08
+   ],
+   "axis": "z",
+   "pos": [
+    -0.05,
+    0.28,
+    0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal"
+  },
+  {
+   "name": "front_wheel_tire",
+   "shape": "torus",
+   "size": [
+    0.32,
+    0.02
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0.52,
+    0.34,
+    0.0
+   ],
+   "color": "#26292d",
+   "material": "rubber",
+   "kind": "wheel",
+   "axis": "z",
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_rim",
+   "shape": "torus",
+   "size": [
+    0.3,
+    0.012
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0.52,
+    0.34,
+    0.0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_hub",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.12
+   ],
+   "axis": "z",
+   "pos": [
+    0.52,
+    0.34,
+    0.0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.81,
+     0.34,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.7879250644282731,
+     0.450978195385876,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.7250609665440988,
+     0.5450609665440987,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.6309781953858761,
+     0.6079250644282732,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.52,
+     0.63,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.409021804614124,
+     0.6079250644282732,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.31493903345590124,
+     0.5450609665440989,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.2520749355717269,
+     0.4509781953858761,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.23000000000000004,
+     0.3400000000000001,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.25207493557172683,
+     0.22902180461412402,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.31493903345590124,
+     0.13493903345590127,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.40902180461412385,
+     0.07207493557172695,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.52,
+     0.050000000000000044,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.6309781953858761,
+     0.0720749355717269,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     -0.04
+    ],
+    [
+     0.7250609665440988,
+     0.13493903345590122,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "front_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     0.52,
+     0.34,
+     0.04
+    ],
+    [
+     0.7879250644282731,
+     0.2290218046141238,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    0.52,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_tire",
+   "shape": "torus",
+   "size": [
+    0.32,
+    0.02
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    -0.5,
+    0.34,
+    0.0
+   ],
+   "color": "#26292d",
+   "material": "rubber",
+   "kind": "wheel",
+   "axis": "z",
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_rim",
+   "shape": "torus",
+   "size": [
+    0.3,
+    0.012
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    -0.5,
+    0.34,
+    0.0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_hub",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.12
+   ],
+   "axis": "z",
+   "pos": [
+    -0.5,
+    0.34,
+    0.0
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.21000000000000002,
+     0.34,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.23207493557172687,
+     0.450978195385876,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.2949390334559012,
+     0.5450609665440987,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.38902180461412394,
+     0.6079250644282732,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.5,
+     0.63,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.610978195385876,
+     0.6079250644282732,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.7050609665440988,
+     0.5450609665440989,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.7679250644282731,
+     0.4509781953858761,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.79,
+     0.3400000000000001,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.7679250644282731,
+     0.22902180461412402,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.7050609665440988,
+     0.13493903345590127,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.6109781953858762,
+     0.07207493557172695,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.5,
+     0.050000000000000044,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.3890218046141239,
+     0.0720749355717269,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     -0.04
+    ],
+    [
+     -0.2949390334559013,
+     0.13493903345590122,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "rear_wheel_spokes",
+   "shape": "tube",
+   "points": [
+    [
+     -0.5,
+     0.34,
+     0.04
+    ],
+    [
+     -0.23207493557172693,
+     0.2290218046141238,
+     0
+    ]
+   ],
+   "size": [
+    0.0016
+   ],
+   "color": "#c8cdd2",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.0
+   ]
+  },
+  {
+   "name": "chainring",
+   "cad": "sprocket",
+   "teeth": 44,
+   "pitch": 0.0127,
+   "thickness": 0.004,
+   "pos": [
+    -0.05,
+    0.28,
+    0.07
+   ],
+   "color": "#3d434a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.4
+   },
+   "pivot": [
+    -0.05,
+    0.28,
+    0.07
+   ]
+  },
+  {
+   "name": "rear_cog",
+   "cad": "sprocket",
+   "teeth": 18,
+   "pitch": 0.0127,
+   "thickness": 0.004,
+   "pos": [
+    -0.5,
+    0.34,
+    0.07
+   ],
+   "color": "#3d434a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.7
+   },
+   "pivot": [
+    -0.5,
+    0.34,
+    0.07
+   ]
+  },
+  {
+   "name": "chain",
+   "shape": "tube",
+   "points": [
+    [
+     -0.049999999999999996,
+     0.373,
+     0.07
+    ],
+    [
+     -0.5,
+     0.381,
+     0.07
+    ],
+    [
+     -0.5106115808492033,
+     0.37960295887785184,
+     0.07
+    ],
+    [
+     -0.5205,
+     0.375507041555162,
+     0.07
+    ],
+    [
+     -0.5289913780286485,
+     0.36899137802864845,
+     0.07
+    ],
+    [
+     -0.5355070415551619,
+     0.36050000000000004,
+     0.07
+    ],
+    [
+     -0.5396029588778518,
+     0.3506115808492034,
+     0.07
+    ],
+    [
+     -0.541,
+     0.34,
+     0.07
+    ],
+    [
+     -0.5396029588778518,
+     0.3293884191507967,
+     0.07
+    ],
+    [
+     -0.5355070415551619,
+     0.31950000000000006,
+     0.07
+    ],
+    [
+     -0.5289913780286485,
+     0.3110086219713516,
+     0.07
+    ],
+    [
+     -0.5205,
+     0.30449295844483804,
+     0.07
+    ],
+    [
+     -0.5106115808492033,
+     0.30039704112214827,
+     0.07
+    ],
+    [
+     -0.0740701711945345,
+     0.1901688981551167,
+     0.07
+    ],
+    [
+     -0.05000000000000002,
+     0.18700000000000003,
+     0.07
+    ],
+    [
+     -0.025929828805465616,
+     0.19016889815511667,
+     0.07
+    ],
+    [
+     -0.0035000000000000656,
+     0.19945963744804718,
+     0.07
+    ],
+    [
+     0.015760930650348906,
+     0.2142390693496511,
+     0.07
+    ],
+    [
+     0.030540362551952763,
+     0.23349999999999999,
+     0.07
+    ],
+    [
+     0.039831101844883324,
+     0.2559298288054655,
+     0.07
+    ],
+    [
+     0.043,
+     0.28,
+     0.07
+    ],
+    [
+     0.03983110184488335,
+     0.30407017119453444,
+     0.07
+    ],
+    [
+     0.03054036255195279,
+     0.3265,
+     0.07
+    ],
+    [
+     0.01576093065034892,
+     0.34576093065034896,
+     0.07
+    ],
+    [
+     -0.003499999999999996,
+     0.3605403625519528,
+     0.07
+    ],
+    [
+     -0.025929828805465554,
+     0.3698311018448834,
+     0.07
+    ],
+    [
+     -0.049999999999999996,
+     0.373,
+     0.07
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#5b636b",
+   "material": "metal"
+  },
+  {
+   "name": "cranks",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.17,
+    0.012
+   ],
+   "pos": [
+    -0.05,
+    0.195,
+    0.09
+   ],
+   "fillet": 0.005,
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.4
+   },
+   "pivot": [
+    -0.05,
+    0.28,
+    0.09
+   ]
+  },
+  {
+   "name": "cranks",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.17,
+    0.012
+   ],
+   "pos": [
+    -0.05,
+    0.36500000000000005,
+    -0.09
+   ],
+   "fillet": 0.005,
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.4
+   },
+   "pivot": [
+    -0.05,
+    0.28,
+    -0.09
+   ]
+  },
+  {
+   "name": "pedals",
+   "cad": "box",
+   "size": [
+    0.08,
+    0.02,
+    0.09
+   ],
+   "pos": [
+    -0.05,
+    0.11000000000000001,
+    0.14
+   ],
+   "fillet": 0.005,
+   "color": "#2b2f35",
+   "material": "plastic",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.4
+   },
+   "pivot": [
+    -0.05,
+    0.28,
+    0.14
+   ]
+  },
+  {
+   "name": "pedals",
+   "cad": "box",
+   "size": [
+    0.08,
+    0.02,
+    0.09
+   ],
+   "pos": [
+    -0.05,
+    0.45000000000000007,
+    -0.14
+   ],
+   "fillet": 0.005,
+   "color": "#2b2f35",
+   "material": "plastic",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.4
+   },
+   "pivot": [
+    -0.05,
+    0.28,
+    -0.14
+   ]
+  },
+  {
+   "name": "brakes",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.06,
+    0.07
+   ],
+   "pos": [
+    0.47,
+    0.67,
+    0
+   ],
+   "fillet": 0.006,
+   "color": "#2b2f35",
+   "material": "metal"
+  },
+  {
+   "name": "brakes",
+   "cad": "box",
+   "size": [
+    0.03,
+    0.06,
+    0.07
+   ],
+   "pos": [
+    -0.43,
+    0.63,
+    0
+   ],
+   "fillet": 0.006,
+   "color": "#2b2f35",
+   "material": "metal"
+  }
+ ],
+ "paths": {
+  "chain": [
+   [
+    -0.049999999999999996,
+    0.373,
+    0.075
+   ],
+   [
+    -0.5,
+    0.381,
+    0.075
+   ],
+   [
+    -0.5106115808492033,
+    0.37960295887785184,
+    0.075
+   ],
+   [
+    -0.5205,
+    0.375507041555162,
+    0.075
+   ],
+   [
+    -0.5289913780286485,
+    0.36899137802864845,
+    0.075
+   ],
+   [
+    -0.5355070415551619,
+    0.36050000000000004,
+    0.075
+   ],
+   [
+    -0.5396029588778518,
+    0.3506115808492034,
+    0.075
+   ],
+   [
+    -0.541,
+    0.34,
+    0.075
+   ],
+   [
+    -0.5396029588778518,
+    0.3293884191507967,
+    0.075
+   ],
+   [
+    -0.5355070415551619,
+    0.31950000000000006,
+    0.075
+   ],
+   [
+    -0.5289913780286485,
+    0.3110086219713516,
+    0.075
+   ],
+   [
+    -0.5205,
+    0.30449295844483804,
+    0.075
+   ],
+   [
+    -0.5106115808492033,
+    0.30039704112214827,
+    0.075
+   ],
+   [
+    -0.0740701711945345,
+    0.1901688981551167,
+    0.075
+   ],
+   [
+    -0.05000000000000002,
+    0.18700000000000003,
+    0.075
+   ],
+   [
+    -0.025929828805465616,
+    0.19016889815511667,
+    0.075
+   ],
+   [
+    -0.0035000000000000656,
+    0.19945963744804718,
+    0.075
+   ],
+   [
+    0.015760930650348906,
+    0.2142390693496511,
+    0.075
+   ],
+   [
+    0.030540362551952763,
+    0.23349999999999999,
+    0.075
+   ],
+   [
+    0.039831101844883324,
+    0.2559298288054655,
+    0.075
+   ],
+   [
+    0.043,
+    0.28,
+    0.075
+   ],
+   [
+    0.03983110184488335,
+    0.30407017119453444,
+    0.075
+   ],
+   [
+    0.03054036255195279,
+    0.3265,
+    0.075
+   ],
+   [
+    0.01576093065034892,
+    0.34576093065034896,
+    0.075
+   ],
+   [
+    -0.003499999999999996,
+    0.3605403625519528,
+    0.075
+   ],
+   [
+    -0.025929828805465554,
+    0.3698311018448834,
+    0.075
+   ],
+   [
+    -0.049999999999999996,
+    0.373,
+    0.075
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "pedals",
+   "Your feet push the pedals around."
+  ],
+  [
+   "chainring",
+   "The cranks turn a big toothed ring."
+  ],
+  [
+   "chain",
+   "A chain carries that turn back to the rear wheel."
+  ],
+  [
+   "rear_cog",
+   "A small cog on the rear wheel turns faster than the big ring."
+  ],
+  [
+   "rear_wheel",
+   "So one turn of the pedals spins the wheel more than twice."
+  ]
+ ],
+ "label": [
+  0,
+  1.15,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

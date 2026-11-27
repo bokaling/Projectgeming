@@ -1,0 +1,6 @@
+# CAD tools for designing NEW objects (installed by the Setup cell, storyforge/install.py: setup_cad).
+# build123d (Apache 2.0) + its OpenCascade kernel OCP (LGPL 2.1 with exception, used unchanged as a library),
+# bd_warehouse (Apache 2.0): gears, bearings, bolts, flanges, pipes, sprockets. Wheels for Python 3.10-3.13.
+build123d>=0.13
+bd_warehouse>=0.4
+manifold3d>=3.0

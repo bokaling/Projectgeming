@@ -17,6 +17,7 @@ import numpy as np
 
 from . import assets, motion
 from .gl import Draw, Frame, Label, hex_rgb, project_points
+from . import mesh as M
 from .mesh import rot_matrix, section
 
 NO_SHADOW = {"wall", "tool_wall", "city_block"}
@@ -30,7 +31,8 @@ W_DIV = 0.68 / FILL  # a normal shot: the subject's box is 68 % of the frame wid
 H_DIV = 0.92 / FILL  # …but never more than 92 % of the safe height (captions on top, app buttons below)
 FILL_MOVES = {"close_up": 1.0, "fly_over": 0.7, "pull_out": 0.78, "top_down": 0.8, "hero": 0.95, "macro": 1.0}
 END_OVERVIEW = 3.6  # explainers end on an overview of the whole system, then fly back to the first shot (loop)
-HERO_COLOR = "#ff3d9a"  # the channel's signature colour: the cut faces of a hero part (our own, not orange)
+HERO_COLOR = "#9e2a35"  # cut faces of a hero part: a deep, calm red (the classic cutaway colour; was candy pink)
+HERO_FLOORS = {"floor_tiles", "planks", "slab", "pad", "turntable", "ground", "ground_plate", "terrain"}
 CALM_FLIGHT = 1.8  # seconds: explainers fly smoothly from shot to shot (stories cut faster)
 FINISH_IN_SHOT = {"open", "close", "lift", "fill", "drain", "appear", "drop", "grow", "show_part", "hide_part",
                   "light_on", "light_off", "cutaway"}
@@ -139,7 +141,8 @@ class World:
         self.obj = {o["id"]: o for o in plan["objects"]}
         self._areas()
         self._build()
-        self.notes = logic.ground_everything(self)  # nothing floats without support
+        self.notes = logic.place_on_surfaces(self)  # a microwave on the counter, a ceiling fan on the ceiling
+        self.notes += logic.ground_everything(self)  # nothing floats without support
         self.notes += logic.auto_connect(self)  # pipes/cables without ends get connected to the nearest ports
         self.notes += logic.build_connections(self)  # routed pipes, cables, chains between ports
         self._build_env()
@@ -1278,8 +1281,8 @@ class World:
         sun, s_c, s_r0, s_r1 = self.light_at(i, t)
         no_cast = self._no_cast()
         for inst in self.insts:
-            if iso == "hero" and inst.oid != hero[0]:
-                continue  # a hero shot: ONE part alone in a clean studio
+            if iso == "hero" and inst.oid != hero[0] and inst.asset not in HERO_FLOORS:
+                continue  # a hero shot: ONE part, its machine as a faint ghost around it, on its floor
             if iso in ("subject", "macro") and inst.oid not in self._focus[i] and inst.oid not in mount_parents:
                 continue  # a macro shot: only the subject on a dark background
             if iso == "area" and inst.area != own_area:
@@ -1335,7 +1338,7 @@ class World:
                     pb = self.part_box(inst.oid, self._cam_part(i), T, margin=False)
                     if pb is not None:
                         c = (pb[0] + pb[1]) / 2
-                clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.05 - 0.02))  # sweeps in gently
+                clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.2 - 0.02))  # sweeps in gently
             has_shell = clip is not None and any(p.shell for p in inst.model.parts)
             own_cut = {}  # a shell part the camera films (a compressor's dome): cut through ITS centre, not removed
             if clip is not None and inst.oid == focus_id and self._cam_part(i):
@@ -1344,14 +1347,10 @@ class World:
                         plo, phi = inst.model.parts[k].geo.bounds()
                         pc = (m0 @ np.append((plo + phi) / 2, 1.0))[:3]
                         own_cut[k] = (clip[0], clip[1], clip[2],  # sweeps in with the cutaway (no one-frame hole)
-                                      float(np.dot(clip[:3], pc)) + inst.radius * (1 - st["cut"]) * 1.05)
+                                      float(np.dot(clip[:3], pc)) + inst.radius * (1 - st["cut"]) * 1.2)
             hero_clip = None
-            if hero is not None:  # cut the hero part through its middle, turned 40° so we see the cut AND the outside
-                n = cam_dir.copy()
-                n[1] = 0
-                n /= max(np.linalg.norm(n), 1e-6)
-                ca, sa = math.cos(math.radians(55)), math.sin(math.radians(55))
-                n = np.array([n[0] * ca - n[2] * sa, 0.0, n[0] * sa + n[2] * ca])
+            if hero is not None:  # cut the hero part through its middle, turned 55° so we see the cut AND the outside
+                n = self._hero_normal(i)  # fixed for the shot (the cut doesn't turn with the camera)
                 hc = (hero[2] + hero[3]) / 2
                 hero_clip = (*n, float(np.dot(n, hc)))
             near_keep = None
@@ -1367,7 +1366,8 @@ class World:
             beam_ok = None
             for k, part in enumerate(inst.model.parts):
                 vis = st["parts"].get(part.name, 1.0)
-                if vis <= 0.01 or k in hidden_parts or (hero is not None and k not in hero[1]):
+                ghost = hero is not None and inst.oid == hero[0] and k not in hero[1]
+                if vis <= 0.01 or k in hidden_parts or (ghost and (part.opacity < 0.5 or part.kind == "beam")):
                     continue
                 if part.kind == "beam":  # headlamp beams: only a few, never right at the lens (no white-out)
                     if beam_ok is None:  # fades out as the camera comes close (no on/off pop)
@@ -1421,17 +1421,25 @@ class World:
                 op = part.opacity * inst_k * (beam_ok if part.kind == "beam" else 1.0)
                 if k in fade_k and fade_k[k] < 0.999:  # fading out (left out / see-through here) or back in
                     op = min(op, fade_k[k])
-                if hero is not None:  # every piece cut in half, the cut faces in the signature colour
+                if ghost:  # the rest of the machine: a faint ghost, so the hero part is clearly IN its machine
+                    draws.append(Draw(inst.keys[k], m, tuple(0.35 + 0.5 * c for c in color), 0.0, 0.3, None,
+                                      inner, 0.8, shadow=False, shine=0.0))
+                    continue
+                if hero is not None and inst.oid == hero[0] and hero_clip is not None and op > 0.6 and \
+                        part.kind not in ("chamber", "flame", "light") and self._hero_cut(inst, k, part, m, hero_clip, color,
+                                                                                          emi, dyn):
+                    continue  # cut exactly (manifold3d): the body and its cut face are in `dyn`
+                if hero is not None and inst.oid == hero[0]:  # every piece cut in half, the cut faces in the cut colour
                     part_clip, inner, xr = hero_clip, hex_rgb(HERO_COLOR), 0.0
                     op = max(op, 0.35) if part.kind == "liquid" or part.opacity < 0.6 else op
-                closed = hero is not None and op > 0.6 and part.kind not in ("chamber", "flame", "light") and \
+                closed = hero is not None and inst.oid == hero[0] and op > 0.6 and part.kind not in ("chamber", "flame", "light") and \
                     not part.shell and part.geo.closed()  # a hollow shell (a capsule's skin) shows a rim, not a slab
                 draws.append(Draw(inst.keys[k], m, color, emi, op, part_clip, inner, xr,
                                   shadow=part.opacity > 0.5 and inst.asset not in NO_SHADOW and inst.oid not in
                                   no_cast[0] and (inst.oid, k) not in no_cast[1],
                                   visible=not shadow_only,
                                   shine=SHINE.get(part.material, 0.0),
-                                  cap=2 if hero is not None and op > 0.6 and not closed else 0,
+                                  cap=2 if hero is not None and inst.oid == hero[0] and op > 0.6 and not closed else 0,
                                   additive=part.kind == "beam"))  # headlamp beams: light added on top
                 if shadow_only:
                     continue
@@ -1537,6 +1545,51 @@ class World:
         res = {oid: (sk, hid, see - hid) for oid, (sk, hid, see) in out.items()}
         cache[i] = res
         return res
+
+    def _hero_normal(self, i: int) -> np.ndarray:
+        cache = self.__dict__.setdefault("_hero_n", {})
+        if i not in cache:
+            du, tr = self.scenes[i]["dur"], self.flight(i)
+            eye, tgt, _ = self._cam_path(i, tr + 0.5 * max(du - tr, 0.0))
+            n = np.asarray(eye, np.float64) - np.asarray(tgt, np.float64)
+            n[1] = 0
+            n /= max(np.linalg.norm(n), 1e-6)
+            ca, sa = math.cos(math.radians(55)), math.sin(math.radians(55))
+            cache[i] = np.array([n[0] * ca - n[2] * sa, 0.0, n[0] * sa + n[2] * ca])
+        return cache[i]
+
+    def _hero_cut(self, inst, k: int, part, m, plane, color, emi: float, dyn: list) -> bool:
+        """Cut one hero part exactly with manifold3d: its body + a cut face in HERO_COLOR, piece by piece (12 blades
+        get 12 small faces, not a comb), hollow parts as a thin rim. False = not a closed solid (clip it instead)."""
+        from . import cad  # noqa: PLC0415
+
+        if not cad.manifold_available():
+            return False
+        key = (inst.oid, k, np.round(m, 5).tobytes(), tuple(round(float(x), 5) for x in plane))
+        cache = self.__dict__.setdefault("_cut_cache", {})
+        if key not in cache:
+            if len(cache) > 600:
+                cache.clear()
+            wp = (np.hstack([part.geo.pos, np.ones((len(part.geo.pos), 1), np.float32)]) @ m.T)[:, :3]
+            try:
+                kept, caps, loose = cad.cut(wp, plane[:3], plane[3], hollow=float(getattr(part, "hollow", 0.0) or 0.0))
+            except Exception:  # noqa: BLE001
+                kept, caps, loose = None, None, None
+            if kept is None or len(loose) or (not len(kept) and not len(caps)):
+                cache[key] = None
+            else:
+                smooth = part.geo.nrm is not None
+                cache[key] = (kept.reshape(-1, 3), M.smooth_normals(kept.reshape(-1, 3)) if smooth else None,
+                              caps.reshape(-1, 3))
+        res = cache[key]
+        if res is None:
+            return False
+        kept, knrm, caps = res
+        if len(kept):
+            dyn.append((kept, color, emi, SHINE.get(part.material, 0.0), knrm))
+        if len(caps):
+            dyn.append((caps, hex_rgb(HERO_COLOR), 0.03, 0.0, None))
+        return True
 
     def _near_lens_parts(self, inst: Inst, st: dict, eye, tgt, fov: float) -> set:
         """Parts of another object that come within a third of the subject distance of the lens, inside the picture:

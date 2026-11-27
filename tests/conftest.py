@@ -31,6 +31,13 @@ def fresh_services(monkeypatch):
         raise RuntimeError("Kokoro ONNX is off in tests")
 
     monkeypatch.setattr(tts, "kokoro_onnx", no_onnx)  # a test can still replace it with its own fake
+    from storyforge.world import imported
+
+    def no_download(*a, **k):
+        raise RuntimeError("no downloads in tests")
+
+    monkeypatch.setattr(imported, "_fetch", no_download)  # CC0 models: the procedural stand-ins are used
+    imported._CACHE.clear()
     yield
 
 

@@ -1,0 +1,496 @@
+{
+ "name": "toaster",
+ "about": "a pop-up toaster (two slots, heating elements, lever, carriage, knob)",
+ "tags": [
+  "home",
+  "appliance",
+  "kitchen",
+  "machine"
+ ],
+ "aliases": [
+  "toasters",
+  "bread_toaster"
+ ],
+ "key_part": "heating_elements",
+ "blueprint": {
+  "what": "A pop-up toaster: bread drops into two slots between glowing heating wires; a lever pushes the carriage down, a timer lets it spring back up.",
+  "size_m": [
+   0.28,
+   0.2,
+   0.16
+  ],
+  "sits_on": "counter",
+  "front": "its long side, with the slots on top",
+  "casing": "body",
+  "parts": [
+   {
+    "name": "body",
+    "shape": "a shiny box with rounded edges and two slots on top",
+    "size_m": [
+     0.28,
+     0.19,
+     0.16
+    ]
+   },
+   {
+    "name": "bread",
+    "shape": "two slices standing in the slots",
+    "size_m": [
+     0.12,
+     0.12,
+     0.015
+    ],
+    "faces": "top",
+    "moves": "slides"
+   },
+   {
+    "name": "heating_elements",
+    "shape": "thin panels with wires along the slots",
+    "size_m": [
+     0.2,
+     0.1,
+     0.004
+    ],
+    "inside": "body"
+   },
+   {
+    "name": "lever",
+    "shape": "a small handle on the end that slides down",
+    "size_m": [
+     0.04,
+     0.02,
+     0.05
+    ],
+    "faces": "right",
+    "moves": "slides"
+   },
+   {
+    "name": "browning_knob",
+    "shape": "a round knob on the end",
+    "size_m": [
+     0.03,
+     0.03,
+     0.02
+    ],
+    "faces": "right"
+   },
+   {
+    "name": "crumb_tray",
+    "shape": "a flat tray in the base",
+    "size_m": [
+     0.24,
+     0.01,
+     0.12
+    ]
+   }
+  ],
+  "visible_details": [
+   "two slots",
+   "lever",
+   "knob",
+   "shiny body",
+   "feet"
+  ]
+ },
+ "parts": [
+  {
+   "name": "base",
+   "cad": "box",
+   "size": [
+    0.29,
+    0.02,
+    0.17
+   ],
+   "pos": [
+    0,
+    0.01,
+    0
+   ],
+   "fillet": 0.006,
+   "color": "#2b2f35",
+   "material": "plastic"
+  },
+  {
+   "name": "body",
+   "cad": "box",
+   "size": [
+    0.28,
+    0.19,
+    0.16
+   ],
+   "pos": [
+    0,
+    0.115,
+    0
+   ],
+   "fillet": 0.03,
+   "hollow": 0.003,
+   "color": "#d9dee2",
+   "material": "metal",
+   "shell": true,
+   "windows": [
+    {
+     "at": [
+      0,
+      0.095,
+      0.034
+     ],
+     "size": [
+      0.2,
+      0.05,
+      0.024
+     ]
+    },
+    {
+     "at": [
+      0,
+      0.095,
+      -0.034
+     ],
+     "size": [
+      0.2,
+      0.05,
+      0.024
+     ]
+    }
+   ]
+  },
+  {
+   "name": "crumb_tray",
+   "cad": "box",
+   "size": [
+    0.24,
+    0.008,
+    0.12
+   ],
+   "pos": [
+    0,
+    0.024,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal"
+  },
+  {
+   "name": "bread",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.11,
+    0.014
+   ],
+   "pos": [
+    0,
+    0.17,
+    -0.034
+   ],
+   "fillet": 0.01,
+   "color": "#d8a05a",
+   "material": "plastic",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "amp": -0.05
+   }
+  },
+  {
+   "name": "bread",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.11,
+    0.014
+   ],
+   "pos": [
+    0,
+    0.17,
+    0.034
+   ],
+   "fillet": 0.01,
+   "color": "#d8a05a",
+   "material": "plastic",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "amp": -0.05
+   }
+  },
+  {
+   "name": "heating_elements",
+   "shape": "box",
+   "size": [
+    0.2,
+    0.11,
+    0.003
+   ],
+   "pos": [
+    0,
+    0.11,
+    -0.058
+   ],
+   "color": "#8a6a4a",
+   "kind": "heater"
+  },
+  {
+   "name": "heating_elements",
+   "shape": "box",
+   "size": [
+    0.2,
+    0.11,
+    0.003
+   ],
+   "pos": [
+    0,
+    0.11,
+    0.0
+   ],
+   "color": "#8a6a4a",
+   "kind": "heater"
+  },
+  {
+   "name": "heating_elements",
+   "shape": "box",
+   "size": [
+    0.2,
+    0.11,
+    0.003
+   ],
+   "pos": [
+    0,
+    0.11,
+    0.058
+   ],
+   "color": "#8a6a4a",
+   "kind": "heater"
+  },
+  {
+   "name": "carriage",
+   "cad": "box",
+   "size": [
+    0.2,
+    0.01,
+    0.1
+   ],
+   "pos": [
+    0,
+    0.11,
+    0
+   ],
+   "color": "#8e979f",
+   "material": "metal",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "amp": -0.05
+   }
+  },
+  {
+   "name": "lever_slot",
+   "cad": "box",
+   "size": [
+    0.006,
+    0.12,
+    0.012
+   ],
+   "pos": [
+    0.142,
+    0.12,
+    0
+   ],
+   "color": "#2b2f35"
+  },
+  {
+   "name": "lever",
+   "cad": "box",
+   "size": [
+    0.035,
+    0.018,
+    0.045
+   ],
+   "pos": [
+    0.155,
+    0.165,
+    0
+   ],
+   "fillet": 0.006,
+   "color": "#2b2f35",
+   "material": "plastic",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "amp": -0.05
+   }
+  },
+  {
+   "name": "browning_knob",
+   "cad": "cylinder",
+   "size": [
+    0.015,
+    0.016
+   ],
+   "axis": "x",
+   "pos": [
+    0.146,
+    0.07,
+    0.04
+   ],
+   "chamfer": 0.003,
+   "color": "#2b2f35",
+   "material": "plastic"
+  },
+  {
+   "name": "cancel_button",
+   "cad": "box",
+   "size": [
+    0.01,
+    0.012,
+    0.02
+   ],
+   "pos": [
+    0.144,
+    0.07,
+    -0.04
+   ],
+   "fillet": 0.003,
+   "color": "#c0392b"
+  },
+  {
+   "name": "cord",
+   "shape": "tube",
+   "points": [
+    [
+     -0.1,
+     0.03,
+     -0.078
+    ],
+    [
+     -0.13,
+     0.01,
+     -0.085
+    ],
+    [
+     -0.16,
+     0.006,
+     -0.09
+    ]
+   ],
+   "size": [
+    0.004
+   ],
+   "color": "#2b2f35",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.01,
+    0.006
+   ],
+   "pos": [
+    -0.12,
+    0.003,
+    -0.06
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.01,
+    0.006
+   ],
+   "pos": [
+    -0.12,
+    0.003,
+    0.06
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.01,
+    0.006
+   ],
+   "pos": [
+    0.12,
+    0.003,
+    -0.06
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.01,
+    0.006
+   ],
+   "pos": [
+    0.12,
+    0.003,
+    0.06
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  }
+ ],
+ "ports": {
+  "power": [
+   -0.16,
+   0.006,
+   -0.09
+  ]
+ },
+ "paths": {
+  "heat": [
+   [
+    0,
+    0.06,
+    0.0
+   ],
+   [
+    0,
+    0.12,
+    0.02
+   ],
+   [
+    0,
+    0.18,
+    0.034
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "lever",
+   "Pushing the lever lowers the bread and switches the heat on."
+  ],
+  [
+   "heating_elements",
+   "Thin wires glow red hot on both sides of the bread."
+  ],
+  [
+   "bread",
+   "The heat browns the outside of the bread."
+  ],
+  [
+   "browning_knob",
+   "A timer, set by the knob, lets the bread spring back up."
+  ]
+ ],
+ "label": [
+  0,
+  0.35,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

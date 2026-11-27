@@ -1,0 +1,1124 @@
+{
+ "name": "microwave",
+ "about": "a microwave oven (magnetron, waveguide, cavity, turntable, transformer)",
+ "tags": [
+  "machine",
+  "home",
+  "appliance",
+  "kitchen"
+ ],
+ "aliases": [
+  "microwave_oven",
+  "microwaves"
+ ],
+ "key_part": "magnetron",
+ "blueprint": {
+  "what": "A microwave oven: a magnetron makes microwaves that travel down a metal waveguide into a metal box (the cavity), where they shake the water in the food; a glass plate turns the food.",
+  "size_m": [
+   0.5,
+   0.3,
+   0.4
+  ],
+  "sits_on": "counter",
+  "front": "a dark door with a window on the left, a panel with a display and buttons on the right",
+  "casing": "casing",
+  "parts": [
+   {
+    "name": "casing",
+    "shape": "box with rounded edges, vents on the side",
+    "size_m": [
+     0.5,
+     0.3,
+     0.4
+    ],
+    "pos": [
+     0,
+     0.15,
+     0
+    ],
+    "moves": "still"
+   },
+   {
+    "name": "cavity",
+    "shape": "a metal box open at the front",
+    "size_m": [
+     0.32,
+     0.23,
+     0.34
+    ],
+    "pos": [
+     -0.07,
+     0.15,
+     -0.01
+    ],
+    "inside": "casing"
+   },
+   {
+    "name": "door",
+    "shape": "a dark panel with a window",
+    "size_m": [
+     0.36,
+     0.27,
+     0.03
+    ],
+    "faces": "front",
+    "moves": "opens"
+   },
+   {
+    "name": "turntable",
+    "shape": "a round glass plate",
+    "size_m": [
+     0.27,
+     0.01,
+     0.27
+    ],
+    "inside": "cavity",
+    "moves": "spins",
+    "axis": "y"
+   },
+   {
+    "name": "magnetron",
+    "shape": "a box with cooling fins and an antenna",
+    "size_m": [
+     0.08,
+     0.09,
+     0.08
+    ],
+    "pos": [
+     0.18,
+     0.17,
+     -0.06
+    ],
+    "inside": "casing",
+    "connects_to": [
+     "waveguide"
+    ]
+   },
+   {
+    "name": "waveguide",
+    "shape": "a rectangular metal duct",
+    "size_m": [
+     0.08,
+     0.05,
+     0.1
+    ],
+    "inside": "casing",
+    "connects_to": [
+     "magnetron",
+     "cavity"
+    ]
+   },
+   {
+    "name": "transformer",
+    "shape": "a heavy block with copper windings",
+    "size_m": [
+     0.09,
+     0.08,
+     0.09
+    ],
+    "pos": [
+     0.19,
+     0.06,
+     -0.12
+    ],
+    "inside": "casing"
+   },
+   {
+    "name": "cooling_fan",
+    "shape": "a small fan at the back",
+    "size_m": [
+     0.08,
+     0.08,
+     0.02
+    ],
+    "inside": "casing",
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "control_panel",
+    "shape": "a dark strip with a display and buttons",
+    "size_m": [
+     0.12,
+     0.27,
+     0.02
+    ],
+    "faces": "front"
+   },
+   {
+    "name": "food",
+    "shape": "a bowl of soup on the plate",
+    "size_m": [
+     0.12,
+     0.05,
+     0.12
+    ],
+    "inside": "cavity",
+    "moves": "spins",
+    "axis": "y"
+   }
+  ],
+  "shared_axes": [
+   [
+    "turntable",
+    "turntable_coupler",
+    "food"
+   ]
+  ],
+  "visible_details": [
+   "door window",
+   "display",
+   "buttons",
+   "side vents",
+   "glass plate"
+  ]
+ },
+ "parts": [
+  {
+   "name": "chassis",
+   "cad": "box",
+   "size": [
+    0.48,
+    0.012,
+    0.38
+   ],
+   "pos": [
+    0,
+    0.006,
+    0
+   ],
+   "color": "#5b636b",
+   "material": "metal"
+  },
+  {
+   "name": "casing",
+   "cad": "box",
+   "size": [
+    0.5,
+    0.3,
+    0.4
+   ],
+   "pos": [
+    0,
+    0.15,
+    0
+   ],
+   "fillet": 0.012,
+   "hollow": 0.006,
+   "color": "#e9ecef",
+   "material": "paint",
+   "shell": true,
+   "holes": [
+    {
+     "at": [
+      0.25,
+      0.03,
+      -0.08
+     ],
+     "r": 0.0035,
+     "axis": "x",
+     "grid": [
+      6,
+      5,
+      0.018
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cavity",
+   "cad": "box",
+   "size": [
+    0.32,
+    0.23,
+    0.34
+   ],
+   "pos": [
+    -0.07,
+    0.15,
+    -0.01
+   ],
+   "hollow": 0.004,
+   "open": "front",
+   "color": "#d4d9dd",
+   "material": "metal"
+  },
+  {
+   "name": "cavity_rails",
+   "cad": "box",
+   "size": [
+    0.3,
+    0.023,
+    0.03
+   ],
+   "pos": [
+    -0.07,
+    0.024,
+    -0.01
+   ],
+   "color": "#5b636b",
+   "material": "metal"
+  },
+  {
+   "name": "door",
+   "cad": "box",
+   "size": [
+    0.36,
+    0.27,
+    0.03
+   ],
+   "pos": [
+    -0.065,
+    0.15,
+    0.2
+   ],
+   "fillet": 0.008,
+   "color": "#2b3036",
+   "material": "plastic",
+   "windows": [
+    {
+     "at": [
+      0,
+      0,
+      0
+     ],
+     "size": [
+      0.27,
+      0.17,
+      0.1
+     ]
+    }
+   ],
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": -100
+   },
+   "pivot": [
+    -0.245,
+    0.15,
+    0.2
+   ]
+  },
+  {
+   "name": "door_window",
+   "shape": "box",
+   "size": [
+    0.27,
+    0.17,
+    0.004
+   ],
+   "pos": [
+    -0.065,
+    0.15,
+    0.2
+   ],
+   "color": "#1d2328",
+   "opacity": 0.45,
+   "material": "glass",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": -100
+   },
+   "pivot": [
+    -0.245,
+    0.15,
+    0.2
+   ]
+  },
+  {
+   "name": "door_handle",
+   "cad": "box",
+   "size": [
+    0.018,
+    0.2,
+    0.02
+   ],
+   "pos": [
+    0.095,
+    0.15,
+    0.222
+   ],
+   "fillet": 0.006,
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "open",
+    "axis": "y",
+    "deg": -100
+   },
+   "pivot": [
+    -0.245,
+    0.15,
+    0.2
+   ]
+  },
+  {
+   "name": "control_panel",
+   "cad": "box",
+   "size": [
+    0.13,
+    0.27,
+    0.02
+   ],
+   "pos": [
+    0.18,
+    0.15,
+    0.2
+   ],
+   "fillet": 0.006,
+   "color": "#33393f",
+   "material": "plastic"
+  },
+  {
+   "name": "display",
+   "shape": "box",
+   "size": [
+    0.09,
+    0.03,
+    0.004
+   ],
+   "pos": [
+    0.18,
+    0.245,
+    0.211
+   ],
+   "color": "#1c3d24",
+   "emissive": 0.6
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.15,
+    0.2,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.18,
+    0.2,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.21,
+    0.2,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.15,
+    0.17600000000000002,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.18,
+    0.17600000000000002,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.21,
+    0.17600000000000002,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.15,
+    0.15200000000000002,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.18,
+    0.15200000000000002,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "buttons",
+   "cad": "box",
+   "size": [
+    0.025,
+    0.016,
+    0.006
+   ],
+   "pos": [
+    0.21,
+    0.15200000000000002,
+    0.212
+   ],
+   "fillet": 0.003,
+   "color": "#c9ced3",
+   "material": "plastic"
+  },
+  {
+   "name": "start_button",
+   "cad": "box",
+   "size": [
+    0.085,
+    0.022,
+    0.006
+   ],
+   "pos": [
+    0.18,
+    0.06,
+    0.212
+   ],
+   "fillet": 0.004,
+   "color": "#3fae5d",
+   "material": "plastic"
+  },
+  {
+   "name": "turntable",
+   "cad": "cylinder",
+   "size": [
+    0.135,
+    0.006
+   ],
+   "pos": [
+    -0.07,
+    0.05,
+    -0.01
+   ],
+   "chamfer": 0.002,
+   "color": "#cfe8f2",
+   "opacity": 0.55,
+   "material": "glass",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.25
+   },
+   "pivot": [
+    -0.07,
+    0.05,
+    -0.01
+   ]
+  },
+  {
+   "name": "roller_ring",
+   "shape": "torus",
+   "size": [
+    0.08,
+    0.006
+   ],
+   "pos": [
+    -0.07,
+    0.042,
+    -0.01
+   ],
+   "color": "#5b636b",
+   "material": "plastic",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.25
+   },
+   "pivot": [
+    -0.07,
+    0.05,
+    -0.01
+   ]
+  },
+  {
+   "name": "turntable_coupler",
+   "cad": "cylinder",
+   "size": [
+    0.012,
+    0.03
+   ],
+   "pos": [
+    -0.07,
+    0.03,
+    -0.01
+   ],
+   "color": "#e2e2e2",
+   "material": "plastic",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.25
+   },
+   "pivot": [
+    -0.07,
+    0.05,
+    -0.01
+   ]
+  },
+  {
+   "name": "turntable_motor",
+   "cad": "cylinder",
+   "size": [
+    0.025,
+    0.012
+   ],
+   "pos": [
+    -0.07,
+    0.018,
+    -0.01
+   ],
+   "color": "#f1c40f",
+   "material": "plastic"
+  },
+  {
+   "name": "food",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.04,
+     0.0
+    ],
+    [
+     0.06,
+     0.05
+    ],
+    [
+     0.055,
+     0.05
+    ],
+    [
+     0.0,
+     0.01
+    ]
+   ],
+   "pos": [
+    -0.07,
+    0.053,
+    -0.01
+   ],
+   "color": "#f4f1ea",
+   "material": "ceramic",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.25
+   },
+   "pivot": [
+    -0.07,
+    0.05,
+    -0.01
+   ]
+  },
+  {
+   "name": "food_soup",
+   "cad": "cylinder",
+   "size": [
+    0.052,
+    0.006
+   ],
+   "pos": [
+    -0.07,
+    0.095,
+    -0.01
+   ],
+   "color": "#d9822b",
+   "material": "water",
+   "motion": {
+    "type": "spin",
+    "axis": "y",
+    "speed": 0.25
+   },
+   "pivot": [
+    -0.07,
+    0.05,
+    -0.01
+   ]
+  },
+  {
+   "name": "light",
+   "cad": "cylinder",
+   "size": [
+    0.015,
+    0.012
+   ],
+   "pos": [
+    0.06,
+    0.268,
+    0.05
+   ],
+   "color": "#fff2b0",
+   "kind": "light",
+   "emissive": 0.2
+  },
+  {
+   "name": "magnetron",
+   "cad": "box",
+   "size": [
+    0.075,
+    0.075,
+    0.075
+   ],
+   "pos": [
+    0.18,
+    0.17,
+    -0.06
+   ],
+   "fillet": 0.004,
+   "color": "#9aa2a9",
+   "material": "metal"
+  },
+  {
+   "name": "magnetron_fins",
+   "shape": "box",
+   "size": [
+    0.085,
+    0.003,
+    0.085
+   ],
+   "pos": [
+    0.18,
+    0.13,
+    -0.06
+   ],
+   "color": "#c8cdd2",
+   "material": "metal"
+  },
+  {
+   "name": "magnetron_fins",
+   "shape": "box",
+   "size": [
+    0.085,
+    0.003,
+    0.085
+   ],
+   "pos": [
+    0.18,
+    0.14200000000000002,
+    -0.06
+   ],
+   "color": "#c8cdd2",
+   "material": "metal"
+  },
+  {
+   "name": "magnetron_fins",
+   "shape": "box",
+   "size": [
+    0.085,
+    0.003,
+    0.085
+   ],
+   "pos": [
+    0.18,
+    0.154,
+    -0.06
+   ],
+   "color": "#c8cdd2",
+   "material": "metal"
+  },
+  {
+   "name": "magnetron_fins",
+   "shape": "box",
+   "size": [
+    0.085,
+    0.003,
+    0.085
+   ],
+   "pos": [
+    0.18,
+    0.166,
+    -0.06
+   ],
+   "color": "#c8cdd2",
+   "material": "metal"
+  },
+  {
+   "name": "magnetron_antenna",
+   "cad": "cylinder",
+   "size": [
+    0.012,
+    0.03
+   ],
+   "axis": "x",
+   "pos": [
+    0.13,
+    0.2,
+    -0.06
+   ],
+   "color": "#c8763c",
+   "material": "metal"
+  },
+  {
+   "name": "waveguide",
+   "cad": "box",
+   "size": [
+    0.07,
+    0.05,
+    0.1
+   ],
+   "pos": [
+    0.1,
+    0.2,
+    -0.06
+   ],
+   "hollow": 0.003,
+   "color": "#b7bec4",
+   "material": "metal"
+  },
+  {
+   "name": "magnetron_bracket",
+   "cad": "box",
+   "size": [
+    0.06,
+    0.135,
+    0.05
+   ],
+   "pos": [
+    0.18,
+    0.0675,
+    -0.06
+   ],
+   "fillet": 0.003,
+   "color": "#5b636b",
+   "material": "metal"
+  },
+  {
+   "name": "transformer",
+   "cad": "box",
+   "size": [
+    0.09,
+    0.075,
+    0.09
+   ],
+   "pos": [
+    0.19,
+    0.05,
+    -0.13
+   ],
+   "fillet": 0.004,
+   "color": "#4b525a",
+   "material": "metal"
+  },
+  {
+   "name": "transformer_coil",
+   "cad": "cylinder",
+   "size": [
+    0.032,
+    0.05
+   ],
+   "pos": [
+    0.19,
+    0.105,
+    -0.13
+   ],
+   "color": "#c8763c",
+   "material": "metal"
+  },
+  {
+   "name": "capacitor",
+   "cad": "cylinder",
+   "size": [
+    0.022,
+    0.09
+   ],
+   "axis": "z",
+   "pos": [
+    0.19,
+    0.035,
+    0.07
+   ],
+   "fillet": 0.004,
+   "color": "#c3c9ce",
+   "material": "metal"
+  },
+  {
+   "name": "cooling_fan",
+   "shape": "blades",
+   "size": [
+    0.04,
+    0.02,
+    0.004
+   ],
+   "count": 5,
+   "pos": [
+    0.18,
+    0.17,
+    -0.165
+   ],
+   "color": "#2f3540",
+   "material": "plastic",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 3
+   },
+   "pivot": [
+    0.18,
+    0.17,
+    -0.165
+   ]
+  },
+  {
+   "name": "fan_frame",
+   "cad": "cylinder",
+   "size": [
+    0.046,
+    0.02
+   ],
+   "bore": 0.042,
+   "axis": "z",
+   "pos": [
+    0.18,
+    0.17,
+    -0.168
+   ],
+   "color": "#2f3540",
+   "material": "plastic"
+  },
+  {
+   "name": "fan_bracket",
+   "cad": "box",
+   "size": [
+    0.012,
+    0.15,
+    0.01
+   ],
+   "pos": [
+    0.18,
+    0.075,
+    -0.168
+   ],
+   "color": "#5b636b",
+   "material": "metal"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.015,
+    0.01
+   ],
+   "pos": [
+    -0.21,
+    0.005,
+    -0.16
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.015,
+    0.01
+   ],
+   "pos": [
+    -0.21,
+    0.005,
+    0.16
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.015,
+    0.01
+   ],
+   "pos": [
+    0.21,
+    0.005,
+    -0.16
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "feet",
+   "cad": "cylinder",
+   "size": [
+    0.015,
+    0.01
+   ],
+   "pos": [
+    0.21,
+    0.005,
+    0.16
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  }
+ ],
+ "ports": {
+  "power": [
+   0.2,
+   0.05,
+   -0.2
+  ]
+ },
+ "paths": {
+  "waves": [
+   [
+    0.18,
+    0.2,
+    -0.06
+   ],
+   [
+    0.13,
+    0.2,
+    -0.06
+   ],
+   [
+    0.08,
+    0.2,
+    -0.06
+   ],
+   [
+    0.0,
+    0.17,
+    -0.02
+   ],
+   [
+    -0.07,
+    0.1,
+    -0.01
+   ]
+  ],
+  "heat": [
+   [
+    -0.07,
+    0.1,
+    -0.01
+   ],
+   [
+    -0.07,
+    0.18,
+    -0.01
+   ],
+   [
+    -0.04000000000000001,
+    0.24,
+    0.0
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "magnetron",
+   "A magnetron turns electricity into invisible microwaves."
+  ],
+  [
+   "waveguide",
+   "A metal tube guides the waves into the cooking box."
+  ],
+  [
+   "cavity",
+   "The metal walls bounce the waves around inside."
+  ],
+  [
+   "food",
+   "The waves shake the water in the food, and that makes heat."
+  ],
+  [
+   "turntable",
+   "A glass plate turns, so the food heats evenly."
+  ],
+  [
+   "door_window",
+   "A metal mesh in the door window keeps the waves inside."
+  ]
+ ],
+ "label": [
+  0,
+  0.4,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

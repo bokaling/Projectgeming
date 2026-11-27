@@ -1,0 +1,352 @@
+{
+ "name": "desk_lamp",
+ "about": "a balanced-arm desk lamp (base, arms, hinges, springs, shade, bulb)",
+ "tags": [
+  "home",
+  "office",
+  "light"
+ ],
+ "aliases": [
+  "anglepoise",
+  "desk_lamps",
+  "study_lamp"
+ ],
+ "key_part": "springs",
+ "blueprint": {
+  "what": "A balanced-arm desk lamp: a heavy base, two arms joined by hinges, springs that hold the arms in any position, and a shade with a bulb that points down at the desk.",
+  "size_m": [
+   0.55,
+   0.52,
+   0.2
+  ],
+  "sits_on": "table",
+  "front": "the side: the head reaches out to the right",
+  "parts": [
+   {
+    "name": "base",
+    "shape": "a heavy round disc",
+    "size_m": [
+     0.2,
+     0.03,
+     0.2
+    ],
+    "faces": "bottom"
+   },
+   {
+    "name": "lower_arm",
+    "shape": "two parallel rods",
+    "size_m": [
+     0.12,
+     0.36,
+     0.04
+    ]
+   },
+   {
+    "name": "upper_arm",
+    "shape": "two parallel rods",
+    "size_m": [
+     0.29,
+     0.06,
+     0.04
+    ]
+   },
+   {
+    "name": "springs",
+    "shape": "coil springs along the lower arm",
+    "size_m": [
+     0.02,
+     0.18,
+     0.02
+    ]
+   },
+   {
+    "name": "shade",
+    "shape": "a cone open at the bottom",
+    "size_m": [
+     0.18,
+     0.12,
+     0.18
+    ],
+    "faces": "right"
+   },
+   {
+    "name": "bulb",
+    "shape": "a bulb inside the shade",
+    "size_m": [
+     0.05,
+     0.05,
+     0.05
+    ],
+    "inside": "shade"
+   }
+  ],
+  "visible_details": [
+   "hinges",
+   "springs",
+   "shade",
+   "base"
+  ]
+ },
+ "parts": [
+  {
+   "name": "base",
+   "cad": "cylinder",
+   "size": [
+    0.1,
+    0.03
+   ],
+   "pos": [
+    0,
+    0.015,
+    0
+   ],
+   "fillet": 0.008,
+   "color": "#2f3540",
+   "material": "metal"
+  },
+  {
+   "name": "base_pivot",
+   "cad": "box",
+   "size": [
+    0.04,
+    0.04,
+    0.05
+   ],
+   "pos": [
+    0,
+    0.05,
+    0
+   ],
+   "fillet": 0.006,
+   "color": "#2f3540",
+   "material": "metal"
+  },
+  {
+   "name": "lower_arm",
+   "shape": "tube",
+   "points": [
+    [
+     0.0,
+     0.06,
+     -0.018
+    ],
+    [
+     0.12,
+     0.4,
+     -0.018
+    ]
+   ],
+   "size": [
+    0.006
+   ],
+   "color": "#d9dee2",
+   "material": "metal"
+  },
+  {
+   "name": "lower_arm",
+   "shape": "tube",
+   "points": [
+    [
+     0.0,
+     0.06,
+     0.018
+    ],
+    [
+     0.12,
+     0.4,
+     0.018
+    ]
+   ],
+   "size": [
+    0.006
+   ],
+   "color": "#d9dee2",
+   "material": "metal"
+  },
+  {
+   "name": "elbow_joint",
+   "cad": "cylinder",
+   "size": [
+    0.012,
+    0.05
+   ],
+   "axis": "z",
+   "pos": [
+    0.12,
+    0.4,
+    0.0
+   ],
+   "color": "#2f3540",
+   "material": "metal"
+  },
+  {
+   "name": "upper_arm",
+   "shape": "tube",
+   "points": [
+    [
+     0.12,
+     0.4,
+     -0.018
+    ],
+    [
+     0.38,
+     0.44,
+     -0.018
+    ]
+   ],
+   "size": [
+    0.005
+   ],
+   "color": "#d9dee2",
+   "material": "metal"
+  },
+  {
+   "name": "upper_arm",
+   "shape": "tube",
+   "points": [
+    [
+     0.12,
+     0.4,
+     0.018
+    ],
+    [
+     0.38,
+     0.44,
+     0.018
+    ]
+   ],
+   "size": [
+    0.005
+   ],
+   "color": "#d9dee2",
+   "material": "metal"
+  },
+  {
+   "name": "head_joint",
+   "cad": "cylinder",
+   "size": [
+    0.01,
+    0.045
+   ],
+   "axis": "z",
+   "pos": [
+    0.38,
+    0.44,
+    0.0
+   ],
+   "color": "#2f3540",
+   "material": "metal"
+  },
+  {
+   "name": "springs",
+   "shape": "spring",
+   "size": [
+    0.008,
+    0.18,
+    0.0015
+   ],
+   "turns": 14,
+   "pos": [
+    0.04,
+    0.17,
+    0.03
+   ],
+   "rot": [
+    0,
+    0,
+    -19
+   ],
+   "color": "#b9c1c7",
+   "material": "metal"
+  },
+  {
+   "name": "shade",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.02,
+     0.12
+    ],
+    [
+     0.035,
+     0.1
+    ],
+    [
+     0.09,
+     0.0
+    ]
+   ],
+   "hollow": 0.003,
+   "open": "bottom",
+   "rot": [
+    0,
+    0,
+    -25
+   ],
+   "pos": [
+    0.329,
+    0.331,
+    0
+   ],
+   "color": "#c0392b",
+   "material": "paint"
+  },
+  {
+   "name": "bulb_socket",
+   "cad": "cylinder",
+   "size": [
+    0.014,
+    0.05
+   ],
+   "pos": [
+    0.36,
+    0.39,
+    0
+   ],
+   "rot": [
+    0,
+    0,
+    -25
+   ],
+   "color": "#2f3540",
+   "material": "metal"
+  },
+  {
+   "name": "bulb",
+   "shape": "sphere",
+   "size": [
+    0.025
+   ],
+   "pos": [
+    0.352,
+    0.372,
+    0
+   ],
+   "color": "#fff2b0",
+   "kind": "light",
+   "emissive": 0.3
+  }
+ ],
+ "tour": [
+  [
+   "springs",
+   "Springs pull against the weight of the arms."
+  ],
+  [
+   "elbow_joint",
+   "So the arms stay wherever you leave them."
+  ],
+  [
+   "shade",
+   "The shade points the light down at the desk."
+  ]
+ ],
+ "label": [
+  0,
+  0.7,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

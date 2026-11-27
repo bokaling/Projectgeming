@@ -30,6 +30,18 @@ def _x_cyl(r, length, x0, y, z, seg=12):
     return M.xf(M.cylinder(r, length, seg, base=False), (x0 + length / 2, y, z), (0, 0, 90))
 
 
+def _cad(spec: dict, pos=(0, 0, 0), rot=(0, 0, 0)) -> M.Geo:
+    """A real CAD part (bd_warehouse gear, bolt, bearing…) from the repo cache, build123d or the mesh fallback."""
+    from . import cad  # noqa: PLC0415
+
+    return M.xf(cad.shape(spec, builtin=True), pos, rot)
+
+
+def _bolt_x(d, length, x, y, z, head=-1):
+    """A hex bolt lying along x, its head at x (facing -x for head=-1, +x for head=+1), the shank going in."""
+    return _cad({"cad": "bolt", "d": d, "length": length}, (x, y, z), (0, 0, 90 if head < 0 else -90))
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Car engine: inline 4-stroke, real size (about 0.6 m long)
 # ---------------------------------------------------------------------------------------------------------------
@@ -91,7 +103,7 @@ def car_engine(cylinders=4, color="#c0392b"):
                   motion={"type": "valve", "axis": "y", "amp": -0.009, "speed": 0.5, "phase": (base_ph + cyc) % 360},
                   material="metal")
     # crankshaft: journals, webs, pins (one per cylinder, at its own angle), pulley in front, flywheel behind
-    crank = [_x_cyl(0.022, 2 * half + 0.02, -half - 0.01, yc, 0.0)]
+    crank = [_x_cyl(0.022, 2 * half + 0.06, -half - 0.05, yc, 0.0)]  # through the front pulley (it is held)
     for k, x in enumerate(xs):
         a = math.radians(-(fire[k] % 360))
         py, pz = yc + r * math.cos(a), r * math.sin(a)
@@ -102,18 +114,18 @@ def car_engine(cylinders=4, color="#c0392b"):
             crank.append(M.xf(web, (x + dx, yc, 0.0), (math.degrees(a), 0, 0)))
     spin = {"type": "spin", "axis": "x", "speed": 1.0}
     m.add("crankshaft", M.merge(*crank), "#6c747c", motion=spin, pivot=(0.0, yc, 0.0), material="metal")
-    m.add("pulley", _x_cyl(0.065, 0.03, -half - 0.05, yc, 0.0, 16), DARK, motion=dict(spin), pivot=(0.0, yc, 0.0),
-          material="metal")
-    fly = [_x_cyl(0.15, 0.025, half + 0.02, yc, 0.0, 20)]
-    for t in range(24):
-        aa = 2 * math.pi * t / 24
-        fly.append(M.xf(M.box(0.022, 0.02, 0.02), (half + 0.032, yc + 0.152 * math.cos(aa), 0.152 * math.sin(aa)),
-                        (math.degrees(aa), 0, 0)))
+    m.add("pulley", M.merge(_x_cyl(0.065, 0.03, -half - 0.05, yc, 0.0, 16),
+                            _bolt_x(0.014, 0.03, -half - 0.05, yc, 0.0)),  # the crank bolt holds it on
+          DARK, motion=dict(spin), pivot=(0.0, yc, 0.0), material="metal")
+    # flywheel: a real starter ring gear (bd_warehouse spur gear, 118 teeth like a car's) + the 6 bolts on the crank
+    fly = [_cad({"cad": "gear", "module": 0.0025, "teeth": 118, "thickness": 0.022}, (half + 0.032, yc, 0.0), (0, 90, 0))]
+    fly += [_bolt_x(0.01, 0.02, half + 0.043, yc + 0.035 * math.cos(a), 0.035 * math.sin(a), head=1)
+            for a in np.linspace(0, 2 * math.pi, 6, endpoint=False)]
     m.add("flywheel", M.merge(*fly), "#5b636b", motion=dict(spin), pivot=(0.0, yc, 0.0), material="metal")
     # camshafts (half the crank speed): one lobe per valve pair, pointing down when that valve is open
     cam_y = roof + 0.105
     for side, z, base_ph in (("intake", -0.03, 135.0), ("exhaust", 0.03, 225.0)):
-        parts = [_x_cyl(0.009, 2 * half - 0.04, -half + 0.02, cam_y, z, 8)]
+        parts = [_x_cyl(0.009, 2 * half + 0.015, -half - 0.035, cam_y, z, 8)]  # out through the head to its pulley
         for k, x in enumerate(xs):
             lam = math.radians((base_ph + (-fire[k] * 0.5) % 360) % 360)
             for dx in (-0.017, 0.017):
@@ -121,7 +133,8 @@ def car_engine(cylinders=4, color="#c0392b"):
                 parts.append(M.xf(lobe, (x + dx, cam_y, z), (math.degrees(lam), 0, 0)))
         m.add(f"{side}_cam", M.merge(*parts), "#7a828a",
               motion={"type": "spin", "axis": "x", "speed": 0.5}, pivot=(0.0, cam_y, z), material="metal")
-        m.add(f"{side}_cam_pulley", _x_cyl(0.045, 0.02, -half - 0.045, cam_y, z, 16), "#9aa2aa",
+        m.add(f"{side}_cam_pulley", M.merge(_x_cyl(0.045, 0.02, -half - 0.045, cam_y, z, 16),
+                                            _bolt_x(0.008, 0.02, -half - 0.045, cam_y, z)), "#9aa2aa",
               motion={"type": "spin", "axis": "x", "speed": 0.5}, pivot=(0.0, cam_y, z), material="metal")
     # timing belt (front), spark plugs and coils on top, manifolds on the sides
     belt = [(-half - 0.035, yc - 0.068, 0.0), (-half - 0.035, cam_y - 0.02, -0.078), (-half - 0.035, cam_y + 0.047, -0.03),

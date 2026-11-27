@@ -1,0 +1,1571 @@
+{
+ "name": "jet_engine",
+ "about": "a turbofan jet engine on its stand (fan, compressors, combustor, turbines, shafts, nacelle)",
+ "tags": [
+  "machine",
+  "vehicle",
+  "engine",
+  "cutaway"
+ ],
+ "aliases": [
+  "turbofan",
+  "jet_engines",
+  "aircraft_engine",
+  "turbine_engine"
+ ],
+ "key_part": "lp_shaft",
+ "blueprint": {
+  "what": "A turbofan jet engine: a big fan at the front pushes most air around the core; the rest is squeezed by compressors, burned with fuel in a ring-shaped combustor, and spins turbines that turn the fan and compressors through two shafts on one axis.",
+  "size_m": [
+   2.0,
+   2.3,
+   3.0
+  ],
+  "sits_on": "floor",
+  "front": "the round intake with the fan and its spinner",
+  "casing": "nacelle",
+  "parts": [
+   {
+    "name": "nacelle",
+    "shape": "a smooth round cowling, open at both ends",
+    "size_m": [
+     2.0,
+     2.0,
+     2.6
+    ],
+    "pos": [
+     0,
+     1.25,
+     0.2
+    ]
+   },
+   {
+    "name": "fan",
+    "shape": "a ring of wide twisted blades",
+    "size_m": [
+     1.64,
+     1.64,
+     0.2
+    ],
+    "pos": [
+     0,
+     1.25,
+     1.15
+    ],
+    "inside": "nacelle",
+    "moves": "spins",
+    "axis": "z",
+    "faces": "front"
+   },
+   {
+    "name": "spinner",
+    "shape": "a pointed cone on the fan's hub",
+    "size_m": [
+     0.36,
+     0.36,
+     0.35
+    ],
+    "pos": [
+     0,
+     1.25,
+     1.35
+    ],
+    "moves": "spins",
+    "axis": "z",
+    "faces": "front"
+   },
+   {
+    "name": "compressor",
+    "shape": "rows of small blades getting smaller",
+    "size_m": [
+     0.8,
+     0.8,
+     0.9
+    ],
+    "inside": "core_casing",
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "combustor",
+    "shape": "a ring-shaped chamber with fuel nozzles",
+    "size_m": [
+     0.76,
+     0.76,
+     0.3
+    ],
+    "pos": [
+     0,
+     1.25,
+     -0.3
+    ],
+    "inside": "core_casing"
+   },
+   {
+    "name": "turbine",
+    "shape": "rows of blades behind the combustor",
+    "size_m": [
+     1.0,
+     1.0,
+     0.5
+    ],
+    "inside": "core_casing",
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "core_casing",
+    "shape": "a smooth tube around the core, sticking out behind the fan cowling",
+    "size_m": [
+     1.0,
+     1.0,
+     2.3
+    ]
+   },
+   {
+    "name": "lp_shaft",
+    "shape": "a long thin shaft through the middle",
+    "size_m": [
+     0.1,
+     0.1,
+     2.4
+    ],
+    "moves": "spins",
+    "axis": "z"
+   },
+   {
+    "name": "exhaust_cone",
+    "shape": "a pointed plug at the back",
+    "size_m": [
+     0.5,
+     0.5,
+     0.6
+    ],
+    "faces": "back"
+   },
+   {
+    "name": "stand",
+    "shape": "two cradles on a frame",
+    "size_m": [
+     1.6,
+     0.4,
+     2.2
+    ],
+    "moves": "still"
+   }
+  ],
+  "shared_axes": [
+   [
+    "fan",
+    "spinner",
+    "compressor",
+    "turbine",
+    "lp_shaft"
+   ]
+  ],
+  "visible_details": [
+   "fan blades",
+   "spinner",
+   "exhaust cone",
+   "pylon",
+   "stand"
+  ]
+ },
+ "parts": [
+  {
+   "name": "nacelle",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.86,
+     1.45
+    ],
+    [
+     0.98,
+     1.38
+    ],
+    [
+     1.0,
+     1.1
+    ],
+    [
+     0.98,
+     0.3
+    ],
+    [
+     0.9,
+     -0.6
+    ],
+    [
+     0.86,
+     -0.75
+    ],
+    [
+     0.82,
+     -0.6
+    ],
+    [
+     0.84,
+     0.3
+    ],
+    [
+     0.86,
+     1.2
+    ],
+    [
+     0.83,
+     1.4
+    ]
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "ring": true,
+   "pos": [
+    0,
+    1.25,
+    0
+   ],
+   "color": "#e9edf0",
+   "material": "paint",
+   "shell": true
+  },
+  {
+   "name": "pylon",
+   "cad": "extrude",
+   "poly": [
+    [
+     -0.9,
+     0.0
+    ],
+    [
+     0.9,
+     0.0
+    ],
+    [
+     0.5,
+     0.5
+    ],
+    [
+     -0.7,
+     0.5
+    ]
+   ],
+   "size": [
+    0.14
+   ],
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "pos": [
+    0,
+    2.23,
+    -0.2
+   ],
+   "fillet": 0.02,
+   "color": "#d5dbe0",
+   "material": "paint"
+  },
+  {
+   "name": "core_casing",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.42,
+     1.0
+    ],
+    [
+     0.5,
+     0.7
+    ],
+    [
+     0.5,
+     -0.6
+    ],
+    [
+     0.4,
+     -1.1
+    ],
+    [
+     0.36,
+     -1.1
+    ],
+    [
+     0.46,
+     -0.6
+    ],
+    [
+     0.46,
+     0.7
+    ],
+    [
+     0.38,
+     1.0
+    ]
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "ring": true,
+   "pos": [
+    0,
+    1.25,
+    0
+   ],
+   "color": "#8f979e",
+   "material": "metal",
+   "shell": true
+  },
+  {
+   "name": "struts",
+   "cad": "box",
+   "size": [
+    0.06,
+    0.38,
+    0.12
+   ],
+   "pos": [
+    0,
+    1.9300000000000002,
+    0.55
+   ],
+   "rot": [
+    0,
+    0,
+    0
+   ],
+   "color": "#9aa2a9",
+   "material": "metal",
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "struts",
+   "cad": "box",
+   "size": [
+    0.06,
+    0.38,
+    0.12
+   ],
+   "pos": [
+    0,
+    0.57,
+    0.55
+   ],
+   "color": "#9aa2a9",
+   "material": "metal"
+  },
+  {
+   "name": "struts",
+   "cad": "box",
+   "size": [
+    0.38,
+    0.06,
+    0.12
+   ],
+   "pos": [
+    0.68,
+    1.25,
+    0.55
+   ],
+   "color": "#9aa2a9",
+   "material": "metal"
+  },
+  {
+   "name": "struts",
+   "cad": "box",
+   "size": [
+    0.38,
+    0.06,
+    0.12
+   ],
+   "pos": [
+    -0.68,
+    1.25,
+    0.55
+   ],
+   "color": "#9aa2a9",
+   "material": "metal"
+  },
+  {
+   "name": "fan",
+   "shape": "blades",
+   "size": [
+    0.82,
+    0.24,
+    0.025
+   ],
+   "count": 22,
+   "pos": [
+    0,
+    1.25,
+    1.15
+   ],
+   "color": "#7d868e",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "spinner",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.18,
+     0.0
+    ],
+    [
+     0.16,
+     0.12
+    ],
+    [
+     0.1,
+     0.25
+    ],
+    [
+     0.0,
+     0.34
+    ]
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    1.25,
+    1.18
+   ],
+   "color": "#dfe4e8",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "compressor",
+   "shape": "blades",
+   "size": [
+    0.4,
+    0.1,
+    0.012
+   ],
+   "count": 30,
+   "pos": [
+    0,
+    1.25,
+    0.9
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "compressor",
+   "shape": "blades",
+   "size": [
+    0.4,
+    0.1,
+    0.012
+   ],
+   "count": 30,
+   "pos": [
+    0,
+    1.25,
+    0.81
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "compressor",
+   "shape": "blades",
+   "size": [
+    0.4,
+    0.1,
+    0.012
+   ],
+   "count": 30,
+   "pos": [
+    0,
+    1.25,
+    0.72
+   ],
+   "color": "#aeb6bd",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_compressor",
+   "shape": "blades",
+   "size": [
+    0.36,
+    0.07,
+    0.01
+   ],
+   "count": 36,
+   "pos": [
+    0,
+    1.25,
+    0.6
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_compressor",
+   "shape": "blades",
+   "size": [
+    0.348,
+    0.07,
+    0.01
+   ],
+   "count": 36,
+   "pos": [
+    0,
+    1.25,
+    0.51
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_compressor",
+   "shape": "blades",
+   "size": [
+    0.33599999999999997,
+    0.07,
+    0.01
+   ],
+   "count": 36,
+   "pos": [
+    0,
+    1.25,
+    0.42
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_compressor",
+   "shape": "blades",
+   "size": [
+    0.32399999999999995,
+    0.07,
+    0.01
+   ],
+   "count": 36,
+   "pos": [
+    0,
+    1.25,
+    0.32999999999999996
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_compressor",
+   "shape": "blades",
+   "size": [
+    0.312,
+    0.07,
+    0.01
+   ],
+   "count": 36,
+   "pos": [
+    0,
+    1.25,
+    0.24
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_compressor",
+   "shape": "blades",
+   "size": [
+    0.3,
+    0.07,
+    0.01
+   ],
+   "count": 36,
+   "pos": [
+    0,
+    1.25,
+    0.15000000000000002
+   ],
+   "color": "#c3c9ce",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "combustor",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.2,
+     0.0
+    ],
+    [
+     0.47,
+     0.0
+    ],
+    [
+     0.47,
+     0.3
+    ],
+    [
+     0.2,
+     0.3
+    ]
+   ],
+   "ring": true,
+   "hollow": 0.01,
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    1.25,
+    -0.45
+   ],
+   "color": "#c06a2b",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    0.33,
+    1.25,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    0.26697560814373267,
+    1.443969133256516,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    0.10197560814373266,
+    1.5638486503774007,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    -0.10197560814373263,
+    1.5638486503774007,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    -0.2669756081437326,
+    1.443969133256516,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    -0.33,
+    1.25,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    -0.2669756081437327,
+    1.056030866743484,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    -0.1019756081437327,
+    0.9361513496225993,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    0.10197560814373259,
+    0.9361513496225993,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "fuel_nozzles",
+   "cad": "cylinder",
+   "size": [
+    0.018,
+    0.14
+   ],
+   "axis": "z",
+   "pos": [
+    0.2669756081437326,
+    1.056030866743484,
+    -0.1
+   ],
+   "color": "#d0b47a",
+   "material": "metal"
+  },
+  {
+   "name": "flame",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.23,
+     0.0
+    ],
+    [
+     0.35,
+     0.0
+    ],
+    [
+     0.33,
+     0.26
+    ],
+    [
+     0.25,
+     0.26
+    ]
+   ],
+   "ring": true,
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    1.25,
+    -0.43
+   ],
+   "color": "#ff8a2a",
+   "emissive": 0.8,
+   "opacity": 0.6,
+   "kind": "flame"
+  },
+  {
+   "name": "hp_turbine",
+   "shape": "blades",
+   "size": [
+    0.37,
+    0.08,
+    0.015
+   ],
+   "count": 40,
+   "pos": [
+    0,
+    1.25,
+    -0.55
+   ],
+   "color": "#b88a52",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "turbine",
+   "shape": "blades",
+   "size": [
+    0.42,
+    0.07,
+    0.015
+   ],
+   "count": 44,
+   "pos": [
+    0,
+    1.25,
+    -0.7
+   ],
+   "color": "#a78b6a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "turbine",
+   "shape": "blades",
+   "size": [
+    0.44,
+    0.07,
+    0.015
+   ],
+   "count": 44,
+   "pos": [
+    0,
+    1.25,
+    -0.8099999999999999
+   ],
+   "color": "#a78b6a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "turbine",
+   "shape": "blades",
+   "size": [
+    0.45999999999999996,
+    0.07,
+    0.015
+   ],
+   "count": 44,
+   "pos": [
+    0,
+    1.25,
+    -0.9199999999999999
+   ],
+   "color": "#a78b6a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "turbine",
+   "shape": "blades",
+   "size": [
+    0.48,
+    0.07,
+    0.015
+   ],
+   "count": 44,
+   "pos": [
+    0,
+    1.25,
+    -1.03
+   ],
+   "color": "#a78b6a",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "lp_shaft",
+   "cad": "cylinder",
+   "size": [
+    0.05,
+    2.4
+   ],
+   "axis": "z",
+   "pos": [
+    0,
+    1.25,
+    0.05
+   ],
+   "color": "#6c747c",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 0.6
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "hp_shaft",
+   "cad": "cylinder",
+   "size": [
+    0.1,
+    1.2
+   ],
+   "bore": 0.065,
+   "axis": "z",
+   "pos": [
+    0,
+    1.25,
+    0.05
+   ],
+   "color": "#8e979f",
+   "material": "metal",
+   "motion": {
+    "type": "spin",
+    "axis": "z",
+    "speed": 1.0
+   },
+   "pivot": [
+    0,
+    1.25,
+    0
+   ]
+  },
+  {
+   "name": "exhaust_cone",
+   "cad": "revolve",
+   "profile": [
+    [
+     0.0,
+     -1.55
+    ],
+    [
+     0.12,
+     -1.4
+    ],
+    [
+     0.25,
+     -1.15
+    ],
+    [
+     0.3,
+     -1.0
+    ]
+   ],
+   "rot": [
+    90,
+    0,
+    0
+   ],
+   "pos": [
+    0,
+    1.25,
+    0
+   ],
+   "color": "#7d6a5c",
+   "material": "metal"
+  },
+  {
+   "name": "cone_struts",
+   "cad": "box",
+   "size": [
+    0.7,
+    0.03,
+    0.08
+   ],
+   "pos": [
+    0,
+    1.25,
+    -1.0
+   ],
+   "color": "#7d6a5c",
+   "material": "metal"
+  },
+  {
+   "name": "stand_frame",
+   "cad": "box",
+   "size": [
+    1.4,
+    0.1,
+    2.2
+   ],
+   "pos": [
+    0,
+    0.05,
+    0
+   ],
+   "fillet": 0.02,
+   "color": "#2f6fb3",
+   "material": "paint",
+   "windows": [
+    {
+     "at": [
+      0,
+      0,
+      0
+     ],
+     "size": [
+      1.1,
+      0.2,
+      1.9
+     ]
+    }
+   ]
+  },
+  {
+   "name": "stand",
+   "cad": "extrude",
+   "poly": [
+    [
+     -0.7,
+     0.0
+    ],
+    [
+     0.7,
+     0.0
+    ],
+    [
+     0.7,
+     0.3
+    ],
+    [
+     0.5,
+     0.3
+    ],
+    [
+     0.0,
+     0.36
+    ],
+    [
+     -0.5,
+     0.3
+    ],
+    [
+     -0.7,
+     0.3
+    ]
+   ],
+   "size": [
+    0.14
+   ],
+   "pos": [
+    0,
+    0.1,
+    -0.7
+   ],
+   "color": "#2f6fb3",
+   "material": "paint"
+  },
+  {
+   "name": "stand",
+   "cad": "extrude",
+   "poly": [
+    [
+     -0.7,
+     0.0
+    ],
+    [
+     0.7,
+     0.0
+    ],
+    [
+     0.7,
+     0.3
+    ],
+    [
+     0.5,
+     0.3
+    ],
+    [
+     0.0,
+     0.36
+    ],
+    [
+     -0.5,
+     0.3
+    ],
+    [
+     -0.7,
+     0.3
+    ]
+   ],
+   "size": [
+    0.14
+   ],
+   "pos": [
+    0,
+    0.1,
+    0.6
+   ],
+   "color": "#2f6fb3",
+   "material": "paint"
+  },
+  {
+   "name": "stand",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.42,
+    0.14
+   ],
+   "pos": [
+    -0.45,
+    0.53,
+    -0.7
+   ],
+   "color": "#2f6fb3",
+   "material": "paint"
+  },
+  {
+   "name": "stand",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.42,
+    0.14
+   ],
+   "pos": [
+    -0.45,
+    0.53,
+    0.6
+   ],
+   "color": "#2f6fb3",
+   "material": "paint"
+  },
+  {
+   "name": "stand",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.42,
+    0.14
+   ],
+   "pos": [
+    0.45,
+    0.53,
+    -0.7
+   ],
+   "color": "#2f6fb3",
+   "material": "paint"
+  },
+  {
+   "name": "stand",
+   "cad": "box",
+   "size": [
+    0.12,
+    0.42,
+    0.14
+   ],
+   "pos": [
+    0.45,
+    0.53,
+    0.6
+   ],
+   "color": "#2f6fb3",
+   "material": "paint"
+  },
+  {
+   "name": "stand_wheels",
+   "cad": "cylinder",
+   "size": [
+    0.06,
+    0.05
+   ],
+   "axis": "x",
+   "pos": [
+    -0.68,
+    0.06,
+    -1.0
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "stand_wheels",
+   "cad": "cylinder",
+   "size": [
+    0.06,
+    0.05
+   ],
+   "axis": "x",
+   "pos": [
+    -0.68,
+    0.06,
+    1.0
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "stand_wheels",
+   "cad": "cylinder",
+   "size": [
+    0.06,
+    0.05
+   ],
+   "axis": "x",
+   "pos": [
+    0.68,
+    0.06,
+    -1.0
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  },
+  {
+   "name": "stand_wheels",
+   "cad": "cylinder",
+   "size": [
+    0.06,
+    0.05
+   ],
+   "axis": "x",
+   "pos": [
+    0.68,
+    0.06,
+    1.0
+   ],
+   "color": "#26292d",
+   "material": "rubber"
+  }
+ ],
+ "ports": {
+  "intake": [
+   0,
+   1.25,
+   1.5
+  ],
+  "exhaust": [
+   0,
+   1.25,
+   -1.6
+  ],
+  "fuel": [
+   0.0,
+   1.85,
+   -0.1
+  ]
+ },
+ "paths": {
+  "air": [
+   [
+    0,
+    1.55,
+    1.6
+   ],
+   [
+    0,
+    1.57,
+    1.1
+   ],
+   [
+    0,
+    1.58,
+    0.6
+   ],
+   [
+    0,
+    1.55,
+    0.0
+   ],
+   [
+    0,
+    1.54,
+    -0.3
+   ],
+   [
+    0,
+    1.58,
+    -0.7
+   ],
+   [
+    0,
+    1.6099999999999999,
+    -1.1
+   ],
+   [
+    0,
+    1.45,
+    -1.6
+   ]
+  ],
+  "bypass": [
+   [
+    0,
+    1.95,
+    1.6
+   ],
+   [
+    0,
+    1.9300000000000002,
+    1.0
+   ],
+   [
+    0,
+    1.9300000000000002,
+    0.0
+   ],
+   [
+    0,
+    1.95,
+    -0.6
+   ],
+   [
+    0,
+    1.97,
+    -0.9
+   ]
+  ],
+  "fuel": [
+   [
+    0.0,
+    2.15,
+    -0.1
+   ],
+   [
+    0.0,
+    1.85,
+    -0.1
+   ],
+   [
+    0.0,
+    1.54,
+    -0.1
+   ]
+  ]
+ },
+ "tour": [
+  [
+   "fan",
+   "A giant fan sucks in air at the front."
+  ],
+  [
+   "compressor",
+   "Rows of small blades squeeze the air tighter and tighter."
+  ],
+  [
+   "combustor",
+   "In the combustor, fuel is sprayed in and burns."
+  ],
+  [
+   "turbine",
+   "The hot gas spins the turbine blades."
+  ],
+  [
+   "lp_shaft",
+   "A shaft lets the turbine turn the fan at the front."
+  ],
+  [
+   "exhaust_cone",
+   "The hot gas blasts out of the back, and pushes the plane forward."
+  ]
+ ],
+ "label": [
+  0,
+  2.85,
+  0
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
+}

@@ -1,0 +1,275 @@
+{
+ "title": "How a Dishwasher Works",
+ "preset": "studio",
+ "areas": [
+  {
+   "id": "kitchen",
+   "setting": "kitchen"
+  }
+ ],
+ "objects": [
+  {
+   "id": "dw1",
+   "asset": "dishwasher",
+   "area": "kitchen",
+   "pos": [
+    0,
+    0
+   ]
+  }
+ ],
+ "scenes": [
+  {
+   "camera": {
+    "move": "push_in",
+    "target": "dw1"
+   },
+   "actions": [
+    {
+     "do": "open",
+     "target": "dw1.door",
+     "at": 0.1
+    }
+   ],
+   "labels": [],
+   "keywords": [
+    {
+     "text": "less water",
+     "kind": "wow",
+     "at": "less"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "cutaway",
+    "target": "dw1"
+   },
+   "actions": [
+    {
+     "do": "close",
+     "target": "dw1.door",
+     "at": 0.0
+    },
+    {
+     "do": "cutaway",
+     "target": "dw1",
+     "at": 0.15,
+     "keep": true
+    }
+   ],
+   "labels": [],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "dw1.inlet_valve"
+   },
+   "actions": [
+    {
+     "do": "flow",
+     "target": "dw1",
+     "path": "water",
+     "at": "valve",
+     "color": "#3aa6d9",
+     "color2": "#bfe6ff"
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.inlet_valve",
+     "text": "Inlet valve",
+     "kind": "part",
+     "at": "valve"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "a few liters",
+     "kind": "number",
+     "at": "few"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "dw1.sump"
+   },
+   "actions": [
+    {
+     "do": "fill",
+     "target": "dw1.water",
+     "at": "collects",
+     "from": 0.1,
+     "to": 1.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.sump",
+     "text": "Sump",
+     "kind": "part",
+     "at": "sump"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "macro",
+    "target": "dw1.heater"
+   },
+   "actions": [
+    {
+     "do": "light_on",
+     "target": "dw1",
+     "at": "warms"
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.heater",
+     "text": "Heater",
+     "kind": "part",
+     "at": "heating"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "60 degrees",
+     "kind": "number",
+     "at": "sixty"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "dw1.wash_pump"
+   },
+   "actions": [
+    {
+     "do": "flow",
+     "target": "dw1",
+     "path": "spray",
+     "at": "pushes",
+     "color": "#5fc3f0",
+     "color2": "#d8f3ff"
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.wash_pump",
+     "text": "Wash pump",
+     "kind": "part",
+     "at": "pump"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "dw1.lower_spray_arm"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "dw1",
+     "at": 0.0
+    },
+    {
+     "do": "flow",
+     "target": "dw1",
+     "path": "spray",
+     "at": 0.0,
+     "color": "#5fc3f0",
+     "color2": "#d8f3ff"
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.lower_spray_arm",
+     "text": "Spray arms",
+     "kind": "part",
+     "at": "arms"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "dw1.filter"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "dw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.filter",
+     "text": "Filter",
+     "kind": "part",
+     "at": "filter"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "dw1.drain_pump"
+   },
+   "actions": [
+    {
+     "do": "drain",
+     "target": "dw1.water",
+     "at": "pushes"
+    },
+    {
+     "do": "flow",
+     "target": "dw1",
+     "path": "drain",
+     "at": "pushes",
+     "color": "#7b8f9c"
+    }
+   ],
+   "labels": [
+    {
+     "target": "dw1.drain_pump",
+     "text": "Drain pump",
+     "kind": "part",
+     "at": "pump"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "pull_out",
+    "target": "dw1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "dw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [],
+   "keywords": [
+    {
+     "text": "still wet?",
+     "kind": "problem",
+     "at": "wet"
+    }
+   ]
+  }
+ ]
+}

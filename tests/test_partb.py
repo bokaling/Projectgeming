@@ -96,13 +96,27 @@ def test_ensure_objects_designs_unknown_things(monkeypatch, tmp_path):
     from storyforge import llm
 
     monkeypatch.setattr(builder, "user_dir", lambda: tmp_path)
-    recipe = {**RECIPE, "name": "x", "aliases": []}
+    recipe = copy.deepcopy({**RECIPE, "name": "x", "aliases": []})
+    recipe["parts"][1]["pos"] = [0, 0.35, 0]  # the bulb sits on the base, the cap on the glass: it holds together
+    recipe["parts"][3]["pos"] = [0, 0.75, 0]
     monkeypatch.setattr(llm, "generate_json", lambda *a, **k: ("fake", copy.deepcopy(recipe)))
     plan = {"objects": [{"id": "z1", "asset": "zeppelin"}, {"id": "c1", "asset": "cow"}]}
     assert builder.ensure_objects(plan) == ["zeppelin"]
     assert plan["objects"][0]["asset"] == "zeppelin" and "zeppelin" in assets.REGISTRY
     assert (tmp_path / "zeppelin.json").exists()  # saved for next time (Drive library)
     assert plan["objects"][1]["asset"] == "cow"
+
+
+def test_a_design_with_floating_parts_is_used_but_not_saved(monkeypatch, tmp_path):
+    from storyforge import llm
+
+    monkeypatch.setattr(builder, "user_dir", lambda: tmp_path)
+    recipe = {**RECIPE, "name": "x", "aliases": []}  # bulb and cap hang in the air, every redesign too
+    monkeypatch.setattr(llm, "generate_json", lambda *a, **k: ("fake", copy.deepcopy(recipe)))
+    plan = {"objects": [{"id": "z1", "asset": "airship_lantern"}]}
+    assert builder.ensure_objects(plan) == ["airship_lantern"]
+    assert "airship_lantern" in assets.REGISTRY  # used for this video
+    assert not (tmp_path / "airship_lantern.json").exists()  # but not saved for next time
 
 
 def test_without_ai_the_closest_object_is_used(monkeypatch, tmp_path):

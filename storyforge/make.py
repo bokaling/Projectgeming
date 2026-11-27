@@ -1,6 +1,6 @@
 """Make a whole video from the command line (CPU or GPU), with your own plan if you have one.
 
-    python -m storyforge.make --script script.txt --plan plan.json --res 720p --out video.mp4
+    python -m storyforge.make --script script.txt --plan plan.json --res 720p --out video.mp4 [--sfx subtle]
 
 --plan is optional: without it the planner makes the plan (Gemini with a free key, else the built-in planner).
 The plan is checked and repaired exactly like a plan pasted in the app (docs/PLAN_CHEATSHEET.md).
@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--root", help="StoryForge folder (default: the normal one for this computer)")
     ap.add_argument("--series", default="", help="series name (default: from the format)")
     ap.add_argument("--no-check", action="store_true", help="skip the quality check before the render")
+    ap.add_argument("--sfx", default="subtle", choices=["off", "subtle", "full"],
+                    help="sound effects: off, subtle (default: soft music, whooshes, a few soft hits) or full")
     args = ap.parse_args(argv)
 
     from . import config, pipeline, script
@@ -37,7 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     config.init(args.root) if args.root else config.init()
     text = Path(args.script).read_text(encoding="utf-8")
     opts = EpisodeOptions(script_text=text, length="long" if args.long else "short", resolution=args.res,
-                          video_format=args.format, seconds=args.seconds, quality_check=not args.no_check)
+                          video_format=args.format, seconds=args.seconds, quality_check=not args.no_check,
+                          sfx=args.sfx)
     rep = Reporter(echo=True)
     try:
         series = Series.create(args.series) if args.series else pipeline.auto_series(opts, text)

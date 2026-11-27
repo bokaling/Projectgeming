@@ -1,0 +1,290 @@
+{
+ "title": "How a Jet Engine Works",
+ "preset": "studio",
+ "areas": [
+  {
+   "id": "hangar",
+   "setting": "hangar"
+  }
+ ],
+ "objects": [
+  {
+   "id": "jet1",
+   "asset": "jet_engine",
+   "area": "hangar",
+   "pos": [
+    0,
+    0
+   ]
+  }
+ ],
+ "scenes": [
+  {
+   "camera": {
+    "move": "push_in",
+    "target": "jet1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.05,
+     "speed": 1.0
+    }
+   ],
+   "labels": [],
+   "keywords": [
+    {
+     "text": "half a ton of air",
+     "kind": "wow",
+     "at": "half"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "cutaway",
+    "target": "jet1"
+   },
+   "actions": [
+    {
+     "do": "cutaway",
+     "target": "jet1",
+     "at": 0.1,
+     "keep": true
+    },
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    }
+   ],
+   "labels": [],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "jet1.fan"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    },
+    {
+     "do": "flow",
+     "target": "jet1",
+     "path": "air",
+     "at": "pulls",
+     "color": "#9fd8ff"
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.fan",
+     "text": "Fan",
+     "kind": "part",
+     "at": "fan"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "jet1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    },
+    {
+     "do": "flow",
+     "target": "jet1",
+     "path": "bypass",
+     "at": "around",
+     "color": "#9fd8ff"
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.nacelle",
+     "text": "Bypass air",
+     "kind": "info",
+     "at": "around"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "most of the push",
+     "kind": "wow",
+     "at": "most"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "hero",
+    "target": "jet1.hp_compressor"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.hp_compressor",
+     "text": "Compressor",
+     "kind": "part",
+     "at": "compressor"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "macro",
+    "target": "jet1.combustor"
+   },
+   "actions": [
+    {
+     "do": "glow",
+     "target": "jet1.combustor",
+     "at": "burns"
+    },
+    {
+     "do": "flow",
+     "target": "jet1",
+     "path": "fuel",
+     "at": "sprayed",
+     "color": "#ffb347"
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.combustor",
+     "text": "Combustor",
+     "kind": "part",
+     "at": "combustor"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "1,500 degrees",
+     "kind": "number",
+     "at": "1,500"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "jet1.turbine"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    },
+    {
+     "do": "flow",
+     "target": "jet1",
+     "path": "air",
+     "at": 0.1,
+     "color": "#ff9a3c",
+     "color2": "#c9ccd0"
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.turbine",
+     "text": "Turbine",
+     "kind": "part",
+     "at": "turbine"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "jet1.lp_shaft"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.lp_shaft",
+     "text": "Shafts",
+     "kind": "part",
+     "at": "shafts"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "pull_out",
+    "target": "jet1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    },
+    {
+     "do": "flow",
+     "target": "jet1",
+     "path": "air",
+     "at": "blasts",
+     "color": "#ff9a3c",
+     "color2": "#c9ccd0"
+    }
+   ],
+   "labels": [
+    {
+     "target": "jet1.exhaust_cone",
+     "text": "Exhaust",
+     "kind": "part",
+     "at": "back"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "low_angle",
+    "target": "jet1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "jet1",
+     "at": 0.0
+    }
+   ],
+   "labels": [],
+   "keywords": [
+    {
+     "text": "a bird?",
+     "kind": "problem",
+     "at": "bird"
+    }
+   ]
+  }
+ ]
+}

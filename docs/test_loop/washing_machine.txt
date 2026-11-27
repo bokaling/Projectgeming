@@ -1,0 +1,23 @@
+[TITLE] How a Washing Machine Works
+[SCENE] the washing machine starts and the drum spins
+NARRATOR: Your washing machine spins your clothes at 1,200 turns a minute.
+[SCENE] the machine cut open
+NARRATOR: Let's cut it open and see how it really works.
+[SCENE] close on the inlet valve
+NARRATOR: First, a valve at the back opens and lets water rush in through the soap drawer.
+[SCENE] the tub fills with water
+NARRATOR: The water fills a sealed plastic tub. Inside it sits a steel drum full of tiny holes.
+[SCENE] the heater warms the water
+NARRATOR: A heating element at the bottom warms the water to forty degrees.
+[SCENE] the motor and the belt
+NARRATOR: Under the tub, a motor turns the drum with a rubber belt and a big pulley.
+[SCENE] the drum tumbles the clothes
+NARRATOR: Paddles inside the drum lift your clothes and drop them, again and again.
+[SCENE] the springs and dampers
+NARRATOR: The heavy tub hangs on springs, and dampers stop it shaking the whole house.
+[SCENE] the drain pump
+NARRATOR: When the wash is done, a pump pushes the dirty water out through the drain hose.
+[SCENE] the drum spins fast
+NARRATOR: Then the drum spins so fast that the water flies out through the holes.
+[SCENE] close on the door
+NARRATOR: So why does the door stay locked for a minute after it stops?

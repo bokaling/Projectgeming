@@ -26,6 +26,18 @@ EXAMPLE = {
     ]}
 
 
+def _wrap(head: str, items: list[str], width: int) -> list[str]:
+    """Items joined with commas, a new line when one gets longer than width (the first line starts with head)."""
+    out, row = [], head
+    for x in items:
+        if len(row) + len(x) > width and row.strip() != head.strip():
+            out.append(row.rstrip(", "))
+            row = "  "
+        row += x + ", "
+    out.append(row.rstrip(", "))
+    return out
+
+
 def build() -> str:
     from . import assets, kit, plan as P, presets, settings  # noqa: PLC0415
 
@@ -47,17 +59,30 @@ def build() -> str:
               "## Mechanism kit (in a new object's recipe: {\"kit\": piece, \"name\", \"pos\", \"size\", \"axis\": "
               "x/y/z/-x/-y/-z}; also objects kit_<piece>)", "", ", ".join(kit.KIT), "",
               "## Machines: real part names, ports, paths", ""]
+    from . import cad, imported  # noqa: PLC0415
+
     simple = []
     for info in sorted(assets.REGISTRY.values(), key=lambda i: i.name):
-        if "set" in info.tags or "kit" in info.tags:
+        if "set" in info.tags or "kit" in info.tags or "imported" in info.tags:
             continue
         names, anchors, paths = assets.part_list(info.name) if {"machine", "cutaway"} & set(info.tags) else ([], [], [])
         if names:
             extra = (f" · ports: {', '.join(anchors[:10])}" if anchors else "") + \
                     (f" · paths: {', '.join(paths)}" if paths else "")
-            lines.append(f"- **{info.name}**: {', '.join(names[:28])}{extra}")
+            lines.append(f"- **{info.name}**: {', '.join(names)}{extra}")
         else:
             simple.append(info.name + (f" ({assets.REAL_SIZE[info.name]} m)" if info.name in assets.REAL_SIZE else ""))
+    lines += ["", "## Free CC0 models (ready-made everyday things: use them by name; files load once from Drive)", ""]
+    where: dict[str, list[str]] = {}
+    for it in imported.CATALOG:
+        where.setdefault(it.place, []).append(f"`{it.name}` {it.size[1]} m")
+    for place, items in where.items():
+        lines += _wrap(f"On the {place}: ", items, 150)
+    lines += ["", "Licenses: LICENSES/assets.md (all CC0). Other CC0 packs copied to Drive library/models/<pack>/ "
+              "become `<pack>_<file>`.", "",
+              "## CAD shapes for new objects' recipes (a part with \"cad\": shape; build123d + bd_warehouse)", ""]
+    lines += [f"- `{k}`: {v}" for k, v in cad.SHAPES.items()]
+    lines += ["- modifiers: " + cad.MODIFIERS]
     lines += ["", "## Other assets", ""]
     row = []
     for name in simple:

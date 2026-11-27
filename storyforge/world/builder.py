@@ -26,6 +26,7 @@ KINDS = {"", "blade", "wheel", "piston", "rocker", "flame", "liquid", "light", "
 MATERIALS = {"metal", "paint", "plastic", "glass", "rubber", "ceramic", "water"}
 RECIPES_DIR = Path(__file__).parent / "recipes"
 _loaded: set = set()
+_BUILTIN: dict = {}  # {"on": True} while the built-in recipes load: their CAD meshes are kept in the repo
 
 DESIGN_SYSTEM = """You design ONE low poly 3D object for a "how it works" explainer as a recipe of basic shapes.
 It must be the REAL thing at its REAL size, with its REAL working parts inside, so the video can cut it open and show
@@ -68,11 +69,37 @@ when turned on: heating elements, toaster wires), flame. A moving part turns abo
 Believable colours (metal grey, copper coils, white enamel, black rubber), not toy colours.
 "tour": the key working parts in the order they work, each with one plain, true sentence of what it does
 ([["compressor", "A compressor squeezes the gas, and it gets hot."], …]); no numbers.
+CAD SHAPES (smooth, real-looking parts: prefer these for casings, drums, nozzles, hoses, brackets and mechanical
+parts): a part with "cad": "<shape>" instead of "shape"; sizes in metres, centred on "pos" like the basic shapes:
+CAD_LIST
+Every casing has rounded edges ("fillet" 1-3 cm), round things are revolve/cylinder (never a box), hollow things are
+"hollow" (a cut shows a thin wall, not a solid slab), doors have windows/handles, motors and pumps sit on brackets
+and are bolted ("bolt"/"nut" parts), gears are "gear" parts that really mesh (centre distance = module x (n1 + n2) / 2).
+BUILD THE BLUEPRINT: you get "blueprint" (how the real thing is built). Follow it exactly: the same part names,
+sizes, positions, what sits inside the casing, which way parts face, shared axes, how they move. Every part must
+touch what holds it (nothing floats), spinning parts turn about the blueprint's axis and share it where it says so.
 REQUIRED: real part names (the camera aims at them: "drum", "magnetron", "compressor"), "key_part" (the most important
 working part: the cutaway plane goes through it), "ports" for pipes/cables (inlet, outlet, power…), "paths" for every
 flow (water in, air through, heat out, current), and a "tour".
 Reply with JSON only: {"name", "about", "tags", "aliases", "key_part", "parts": [...], "paths": {...}, "ports": {...},
 "tour": [...], "label": [x,y,z]}"""
+
+DESCRIBE_SYSTEM = """Before a 3D model of a real object is built, you write down HOW THE REAL THING IS BUILT, like an
+engineer looking at the real one. Real sizes in metres. Our axes: y is up, the object stands on y = 0, its FRONT
+faces +z (towards the camera), x goes to the right. Think about: its main parts and their real shapes, which way it
+stands and faces, what connects to what (a motor is bolted to the frame, a drum hangs on a shaft, a fan sits on its
+motor's shaft), which parts share one axis (a turbine's fan, compressor and shaft; a drum and its pulley), what sits
+inside a casing, which way things move, real dimensions, the details people recognise it by (buttons, a door
+window, vents, a handle, bolts, hoses), materials, and where it normally sits (floor, kitchen counter, table, wall,
+ceiling, in a car's engine bay).
+Reply with JSON only:
+{"what": "one plain sentence", "size_m": [width x, height y, depth z], "sits_on": "floor|counter|table|wall|ceiling|
+ground|vehicle", "front": "what you see on its front", "casing": "the outer shell part's name or null",
+ "parts": [{"name": "real part name (snake_case)", "shape": "its real shape in words", "size_m": [w, h, d],
+   "pos": [x, y, z] (its centre), "inside": "casing name or null", "connects_to": ["part names it is fixed to"],
+   "moves": "spins|slides|swings|opens|still", "axis": "x|y|z or null", "faces": "front|back|left|right|top|bottom|null",
+   "material": "metal|paint|plastic|glass|rubber|ceramic|water", "color": "#rrggbb", "importance": "key|minor"}],
+ "shared_axes": [["part", "part on the same axis"], …], "visible_details": ["…"]}"""
 
 CHECK_SYSTEM = """You check low poly 3D objects made for a "how it works" explainer channel. You see 3 views of ONE
 object: front 3/4, side, and cut open through its key part with the working parts moving. Judge only what you see.
@@ -82,9 +109,31 @@ ok = it clearly looks like the named thing, with believable proportions, and its
 
 
 def _design_system() -> str:
-    from . import kit  # noqa: PLC0415
+    from . import cad, kit  # noqa: PLC0415
 
-    return DESIGN_SYSTEM.replace("KIT_LIST", kit.describe())
+    return DESIGN_SYSTEM.replace("KIT_LIST", kit.describe()).replace("CAD_LIST", cad.describe())
+
+
+def describe_real_thing(name: str, description: str = "", rep=None) -> dict | None:
+    """Step 1 of a design: how the real thing is built (parts, real sizes, axes, what is inside, which way it
+    faces, where it sits). Stored with the object as its "blueprint". None without an AI that answers."""
+    from .. import llm  # noqa: PLC0415
+
+    def validate(obj):
+        if not isinstance(obj.get("parts"), list) or len(obj["parts"]) < 3:
+            raise ValueError("a blueprint needs its main parts")
+
+    try:
+        _, bp = llm.generate_json(DESCRIBE_SYSTEM, json.dumps({"object": name, "what_it_is": description}),
+                                  validate=validate, rep=rep, task=f"describe a real {name}", temperature=0.3,
+                                  max_tokens=3500, strong=True)
+        return bp
+    except Exception as exc:  # noqa: BLE001
+        from ..messages import StopRequested  # noqa: PLC0415
+
+        if isinstance(exc, StopRequested):
+            raise
+        return None
 
 
 def _num(v, default, lo, hi) -> float:
@@ -132,10 +181,18 @@ def model_from_recipe(recipe: dict) -> Model:
         if shape not in SHAPES:
             shape = "box"
         size = p.get("size") if isinstance(p.get("size"), (list, tuple)) else [p.get("size", 1.0)]
-        s = [_num(x, 1.0, 0.01, 60.0) for x in size] or [1.0]
+        s = [_num(x, 0.1 if p.get("cad") else 1.0, 0.001 if p.get("cad") else 0.01, 60.0) for x in size] or [1.0]
         while len(s) < 3:
             s.append(s[-1])
-        if shape == "box":
+        if p.get("cad"):  # a real CAD shape (build123d / bd_warehouse; mesh version without the CAD kernel)
+            from . import cad  # noqa: PLC0415
+
+            try:
+                g = cad.shape(p, builtin=_BUILTIN.get("on", False))
+            except Exception:  # noqa: BLE001
+                continue
+            shape = "cad"
+        elif shape == "box":
             g = M.box(s[0], s[1], s[2])
         elif shape == "cylinder":
             g = M.cylinder(s[0], s[1], 14, base=False)
@@ -185,7 +242,7 @@ def model_from_recipe(recipe: dict) -> Model:
             if len(pts) < 2:
                 continue
             g = M.tube(pts, s[0], 8)
-        else:  # extrude
+        elif shape != "cad":  # extrude
             poly = [_vec(q, 2) for q in (p.get("poly") or [])][:24]
             if len(poly) < 3:
                 continue
@@ -208,7 +265,8 @@ def model_from_recipe(recipe: dict) -> Model:
               emissive=_num(p.get("emissive"), 0.0, 0, 1),
               opacity=_num(p.get("opacity"), 1.0, 0.1, 1.0), shell=bool(p.get("shell", False)), kind=kind,
               pivot=tuple(_vec(piv)), axis=str(p.get("axis") or "y") if p.get("axis") in ("x", "y", "z") else "y",
-              motion=(mo[0] if len(mo) == 1 else mo) or None, material=mat if mat in MATERIALS else "")
+              motion=(mo[0] if len(mo) == 1 else mo) or None, material=mat if mat in MATERIALS else "",
+              hollow=0.0 if p.get("cad") else _num(p.get("hollow"), 0.0, 0.0, 2.0))
     if not m.parts:
         raise ValueError("no usable parts")
     lo, hi = m.bounds()
@@ -250,8 +308,16 @@ def register(recipe: dict) -> str:
         raise ValueError("a recipe needs a name")
     model_from_recipe(recipe)  # check it builds
 
+    sits = str((recipe.get("blueprint") or {}).get("sits_on") or recipe.get("sits_on") or "").lower()
+    if sits in ("counter", "table", "wall", "ceiling", "floor"):
+        assets.PLACE[name] = sits  # where it belongs (a microwave on the counter, a ceiling fan on the ceiling)
+
     def make(**_):
-        return model_from_recipe(recipe)
+        m = model_from_recipe(recipe)
+        from . import sense  # noqa: PLC0415
+
+        sense.add_supports(m)  # nothing floats: a part with nothing under it gets a bracket
+        return m
 
     make.__name__ = name
     tags = [str(t) for t in (recipe.get("tags") or ["built"])][:8]
@@ -270,6 +336,14 @@ def load_dir(folder: Path) -> list[str]:
     names = []
     if not folder.is_dir():
         return names
+    _BUILTIN["on"] = Path(folder).resolve() == RECIPES_DIR.resolve()
+    try:
+        return _load_dir(folder, names)
+    finally:
+        _BUILTIN["on"] = False
+
+
+def _load_dir(folder: Path, names: list) -> list[str]:
     for f in sorted(folder.glob("*.json")):
         if str(f) in _loaded:
             continue
@@ -315,6 +389,12 @@ def load_all() -> None:
         load_dir(user_dir())
     except Exception:  # noqa: BLE001  (no settings yet: built-in recipes only)
         pass
+    try:
+        from . import imported  # noqa: PLC0415
+
+        imported.scan_folders()  # other CC0 packs you put on Drive (Kenney zips, Quaternius, Poly Haven)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def known(name: str) -> str | None:
@@ -349,9 +429,13 @@ def self_check(name: str, recipe: dict, rep=None) -> tuple[bool | None, dict, li
         Image.fromarray(im).save(buf, "JPEG", quality=85)
         jpgs.append(buf.getvalue())
     parts = sorted({re.sub(r"\d+$", "", p.name) for p in model.parts})[:30]
+    bp = recipe.get("blueprint") or {}
     text = (f"Object: {name.replace('_', ' ')} ({recipe.get('about', '')}). Its parts: {', '.join(parts)}. "
-            f"Key part: {recipe.get('key_part', '')}. Does it clearly look like a {name.replace('_', ' ')} with "
-            "believable proportions, and are the key working parts visible in the cut-open view?")
+            f"Key part: {recipe.get('key_part', '')}. How the real one is built: {bp.get('what', '')} "
+            f"Front: {bp.get('front', '')}. Details: {', '.join(map(str, (bp.get('visible_details') or [])[:8]))}. "
+            f"Does it clearly look like a {name.replace('_', ' ')} (a normal person could name it), match that "
+            "description (parts facing the right way, lined up, nothing floating, the casing there), with believable "
+            "proportions, and are the key working parts visible in the cut-open view?")
     reply = llm.vision_json(CHECK_SYSTEM, text, jpgs, rep=rep, max_tokens=800)
     if not isinstance(reply, dict) or "ok" not in reply:
         return None, {}, stills
@@ -374,9 +458,12 @@ def design(name: str, description: str = "", rep=None, tries: int = 3) -> str | 
     it up to 2 times, then save it to the shared library on Drive and return its name (None if no AI answered)."""
     from .. import llm  # noqa: PLC0415
 
+    from . import sense  # noqa: PLC0415
+
     example = json.loads((RECIPES_DIR / "piston_pump.json").read_text(encoding="utf-8")) if \
         (RECIPES_DIR / "piston_pump.json").exists() else {}
-    payload = {"object": name, "what_it_is": description, "example_recipe": example}
+    blueprint = describe_real_thing(name, description, rep)  # 1) how the real thing is built, first
+    payload = {"object": name, "what_it_is": description, "example_recipe": example, "blueprint": blueprint or {}}
 
     def validate(obj):
         model_from_recipe(obj)
@@ -394,8 +481,23 @@ def design(name: str, description: str = "", rep=None, tries: int = 3) -> str | 
                 raise
             break
         recipe["name"] = name
+        if blueprint:
+            recipe["blueprint"] = blueprint
         best = recipe
-        ok, reply, stills = self_check(name, recipe, rep)
+        physics = sense.check(model_from_recipe(recipe), blueprint)  # 2) does it hold together like the real thing?
+        recipe["sense"] = physics
+        if physics and attempt < tries - 1:
+            if rep is not None:
+                rep.info(f"🔩 The {name.replace('_', ' ')} doesn't make physical sense yet: {sense.summary(physics)[:160]}"
+                         " → redesigning")
+            payload = {**payload, "previous_recipe": recipe, "fix_this": {"problems": physics,
+                                                                           "fix": "fix exactly these problems"}}
+            verdict = "failed"
+            continue
+        if physics:  # still not right after the redesigns: used for this video, not saved for next time
+            verdict = "failed"
+            break
+        ok, reply, stills = self_check(name, recipe, rep)  # 3) does it look like the thing? (3 views, vision)
         if stills:
             _save_check(name, stills)
         if ok is None:  # can't judge it (no OpenGL / no key / Gemini busy): use it as it is

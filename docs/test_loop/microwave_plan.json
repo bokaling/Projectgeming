@@ -1,0 +1,261 @@
+{
+ "title": "How a Microwave Heats Food",
+ "preset": "studio",
+ "areas": [
+  {
+   "id": "kitchen",
+   "setting": "kitchen"
+  }
+ ],
+ "objects": [
+  {
+   "id": "mw1",
+   "asset": "microwave",
+   "area": "kitchen",
+   "pos": [
+    0,
+    0
+   ]
+  }
+ ],
+ "scenes": [
+  {
+   "camera": {
+    "move": "push_in",
+    "target": "mw1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "mw1",
+     "at": 0.05
+    },
+    {
+     "do": "light_on",
+     "target": "mw1",
+     "at": 0.1
+    }
+   ],
+   "labels": [],
+   "keywords": [
+    {
+     "text": "billions of times",
+     "kind": "wow",
+     "at": "billions"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "cutaway",
+    "target": "mw1"
+   },
+   "actions": [
+    {
+     "do": "cutaway",
+     "target": "mw1",
+     "at": 0.1,
+     "keep": true
+    },
+    {
+     "do": "spin",
+     "target": "mw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "mw1.magnetron"
+   },
+   "actions": [
+    {
+     "do": "glow",
+     "target": "mw1.magnetron",
+     "at": "turns"
+    }
+   ],
+   "labels": [
+    {
+     "target": "mw1.magnetron",
+     "text": "Magnetron",
+     "kind": "part",
+     "at": "magnetron"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "mw1.transformer"
+   },
+   "actions": [],
+   "labels": [
+    {
+     "target": "mw1.transformer",
+     "text": "Transformer",
+     "kind": "part",
+     "at": "transformer"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "4,000 volts",
+     "kind": "number",
+     "at": "four"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "mw1.waveguide"
+   },
+   "actions": [
+    {
+     "do": "flow",
+     "target": "mw1",
+     "path": "waves",
+     "at": "carries",
+     "color": "#ff6fb5",
+     "color2": "#ffd0e8"
+    }
+   ],
+   "labels": [
+    {
+     "target": "mw1.waveguide",
+     "text": "Waveguide",
+     "kind": "part",
+     "at": "waveguide"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "mw1.cavity"
+   },
+   "actions": [
+    {
+     "do": "flow",
+     "target": "mw1",
+     "path": "waves",
+     "at": 0.0,
+     "color": "#ff6fb5",
+     "color2": "#ffd0e8"
+    },
+    {
+     "do": "spin",
+     "target": "mw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "mw1.cavity",
+     "text": "Metal walls",
+     "kind": "part",
+     "at": "walls"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "macro",
+    "target": "mw1.food"
+   },
+   "actions": [
+    {
+     "do": "glow",
+     "target": "mw1.food_soup",
+     "at": "spin"
+    },
+    {
+     "do": "smoke",
+     "target": "mw1.food",
+     "at": "heat",
+     "color": "#e9edf0"
+    },
+    {
+     "do": "spin",
+     "target": "mw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "mw1.food",
+     "text": "Water in the food",
+     "kind": "info",
+     "at": "water"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "mw1.turntable"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "mw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [
+    {
+     "target": "mw1.turntable",
+     "text": "Glass plate",
+     "kind": "part",
+     "at": "plate"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "mw1.door_window"
+   },
+   "actions": [],
+   "labels": [
+    {
+     "target": "mw1.door_window",
+     "text": "Metal mesh",
+     "kind": "part",
+     "at": "mesh"
+    }
+   ],
+   "keywords": []
+  },
+  {
+   "camera": {
+    "move": "pull_out",
+    "target": "mw1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "mw1",
+     "at": 0.0
+    }
+   ],
+   "labels": [],
+   "keywords": [
+    {
+     "text": "metal sparks?",
+     "kind": "problem",
+     "at": "spark"
+    }
+   ]
+  }
+ ]
+}

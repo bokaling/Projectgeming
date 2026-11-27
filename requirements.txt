@@ -9,3 +9,4 @@ edge-tts>=7.2
 kokoro-onnx>=0.4     # backup Kokoro voice (same voices, ONNX, runs on the CPU)
 arabic-reshaper
 python-bidi
+manifold3d>=3.0   # exact cuts (hero cutaways: clean halves, thin rims); light, Apache 2.0

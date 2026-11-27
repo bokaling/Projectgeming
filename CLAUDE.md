@@ -4,7 +4,7 @@
 
 **Which files for which task**
 * Rendering / look / shadows / flicker: `world/gl.py` (shaders, shadow map, SSAO, bloom, grade), `world/scene.py`
-  (`World.frame` builds a `gl.Frame`: draws, lights, flash/fade, shadow focus), `world/video.py` (frames → FFmpeg).
+  (`World.frame` builds a `gl.Frame`: draws, lights, fade, shadow focus), `world/video.py` (frames → FFmpeg).
 * Objects / machines: `world/mesh.py` (shapes), `world/assets.py` + `world/assets_more.py` (library), `world/machines.py`
   (engine, car, elevator), `world/kit.py` (mechanism kit), `world/builder.py` (JSON recipes, AI design, self check),
   `world/cad.py` (build123d / bd_warehouse parts, manifold3d cuts), `world/imported.py` (CC0 glTF/OBJ models),
@@ -113,9 +113,9 @@ The owner is a beginner coder. Explain things simply, in short sentences.
   moderngl 7.3 fps (MSAA4 + PCF shadows), Three.js in headless Chrome 2.0 fps (frame capture ~0.5 s),
   Blender rejected (~350 MB per session, bpy doesn't match Colab's Python). GPU: NVIDIA EGL
   (`install.setup_opengl` writes `/usr/share/glvnd/egl_vendor.d/10_nvidia.json`). CPU: Mesa llvmpipe; draws
-  at 2/3 size with MSAA2 and FFmpeg lanczos upscales to 1080p.
-* **Look** (`gl.py`): flat-shaded low poly, sun + hemisphere light, 3×3 PCF shadow map, fog into a dark teal
-  gradient, procedural glowing grid floor, HDR + bloom, vignette, fade/flash. Cutaway = clip plane (back faces
+  at 2/3 size with MSAA4 and FFmpeg lanczos upscales to 1080p.
+* **Look** (`gl.py`): flat-shaded low poly, sun + hemisphere light, two stable shadow maps with PCF (Part 14), fog into a dark teal
+  gradient, procedural glowing grid floor, HDR + bloom, vignette, fade (no flash). Cutaway = clip plane (back faces
   get the darker inner color). X-ray = translucent shell parts with a rim. Particles = small octahedra;
   smoke = translucent puff spheres. Labels = screen-space textured pills made with Pillow (`labels.py`).
 * **Shapes** (`mesh.py`): box, cylinder, cone, lathe, icosphere, torus, capsule, tube, extrude, roof, gear,
@@ -234,7 +234,7 @@ The owner is a beginner coder. Explain things simply, in short sentences.
 | Farsi voice | Own recording or Edge TTS fa-IR (warn: no commercial grant) | Piper fa_IR |
 | Word timing | Kokoro / Edge word timestamps; own voice: CTC forced alignment | Proportional timing by word length |
 | Captions | ASS keyword captions, libass `shaping=complex`, Vazirmatn for Farsi | n/a |
-| Music + SFX | Generated beds ("explainer" by default) + mechanical SFX (hum, pour, bubbles, zap, click, pop, alarm hum, rumble, steam), all < 8 kHz | User library on Drive with `licenses.csv`; Freesound CC0 (optional key) |
+| Music + SFX | Generated beds ("explainer" by default) + short soft one-shot SFX (whoosh, snap, clamp, thud; `full` adds hum, pour, zap…), never looped, ≤ 2 s, lowpassed | User library on Drive with `licenses.csv`; Freesound CC0 (optional key) |
 | Render | FFmpeg (NVENC if available, else libx264), 30 fps, −14 LUFS, true peak ≤ −1.5 dB | n/a |
 
 ### Colab specifics
@@ -396,6 +396,12 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
       cut faces), macro shots, comparison tables, two-layer captions, calm pacing (4-8 s shots, flights, hard cuts only
       for big changes), filmic lighting (ACES, SSAO, soft shadows, DOF, grades, grain), elevator/engine/fridge/toilet
       fixes, StoryForge Videos folder, CLI + cheatsheet + paste plan, 3D Documentary format (miners test)
+- [x] Part 14 (see "Part 14" below): no z-fighting or shadow shimmer (coplanar faces resolved, fixed per-shot sun,
+      two texel-snapped shadow maps, fixed PCF/SSAO), no flashes or pops (per-shot visibility, slow pulses, brightness
+      jump detector), quiet sound (SFX off/subtle/full, nothing loops), build123d skill + CAD parts + bd_warehouse +
+      manifold3d cuts, 60 CC0 models, blueprint-first designer with a physical sense check, bevels and smooth round
+      parts on every object, things on counters/desks/ceilings, 9 new designs (washer, microwave, jet engine,
+      dishwasher, bicycle, toaster, ceiling fan, cordless drill, desk lamp); research: Hunyuan3D (not allowed), TripoSR
 
 ### Round 2 (what changed, how it works)
 * **AI chain** (`llm.py`): `providers(strong=True)` = Gemini's newest Flash with 3 retries (waits 5/15/30 s, log
@@ -420,7 +426,7 @@ tests/             CPU-only tests, network calls mocked; 3D tests draw with Mesa
   (`_part_k_box`; four parts all called "liner" are not one box) over its whole travel + what touches it (≤2.2× size),
   framed alone on the light studio. Cut plane through its middle turned 55° (outside AND cut face visible). Closed,
   non-shell solids get a flat cut face built on the CPU (`mesh.section`: slice + convex hull, `Frame.dyn`) in
-  `HERO_COLOR` #ff3d9a (our pink); open/shell parts get a pink rim (`FRAG_CAP`, `Draw.cap=2`).
+  `HERO_COLOR` (Part 14: deep red #9e2a35, exact manifold3d cuts); open/shell parts get a rim (`FRAG_CAP`, `Draw.cap=2`).
 * **Macro** (camera `macro`): one member of the part group, ropes cropped to the load end, only parts near it
   (`near_box`), dark look, bloom 0.9, DOF. **Comparison**: area `setting: "table"` (plain light table, look
   studio_light, only that area drawn, the camera frames everything on the table); real-size clamp is skipped when the
@@ -669,3 +675,94 @@ app: radio "Sound effects", Colab/Kaggle forms: `SOUNDS`). subtle = soft music +
 short machine sounds when something starts (`FULL_SOUNDS`), reveal booms and the riser. `music.mix` never loops a
 sound and cuts every effect at `MAX_SFX_SECONDS` = 2 s with soft fades; effects are lowpassed at 3.2 kHz (subtle) /
 5 kHz (full) and duck 80 % / 60 % under the voice. Music presets explainer/tense/dark have no "pulse" layer.
+
+**Part 4, new object tools.**
+* **build123d skill**: `.claude/skills/build123d` (rawwerks/VibeCAD, MIT). `npx skills add rawwerks/VibeCAD` refused
+  every skill of that repo (YAML: an unquoted colon in the description), so the files were copied by hand
+  (`SOURCE.md` says how). Read it before writing CAD code.
+* **build123d on Colab's Python**: build123d 0.13 + OCP 8.0 (`cadquery-ocp-novtk`, no VTK) + bd_warehouse 0.4 +
+  manifold3d 3.5 install from wheels and run on **Python 3.13 and 3.12** (tested here in clean venvs: fillets, gears,
+  sweeps, shells). ~250 MB download, ~400 MB installed, `import build123d` ≈ 7 s. `install.setup_cad()` installs
+  them in the Setup cell (`requirements-cad.txt`); if that fails, new objects use our own mesh shapes. License note:
+  OCP/OpenCascade is LGPL 2.1 with an exception (commercial use fine, used unchanged as a library); everything else
+  is Apache 2.0 / MIT.
+* **CC0 models** (`world/imported.py`): 60 curated models (KayKit Furniture/Restaurant/City Builder Bits, Kenney
+  starter kits) downloaded once from GitHub (raw.githubusercontent.com, 8 at a time, ~2 MB) to Drive
+  `library/models/<pack>/` with a LICENSE.txt; our own glTF/GLB/OBJ reader (no new dependency): node transforms,
+  palette texture sampled once per triangle → flat colours, shades merged into ≤10 parts, pulled 20 % toward our
+  palette, metal greys → metal, real size (+ `dims` pulls toy proportions toward the real ones, `fit` ±30-55 %),
+  standing on y = 0, front +z; lamps get a `lamp` bulb part (warm light). Registered as assets (`register`); an old
+  procedural object of the same name (`replaces`: sofa, lamp_post) or a stand-in is the fallback offline/in tests.
+  Settings use them when they're on Drive (`settings._cc0`): kitchen = sink + stove + worktop units, wall cabinets,
+  hood, things on the counter; living room = sofa, coffee table, floor lamp, bookshelf; office = chair, lamp, books;
+  street = KayKit buildings, a parked taxi, hydrant, bench. `Pipeline._cc0_models` downloads them while the voice is
+  made. Poly Haven (`fetch_polyhaven`, API), Kenney zips and Quaternius packs (`fetch_url`, or copied by hand) work
+  through `scan_folders` (CC0 LICENSE required). Here api.polyhaven.com, kenney.nl and quaternius.com were blocked
+  by this sandbox's network policy (403); they are open on Colab. People: none of the reachable CC0 packs has ordinary
+  people (KayKit's are fantasy heroes), so our blocky people stay.
+* **CAD parts** (`world/cad.py`): recipe parts with `"cad"`: box/cylinder (fillet, chamfer, bore), revolve, loft,
+  sweep (hoses), extrude, + bd_warehouse gear, sprocket, bearing, bolt, nut, washer, flange, pipe; modifiers holes
+  (with grids), windows, hollow (+ open side). Built in mm, tessellated per CAD face with smooth normals (`Geo.nrm`:
+  fillets and round parts look smooth), ≤ ~8000 triangles (dense parts re-meshed coarser after `BRepTools.Clean`),
+  cached by spec hash (repo `world/cad_meshes/` for built-in recipes, Drive `library/cad/` for new ones, in memory).
+  Without build123d `cad.fallback` approximates every shape with our mesh pieces (+ manifold3d holes).
+* **Library machines use bd_warehouse** (`machines._cad`, `_bolt_x`, meshes in the repo cache): the car engine's
+  flywheel is a real 118-tooth starter ring gear with its 6 crank bolts, the crank and cam pulleys have their centre
+  bolts; the piston pump (the designer's example) got NPS 2 pipe flanges, a bolted foot and a crank shaft in a ball
+  bearing on a frame arm (the sense check found its crank wheel hanging in the air); the washing machine has its 6206
+  drum bearing and bracket bolts. Bearings and flanges are centred on `pos` like every other part. Before/after:
+  `docs/part14/p4_bd_warehouse_before_after.jpg`; all CAD meshes: `p4_cad_parts.jpg`; CC0 models: `p4_cc0_models.jpg`.
+* **manifold3d** (`cad.cut`): hero cuts are exact booleans, piece by piece (`components`): 12 blades get 12 small
+  faces (no "comb"), `Part.hollow` (wall thickness) gives a thin rim instead of a slab (the rescue capsule). Cut
+  plane fixed per shot (`_hero_normal`), cut colour deep red `#9e2a35` (teal looked good too but blended with the
+  turntable glow), the rest of the machine is a faint ghost and its floor stays (`HERO_FLOORS`), so the hero part is
+  clearly inside its machine instead of floating in white. Not closed parts still use the clip plane + rim.
+
+**Part 5, objects built like the real thing (`world/builder.py`, `world/sense.py`, `world/mesh.py`, `world/logic.py`).**
+* **Blueprint first** (`builder.describe_real_thing`, `DESCRIBE_SYSTEM`): before any shape, the designer writes how the
+  REAL thing is built: size in metres, where it sits (floor, counter, table, wall, ceiling), what its front shows, the
+  casing, every part with its real shape/size/position, what it is fixed to, how it moves (axis), which parts share an
+  axis, materials, details people recognise. Stored in the recipe (`"blueprint"`) and sent to the recipe step
+  (`DESIGN_SYSTEM`: "BUILD THE BLUEPRINT") and to the vision check.
+* **Physical sense check** (`sense.check(model, blueprint)`): stands on y = 0 (not under, not floating), no floating
+  part groups (box test, then a precise surface-to-surface test with `cKDTree`; touching the floor counts as held),
+  overall size vs the blueprint, every key part present and about its real size, parts on the side they face, parts
+  that belong inside the casing stay inside, moving parts have a motion about the right axis, parts that share an axis
+  (fan + shaft + turbine, drum + pulley) are on one line. Problems go back to the designer (one redesign for physics),
+  then the 3-view vision check (`self_check`, up to 2 redesigns in all). A design that still fails is used once, not
+  saved. `sense.add_supports` adds a plain bracket/leg under a part group that still floats (never at floor level).
+* **Better shapes for everything** (`assets.build`): `mesh.bevel_boxes` gives box-like parts small chamfers (14 % of the
+  smallest side, ≤ 2.5 cm) so edges catch the light, `mesh.smooth_round` gives round parts smooth normals (crease
+  40°), then `resolve_coplanar`. Not for animals, people, nature, terrain, micro, body or imported models. Top 20 used
+  objects before/after: `docs/part14/p5_top20_before.jpg` / `p5_top20_after.jpg`.
+* **9 new built-in designs** (`world/recipes/`, generator `docs/test_loop/designs_part14.py`, each with its blueprint,
+  `sense: []`, checked from 3 views): washing_machine, microwave, jet_engine, dishwasher, and the 5 tricky test objects
+  bicycle, toaster, ceiling_fan, cordless_drill, desk_lamp (old system: phone, chicken, fan, drill → oil rig, lightbulb;
+  `docs/part14/p5_new_objects_before_after.jpg`). The checks caught real mistakes while designing: a washer cabinet
+  with a gap and the door glass facing in, a floating lamp shade (`p5_lamp_draft_vs_fixed.jpg`), a floating combustor,
+  a jet intake closed by a solid revolve (`"ring": true` now), a toaster cord 2 m long, a dishwasher door not a shell.
+* **Placement** (`assets.PLACE`/`placement`, `logic.place_on_surfaces`): a recipe's `blueprint.sits_on` (or `PLACE`)
+  says where a thing belongs; in a room setting (kitchen, office, living room, laundry…) the object goes ON the
+  counter (0.92 m) or table (0.75 m) or hangs from the ceiling (2.7 m), and the setting builds that worktop, desk or
+  ceiling slab under/over it. Only when the plan gives no `"y"`. Planner rule `PLACES` says the same.
+* **Hero cutaways**: the cut part stays inside a faint ghost of its machine, on the machine's own floor (Part 4),
+  deep red cut faces. **Comparisons**: planner rule asks for 2-3 CLEAR everyday objects at real size on a table.
+
+**Part 6, research only (not added; no GPU in that session, nothing was run).**
+* **Hunyuan3D 2 mini / mini-Turbo** (Tencent, image or text → 3D): with `--low_vram_mode` (+ `--enable_flashvdm`) the
+  shape model needs ~5-6 GB VRAM (one report saw ~3 GB for mesh only), shape + texture ~12-16 GB, so a T4 (16 GB)
+  fits shape-only and is borderline with texture. Speed: one community report says ~1-5 s per mesh with Turbo and
+  30-100 s with texture, on an unnamed GPU; nothing measured on a T4 (expect several times slower). Look: dense,
+  smooth scan-like meshes with baked textures; next to our style they need `imported.to_model` (decimate to ≤ 6000
+  triangles, flat palette colours). **License: Tencent Hunyuan 3D 2.0 Community License**: the licensed territory
+  excludes the EU, the UK and South Korea, and commercial use has limits (reported: under 1 M monthly users). That is
+  not one of the allowed licenses (rule 2), so it must not be used as it stands. Sources: github.com/Tencent-Hunyuan/
+  Hunyuan3D-2, huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE, docs.comfy.org/tutorials/3d/hunyuan3D-2.
+* **TripoSR** (Stability AI + Tripo, image → 3D): **MIT license** for the code and the weights (allowed). ~6 GB VRAM
+  for one image (widely quoted, not in the official docs), so it fits a T4; < 0.5 s per object on an A100 (paper),
+  ~5-10 s reported on consumer GPUs; a T4 should be a few seconds plus marching cubes (not measured). Output: one
+  vertex-coloured mesh, soft and blobby with no sharp edges or separate parts, so it suits round props (food,
+  animals, rocks, toys) far better than tools or machines, and it needs an input picture (a text-to-image step would
+  need its own permissively licensed model). If added later: run it as a `python -m` subprocess on the GPU, keep the
+  results on Drive like the CC0 packs (`library/models/triposr/`), recolour with `to_model`, never for working parts.
+  Sources: github.com/VAST-AI-Research/TripoSR, the TripoSR report (Tochilkin et al. 2024), cgchannel.com.

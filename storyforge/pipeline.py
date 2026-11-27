@@ -629,9 +629,10 @@ class Pipeline:
         rep.timings.clear()
         with Timer() as total:
             rep.progress(0.03, "Plan + voice")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
                 t_voice = time.time()
                 voice_job = pool.submit(self.all_voices)
+                pool.submit(self._cc0_models)  # free CC0 models (sofas, stoves, street lights) onto Drive, once
                 try:
                     with rep.timed("🧭 Scene plan"):
                         plan = self.scene_plan()
@@ -671,6 +672,14 @@ class Pipeline:
         else:
             rep.ok(msg)
         return result
+
+    def _cc0_models(self) -> None:
+        try:
+            from .world import imported  # noqa: PLC0415
+
+            imported.fetch_all(self.rep)
+        except Exception:  # noqa: BLE001  (no internet: the box-built pieces are used)
+            pass
 
     def copy_to_videos_folder(self, videos: list, extra: dict) -> list[Path]:
         """📂 Every finished video also goes to 'StoryForge Videos' with a nice name, its captions and thumbnail."""

@@ -133,7 +133,7 @@ def _world(scenes, objects, areas=None):
     return World(plan, tl, (270, 480))
 
 
-def test_hero_shot_shows_one_part_cut_with_pink_faces_on_a_light_studio():
+def test_hero_shot_shows_one_part_cut_with_red_faces_inside_its_ghost_machine():
     from storyforge.world.scene import HERO_COLOR
 
     w = _world([{"camera": {"move": "orbit", "target": "e"}},
@@ -141,10 +141,11 @@ def test_hero_shot_shows_one_part_cut_with_pink_faces_on_a_light_studio():
                [{"id": "e", "asset": "car_engine", "area": "a"}, {"id": "c", "asset": "crate", "area": "a", "pos": [3, 0]}])
     assert w._looks[1][0] == "studio_light" and w._cams[1]["cut"]  # a clean cut into the hero shot
     fr = w.frame(7.5)
-    names = {d.key.split("|")[0] for d in fr.draws}
-    assert all(not k.startswith("c") or k.startswith("e") for k in names) or len(fr.draws) < 20
-    assert fr.dyn and all(np.allclose(rgb, [int(HERO_COLOR[i:i + 2], 16) / 255 for i in (1, 3, 5)])
-                          for _, rgb, _ in fr.dyn)
+    assert not any(d.key.startswith("crate") for d in fr.draws)  # other objects are left out
+    assert any(d.xray and d.opacity < 0.5 for d in fr.draws if d.key.startswith("car_engine"))  # its machine: a ghost
+    red = [int(HERO_COLOR[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    caps = [item for item in fr.dyn if np.allclose(item[1], red)]
+    assert caps  # cut faces in the deep red (Part 14; was pink)
     lo, hi = w._cams[1]["lo"], w._cams[1]["hi"]
     assert float(np.max(hi - lo)) < 0.4  # one cylinder (about 10 cm), not the whole 0.6 m engine
 

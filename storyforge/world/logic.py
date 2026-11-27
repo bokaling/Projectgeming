@@ -248,6 +248,37 @@ def floats_ok(world, inst) -> bool:
         inst.asset in CONNECTORS or inst.asset in ("power_pole",)
 
 
+ROOMS = {"kitchen", "bathroom", "laundry", "office", "living_room", "lab", "garage"}
+
+
+def place_on_surfaces(world) -> list[str]:
+    """Things sit where they belong in real life: a microwave or a toaster ON the kitchen counter, a lamp on the desk,
+    a ceiling fan hanging from the ceiling (the setting then builds the counter, desk or ceiling panel around it).
+    Only in rooms; the plan's own "y" and mounts win. Marks inst.support."""
+    from . import assets  # noqa: PLC0415
+    from .decor import inst_box  # noqa: PLC0415
+
+    notes = []
+    settings = {a["id"]: a.get("setting", "") for a in world.plan.get("areas", [])}
+    for inst in world.insts:
+        if inst.oid.startswith("_env") or inst.oid in getattr(world, "mounts", {}):
+            continue
+        o = world.obj.get(inst.oid, {})
+        if o.get("y") not in (None, 0, 0.0) or settings.get(inst.area) not in ROOMS:
+            continue
+        where = assets.placement(inst.asset)
+        if where in assets.SURFACE_Y:
+            inst.pos[1] = assets.SURFACE_Y[where]
+        elif where == "ceiling":
+            lo, hi = inst_box(inst)
+            inst.pos[1] = assets.CEILING_Y - float(hi[1] - lo[1]) - 0.01
+        else:
+            continue
+        inst.support = where
+        notes.append(f"{inst.oid} stands on the {where}" if where != "ceiling" else f"{inst.oid} hangs from the ceiling")
+    return notes
+
+
 def ground_everything(world) -> list[str]:
     """Things that hang in the air without support are put on the ground (only gas, sky and tiny things float)."""
     from .decor import inst_box  # noqa: PLC0415
@@ -256,7 +287,8 @@ def ground_everything(world) -> list[str]:
     plan_insts = [i for i in world.insts if not i.oid.startswith("_env")]
     boxes = {id(i): inst_box(i) for i in plan_insts}
     for inst in plan_insts:
-        if inst.pos[1] <= 0.05 or floats_ok(world, inst) or inst.oid in getattr(world, "mounts", {}):
+        if inst.pos[1] <= 0.05 or floats_ok(world, inst) or inst.oid in getattr(world, "mounts", {}) or \
+                getattr(inst, "support", ""):
             continue
         lo, hi = boxes[id(inst)]
         bottom = lo[1]
