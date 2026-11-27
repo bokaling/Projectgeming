@@ -660,3 +660,12 @@ red car body were **z-fighting**: the tyre's end cap lay exactly in the plane of
   blank frames (camera behind the garage wall) → the overview now frames shot 1's machine and leaves walls out.
 * `test_part14.py::test_brightness_has_no_jumps_except_hard_cuts` runs a small world (engine sparks, glow, alarm,
   cutaway, rope snap, flights) through the detector at 54×96.
+
+**Part 3, quiet sound (`pipeline.sound_events`, `audio/music.py`).** The noise under the voice was the machine loops
+(a hum looped for every shot where a machine spins, plus pour/steam/alarm loops) and the explainer music's soft kick
+on every other beat. Now `EpisodeOptions.sfx` = "off" | "subtle" (default) | "full" (old True → subtle, False → off;
+app: radio "Sound effects", Colab/Kaggle forms: `SOUNDS`). subtle = soft music + a gentle low whoosh on camera flights
+(none on hard cuts) + ONE short soft sound per big moment (`BIG_MOMENTS`: snap, clamp, thud for drop/shake); full adds
+short machine sounds when something starts (`FULL_SOUNDS`), reveal booms and the riser. `music.mix` never loops a
+sound and cuts every effect at `MAX_SFX_SECONDS` = 2 s with soft fades; effects are lowpassed at 3.2 kHz (subtle) /
+5 kHz (full) and duck 80 % / 60 % under the voice. Music presets explainer/tense/dark have no "pulse" layer.

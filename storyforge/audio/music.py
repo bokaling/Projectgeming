@@ -32,22 +32,23 @@ CHORDS = {"M": [0, 4, 7], "m": [0, 3, 7], "sus": [0, 2, 7], "dim": [0, 3, 6], "m
 # No bells, hi-hats, ticks, snares or bright arpeggios (they sounded sharp under a voice).
 PRESETS = {
     # how-it-works videos: curious and steady, a soft muffled pulse that keeps things moving under the voice
-    "explainer": dict(root=50, bpm=84, prog=[(0, "sus"), (5, "M"), (9, "m"), (7, "M")], layers=["pad", "sub", "pulse", "piano"], wet=0.38, cutoff=1300),
-    "tense": dict(root=45, bpm=92, prog=[(0, "m"), (8, "M"), (5, "m"), (7, "M")], layers=["pad", "sub", "pulse"], wet=0.35, cutoff=1100),
+    "explainer": dict(root=50, bpm=84, prog=[(0, "sus"), (5, "M"), (9, "m"), (7, "M")], layers=["pad", "sub", "piano"], wet=0.38, cutoff=1300),
+    "tense": dict(root=45, bpm=92, prog=[(0, "m"), (8, "M"), (5, "m"), (7, "M")], layers=["pad", "sub"], wet=0.35, cutoff=1100),
     "mysterious": dict(root=50, bpm=66, prog=[(0, "m"), (1, "M"), (0, "m7"), (10, "M")], layers=["pad", "sub", "piano"], wet=0.45, cutoff=1000),
     "sad": dict(root=48, bpm=62, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["pad", "piano"], wet=0.45, cutoff=1200),
     "hopeful": dict(root=48, bpm=76, prog=[(0, "M"), (7, "M"), (9, "m"), (5, "M")], layers=["pad", "piano", "sub"], wet=0.4, cutoff=1600),
     "epic": dict(root=50, bpm=80, prog=[(0, "m"), (8, "M"), (3, "M"), (10, "M")], layers=["strings", "sub", "taiko"], wet=0.4, cutoff=1500),
     "calm": dict(root=53, bpm=60, prog=[(0, "M7"), (9, "m"), (5, "M"), (7, "sus")], layers=["pad", "piano"], wet=0.5, cutoff=1300),
-    "dark": dict(root=47, bpm=58, prog=[(0, "m"), (1, "M"), (0, "m"), (6, "dim")], layers=["pad", "sub", "pulse"], wet=0.45, cutoff=800),
+    "dark": dict(root=47, bpm=58, prog=[(0, "m"), (1, "M"), (0, "m"), (6, "dim")], layers=["pad", "sub"], wet=0.45, cutoff=800),
     "action": dict(root=52, bpm=104, prog=[(0, "m"), (8, "M"), (10, "M"), (7, "m")], layers=["strings", "sub", "pulse", "taiko"], wet=0.3, cutoff=1500),
     "romantic": dict(root=55, bpm=68, prog=[(0, "M"), (4, "m"), (9, "m"), (5, "M")], layers=["pad", "piano"], wet=0.5, cutoff=1400),
     "playful": dict(root=55, bpm=96, prog=[(0, "M"), (5, "M"), (7, "M"), (0, "M")], layers=["pad", "piano", "sub"], wet=0.35, cutoff=1700),
 }
 SFX_GAIN = {"whoosh": 0.35, "impact": 0.5, "riser": 0.3, "heartbeat": 0.5, "wind": 0.18, "rain": 0.16,
-            "thunder": 0.4, "sting": 0.35, "low_whoosh": 0.17, "boom": 0.42, "soft_riser": 0.24,
+            "thunder": 0.4, "sting": 0.35, "low_whoosh": 0.13, "boom": 0.42, "soft_riser": 0.24,
             "hum": 0.12, "pour": 0.12, "bubbles": 0.14, "zap": 0.1, "click": 0.16, "pop": 0.12, "alarm_hum": 0.1,
-            "rumble": 0.14, "steam": 0.07}
+            "rumble": 0.14, "steam": 0.07, "snap": 0.2, "clamp": 0.18, "thud": 0.16}
+MAX_SFX_SECONDS = 2.0  # no sound effect lasts (or loops) longer than this: nothing hums under the voice
 MUSIC_LOWPASS = 8000  # Hz: nothing sharp above this
 SFX_LOWPASS = 6000
 AMBIENT = {"wind", "rain"}
@@ -396,6 +397,29 @@ def make_sfx(name: str, seed: int = 0) -> np.ndarray:
         x = _lowpass(noise(0.25), 1800) * decay(n, 0.012)
         x += np.sin(2 * np.pi * 140 * np.arange(n) / SR) * decay(n, 0.04) * 0.6
         out = np.stack([x, x], 1)
+    elif name == "snap":  # a rope / cable breaks: a soft low twang and a thud (short, no crack)
+        n = int(0.9 * SR)
+        t = np.arange(n) / SR
+        twang = np.sin(2 * np.pi * np.cumsum(180 * np.exp(-t / 0.35) + 60) / SR) * decay(n, 0.18)
+        thud = _lowpass(noise(0.9), 250) * decay(n, 0.08) * 0.8
+        x = np.tanh(1.2 * (twang * 0.6 + thud))
+        out = np.stack([x, x * 0.95], 1)
+        out = _lowpass(out, 1500)
+    elif name == "clamp":  # brakes grip the rails: a muffled metallic clunk (short)
+        n = int(0.6 * SR)
+        t = np.arange(n) / SR
+        ring = sum(np.sin(2 * np.pi * f * t) / k for k, f in enumerate((210, 337, 512), 1)) * decay(n, 0.12)
+        knock = _lowpass(noise(0.6), 500) * decay(n, 0.03)
+        x = ring * 0.5 + knock
+        out = np.stack([x, x], 1)
+        out = _lowpass(out, 1800)
+    elif name == "thud":  # something heavy lands or shakes: a soft low thud
+        n = int(0.7 * SR)
+        t = np.arange(n) / SR
+        x = np.sin(2 * np.pi * np.cumsum(70 + 50 * np.exp(-t / 0.05)) / SR) * decay(n, 0.15)
+        x += _lowpass(noise(0.7), 200) * decay(n, 0.05) * 0.5
+        out = np.stack([x, x], 1)
+        out = _lowpass(out, 900)
     elif name == "pop":  # something appears: a soft low pop
         n = int(0.3 * SR)
         t = np.arange(n) / SR
@@ -565,10 +589,12 @@ def tension_envelope(total: float, reveals: list[float], hits: bool = False) -> 
 
 
 def mix(voice: np.ndarray, total: float, music: np.ndarray | None, music_volume: float,
-        sfx_events: list[tuple[float, np.ndarray, float, float]], music_env: np.ndarray | None = None) -> np.ndarray:
+        sfx_events: list[tuple[float, np.ndarray, float, float]], music_env: np.ndarray | None = None,
+        sfx_lowpass: float = MUSIC_LOWPASS, sfx_duck: float = 0.75) -> np.ndarray:
     """voice: mono at SR. sfx_events: (time, audio, gain, max_seconds). Returns stereo float32.
 
     music_env: extra music volume curve (tension, drop-outs). Music and sound effects duck under the voice.
+    Sound effects never loop and never last longer than MAX_SFX_SECONDS (soft fade in and out).
     """
     n = int(total * SR)
     out = np.zeros((n, 2), np.float32)
@@ -591,18 +617,16 @@ def mix(voice: np.ndarray, total: float, music: np.ndarray | None, music_volume:
         out += _lowpass(m, MUSIC_LOWPASS) * music_volume * 2.0 * gain[:, None]
     fx = np.zeros((n, 2), np.float32)
     for t, audio, gain, max_sec in sfx_events:
-        if max_sec and len(audio) < int(max_sec * SR):  # loops (machines running) last as long as the action
-            audio = np.tile(audio, (int(np.ceil(max_sec * SR / max(1, len(audio)))), 1))
-        seg = audio[: int(max_sec * SR)] if max_sec else audio
-        if max_sec and len(seg) > SR:  # soft start, fade out long sounds
+        limit = min(float(max_sec) if max_sec else MAX_SFX_SECONDS, MAX_SFX_SECONDS)
+        seg = audio[: int(limit * SR)]  # never tiled into a loop
+        if len(seg) > int(0.8 * SR):  # longer sounds: soft start, soft end
+            seg = seg.copy()
             f_in = min(len(seg), int(0.15 * SR))
-            seg = seg.copy()
             seg[:f_in] *= np.linspace(0, 1, f_in)[:, None]
-            f = min(len(seg), int(0.6 * SR))
-            seg = seg.copy()
+            f = min(len(seg), int(0.5 * SR))
             seg[-f:] *= np.linspace(1, 0, f)[:, None]
         _add(fx, t, seg, gain)
-    out += _lowpass(fx, MUSIC_LOWPASS) * duck_gain(v, 0.45)[:, None]  # quiet under the voice
+    out += _lowpass(fx, min(MUSIC_LOWPASS, sfx_lowpass)) * duck_gain(v, sfx_duck)[:, None]  # quiet under the voice
     peak = np.abs(out).max()
     if peak > 0.98:
         out *= 0.98 / peak

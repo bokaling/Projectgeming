@@ -52,7 +52,7 @@ def test_options_clamped():
     o = project.EpisodeOptions.from_dict({"hero_count": 99, "languages": ["xx"], "formats": [], "junk": 1})
     assert o.languages == ["en"] and o.formats == ["9x16"] and not hasattr(o, "hero_count")
     d = project.EpisodeOptions()
-    assert d.source == "paste" and d.sfx is True and d.captions  # your script, soft sounds on, keyword captions
+    assert d.source == "paste" and d.sfx == "subtle" and d.captions  # your script, subtle sounds, keyword captions
     assert not d.end_card and not d.final_episode and d.quality_check  # explainers: overview ending, no "Part 2"
     assert project.EpisodeOptions.from_dict({"length": "long"}).formats == ["16x9"]
 

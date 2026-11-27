@@ -156,3 +156,69 @@ def test_brightness_has_no_jumps_except_hard_cuts(needs_gl):
     r.release()
     problems = checker.brightness_jumps(L, 30.0, checker.cut_times(w), held=H)
     assert not problems, problems[:5]
+
+
+# ---------------------------------------------------------------- Part 3: quiet sound, no loops
+def test_sfx_setting_off_subtle_full_and_old_true_false():
+    from storyforge.project import EpisodeOptions
+
+    assert EpisodeOptions().sfx == "subtle"
+    assert EpisodeOptions.from_dict({"sfx": True}).sfx == "subtle"
+    assert EpisodeOptions.from_dict({"sfx": False}).sfx == "off"
+    assert EpisodeOptions.from_dict({"sfx": "FULL"}).sfx == "full"
+
+
+def _engine_and_elevator_plan():
+    from storyforge.world import plan as P
+
+    raw = {"areas": [{"id": "a", "setting": "studio"}],
+           "objects": [{"id": "e", "asset": "car_engine", "area": "a"}, {"id": "lift1", "asset": "elevator", "area": "a",
+                                                                         "pos": [8, 0]}],
+           "scenes": [{"camera": {"move": "orbit", "target": "e"},
+                       "actions": [{"do": "spin", "target": "e", "at": 0.0}, {"do": "flow", "target": "e", "path": "intake",
+                                                                               "at": 0.2}]},
+                      {"camera": {"move": "close_up", "target": "lift1.ropes"},
+                       "actions": [{"do": "snap", "target": "lift1.ropes", "at": 0.2}]},
+                      {"camera": {"move": "close_up", "target": "lift1.safety_brakes"},
+                       "actions": [{"do": "clamp", "target": "lift1.safety_brakes", "at": 0.2},
+                                   {"do": "alarm", "target": "lift1", "at": 0.1}]}]}
+    plan, _ = P.validate(raw, None)
+    tl = {"scenes": [{"id": s["id"], "start": 5.0 * k, "dur": 5.0, "voice": 4.5} for k, s in enumerate(plan["scenes"])],
+          "words": [], "total": 18.6, "end": {"start": 15.0, "dur": 3.6, "kind": "overview"}}
+    return plan, tl
+
+
+def test_subtle_sounds_are_whooshes_and_one_sound_per_big_moment():
+    from storyforge import pipeline
+
+    plan, tl = _engine_and_elevator_plan()
+    assert pipeline.sound_events("off", tl, plan, "en", []) == []
+    subtle = pipeline.sound_events("subtle", tl, plan, "en", [])
+    names = [n for _, n, _ in subtle]
+    assert set(names) <= {"low_whoosh", "snap", "clamp", "thud"}  # no hum, pour or alarm loops
+    assert names.count("snap") == 1 and names.count("clamp") == 1
+    full = pipeline.sound_events("full", tl, plan, "en", [])
+    assert "hum" in [n for _, n, _ in full] and all(m <= 2.0 for _, _, m in full)
+
+
+def test_mixer_never_loops_a_sound_and_keeps_it_short():
+    from storyforge.audio import music
+
+    sr = music.SR
+    voice = np.zeros(int(10 * sr), np.float32)
+    hum = music.make_sfx("hum", 1)  # a 4 s machine sound, asked to last 8 s
+    out = music.mix(voice, 10.0, None, 0.0, [(1.0, hum, 0.5, 8.0)])
+    env = np.abs(out[:, 0])
+    assert float(env[int(3.2 * sr):].max()) < 1e-3  # silent after 2 s (it used to loop for the whole action)
+    assert "pulse" not in music.PRESETS["explainer"]["layers"]  # no thumping beat under the voice
+
+
+def test_new_one_shot_sounds_are_short_soft_and_low():
+    from storyforge.audio import music
+
+    for name in ("snap", "clamp", "thud"):
+        x = music.make_sfx(name, 2)
+        assert len(x) <= 1.0 * music.SR and np.isfinite(x).all()
+        spec = np.abs(np.fft.rfft(x[:, 0]))
+        f = np.fft.rfftfreq(len(x), 1 / music.SR)
+        assert spec[f > 4000].sum() < 0.03 * spec.sum(), name  # lowpassed: nothing sharp

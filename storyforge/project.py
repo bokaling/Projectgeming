@@ -110,6 +110,19 @@ class State:
 # ---------------------------------------------------------------------------
 
 
+SFX_LEVELS = ("off", "subtle", "full")
+
+
+def sfx_level(value) -> str:
+    """off / subtle / full. Old saved options said True (sounds on → subtle) or False (off)."""
+    if value is True:
+        return "subtle"
+    if value is False or value is None:
+        return "off"
+    v = str(value).strip().lower()
+    return v if v in SFX_LEVELS else "subtle"
+
+
 @dataclass
 class EpisodeOptions:
     idea: str = ""  # the topic ("how cow poop becomes electricity") when the AI writes the script
@@ -123,7 +136,7 @@ class EpisodeOptions:
     captions: bool = True  # keyword captions at the top
     music_mood: str = "auto"
     music_volume: float = 0.10  # quiet: music sits well under the voice
-    sfx: bool = True  # soft sounds: whooshes on camera moves, machine hums, booms on reveals
+    sfx: str = "subtle"  # sound effects: off, subtle (soft whooshes on flights + one soft sound per big moment), full
     creator_note: str = ""
     quick_test: bool = False
     end_card: bool = False  # "Part X 👀" is for story series; explainers end on an overview that loops
@@ -132,6 +145,7 @@ class EpisodeOptions:
     quality_check: bool = True  # check one still per scene (Gemini vision if you have a key) and fix
 
     def __post_init__(self):
+        self.sfx = sfx_level(self.sfx)
         self.length = "long" if self.length == "long" else "short"
         self.formats = ["16x9"] if self.length == "long" else ["9x16"]  # short = 9:16, long = 16:9
 

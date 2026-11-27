@@ -160,7 +160,7 @@ def opts_from(text, idea, note, langs, length, res, cap_on, mood, vol, sfx, end_
     return EpisodeOptions.from_dict({
         "script_text": text or "", "idea": idea or "", "creator_note": note or "", "languages": langs or ["en"],
         "length": length, "resolution": res, "captions": bool(cap_on), "music_mood": mood, "music_volume": float(vol),
-        "sfx": bool(sfx), "end_card": bool(end_card), "final_episode": bool(final), "quality_check": bool(qc),
+        "sfx": sfx, "end_card": bool(end_card), "final_episode": bool(final), "quality_check": bool(qc),
         "source": source, "video_format": fmt or "auto", "seconds": sec,
     })
 
@@ -403,8 +403,10 @@ def build_app():
                             mood = gr.Dropdown(MOOD_CHOICES, value="auto", label="Music mood")
                             vol = gr.Slider(0, 0.4, value=default_opts.music_volume, step=0.01,
                                             label="Music volume (it also ducks under the voice)")
-                            sfx = gr.Checkbox(value=True, label="Sounds: whoosh on camera moves, machine hums, bubbling, "
-                                                                "sparks, low booms on reveals")
+                            sfx = gr.Radio([("Off", "off"), ("Subtle", "subtle"), ("Full", "full")],
+                                           value=default_opts.sfx, label="Sound effects",
+                                           info="Subtle: a soft whoosh on camera moves + one soft sound per big moment "
+                                                "(a rope snaps, brakes clamp). Full: more machine sounds. Never loops.")
 
             # ------------------------------------------------------------ 4 Export
             with gr.Tab("4 · 🎬 Export", id="export"):

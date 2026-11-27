@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from . import config, pipeline
 from .messages import Reporter, explain
-from .project import EpisodeOptions, Series
+from .project import EpisodeOptions, Series, sfx_level
 
 ACTIONS = ["🚀 Generate from my SCRIPT", "✍️ AI writes from my TOPIC", "🔧 Fix one shot", "⚡ Quick test"]
 
@@ -62,7 +62,7 @@ def _show_videos(paths) -> None:
 
 def run(action: str, script_text: str = "", series_name: str = "My Series", episode: int = 0, length: str = "Short",
         languages: str = "English", quality: str = "1080p", narrator_en: str = "kokoro:am_fenrir",
-        narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects: bool = True, topic: str = "",
+        narrator_fa: str = "edge:fa-IR-FaridNeural", sound_effects="subtle", topic: str = "",
         end_card: bool = False, final_episode: bool = False, shot: int = 0, fix: str = "",
         video_format: str = "auto", seconds: int = 0) -> None:
     s = config.init(root=None) if config._SETTINGS is None else config.get()
@@ -79,7 +79,7 @@ def run(action: str, script_text: str = "", series_name: str = "My Series", epis
         opts = EpisodeOptions.from_dict({
             "script_text": script_text, "idea": topic, "languages": _langs(languages),
             "length": "long" if str(length).lower().startswith("long") else "short", "resolution": quality,
-            "sfx": bool(sound_effects), "source": "ai" if ai else "paste", "end_card": bool(end_card),
+            "sfx": sfx_level(sound_effects), "source": "ai" if ai else "paste", "end_card": bool(end_card),
             "final_episode": bool(final_episode), "video_format": video_format or "auto",
             "seconds": int(seconds or 0),
         })

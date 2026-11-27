@@ -50,6 +50,57 @@ def file_sig(path: Path | None) -> str:
     return f"{st.st_size}-{int(st.st_mtime)}"
 
 
+MAX_SFX_SECONDS = music.MAX_SFX_SECONDS
+BIG_MOMENTS = {"snap": "snap", "clamp": "clamp", "drop": "thud", "shake": "thud"}  # one soft sound each
+FULL_SOUNDS = {"spin": "hum", "flow": "pour", "fill": "pour", "drain": "pour", "bubbles": "bubbles", "sparks": "zap",
+               "light_on": "click", "appear": "pop", "alarm": "alarm_hum", "smoke": "steam", "cutaway": "low_whoosh"}
+
+
+def sound_events(level: str, tl: dict, plan: dict, lang: str, reveals: list) -> list[tuple]:
+    """Which sound effects play when: [(seconds, name, max seconds)].
+    off: none (voice + soft music). subtle (default): a gentle whoosh when the camera flies to the next shot, and ONE
+    short soft sound for each big moment (a rope snaps, brakes clamp, something heavy lands). full: also short machine
+    sounds when something starts (a motor hum, pouring, a click), booms on reveals and a riser before the end.
+    Nothing loops: every sound is a one-shot of at most 2 s, so nothing hums under the voice the whole time."""
+    if level == "off":
+        return []
+    out = []
+    world = None
+    if plan.get("scenes"):
+        from .world.scene import World  # noqa: PLC0415
+
+        world = World(plan, tl, (1080, 1920), lang)
+    for k, info in enumerate(tl["scenes"][1:], 1):  # the camera flies to the next shot (no whoosh on a hard cut)
+        if world is not None and k < len(world.scenes) and world.flight(k) <= 0:
+            continue
+        if all(abs(info["start"] - r) > 0.6 for r in reveals) or level == "subtle":
+            out.append((round(max(0.0, info["start"] - 0.1), 3), "low_whoosh", 0))
+    if world is not None:
+        seen = set()
+        for e in world.events:
+            snd = BIG_MOMENTS.get(e.do)
+            if level == "full" and not snd:
+                snd = FULL_SOUNDS.get(e.do)
+                if e.do == "move" and any(p.kind == "wheel" for p in world.groups[e.oid][0].model.parts):
+                    snd = "rumble"  # a vehicle drives off
+            if not snd or (snd, e.scene) in seen:
+                continue  # one of each kind per shot (5 houses lighting up = one click)
+            if any(abs(e.start - t0) < 1.0 and n not in ("low_whoosh",) for t0, n, _ in out):
+                continue  # one sound per moment
+            seen.add((snd, e.scene))
+            at = e.start + (0.25 if e.do == "snap" else 0.0)
+            out.append((round(at, 3), snd, MAX_SFX_SECONDS if snd in music.LOOPED else 0))
+    if level == "full":
+        for r in reveals:
+            out.append((round(max(0.0, r - 0.02), 3), "boom", 0))
+        if len(tl["scenes"]) > 1:
+            out.append((round(max(0.0, tl["scenes"][-1]["start"] - 2.55), 3), "soft_riser", 0))
+    if tl.get("end", {}).get("kind") == "overview":  # up to the overview, and back down to shot 1
+        out.append((round(tl["end"]["start"], 3), "low_whoosh", 0))
+        out.append((round(tl["total"] - 1.0, 3), "low_whoosh", 0))
+    return sorted(out)
+
+
 class Pipeline:
     def __init__(self, series: Series, episode: Episode, rep: Reporter, opts: EpisodeOptions | None = None):
         self.series, self.ep, self.rep = series, episode, rep
@@ -432,8 +483,7 @@ class Pipeline:
 
     # ------------------------------------------------------------------ sound
     def audio_mix(self, lang: str, tl: dict, plan: dict | None = None) -> tuple[Path, list[str], str]:
-        """Voice + music that builds and drops before reveals + soft sounds (whoosh on camera flights,
-        machine hums, bubbling, sparks, booms on reveals). Nothing above 8 kHz, -14 LUFS."""
+        """Voice + soft music + sound effects at the chosen level (sound_events). Nothing above 8 kHz, -14 LUFS."""
         sc = self.script
         plan = plan or {"scenes": []}
         mood = formats.music_mood(self.video_format(), self.opts.music_mood, sc.get("music_mood", ""))
@@ -441,42 +491,10 @@ class Pipeline:
         prev = [p.get("music", "") for p in self.series.previous_summaries(self.ep.number, 3)]
         pick = music.choose_music(mood, seed, avoid=prev)
         reveals = list(tl.get("beats", {}).get("reveal", []))
-        events_spec = []
-        if self.opts.sfx:
-            for k, info in enumerate(tl["scenes"][1:], 1):  # the camera flies to the next shot
-                if all(abs(info["start"] - r) > 0.6 for r in reveals):
-                    events_spec.append((round(max(0.0, info["start"] - 0.25), 3), "low_whoosh", 0))
-            for r in reveals:
-                events_spec.append((round(max(0.0, r - 0.02), 3), "boom", 0))
-            from .world.scene import World  # noqa: PLC0415
-
-            if plan.get("scenes"):
-                world = World(plan, tl, (1080, 1920), lang)
-                looping = set()
-                for e in world.events:
-                    snd = {"spin": "hum", "flow": "pour", "fill": "pour", "drain": "pour", "bubbles": "bubbles",
-                           "sparks": "zap", "light_on": "click", "appear": "pop", "alarm": "alarm_hum",
-                           "smoke": "steam", "shake": "rumble", "cutaway": "low_whoosh", "drop": "pop"}.get(e.do)
-                    if e.do == "move" and any(p.kind == "wheel" for p in world.groups[e.oid][0].model.parts):
-                        snd = "rumble"  # a vehicle drives
-                    if not snd:
-                        continue
-                    if snd in music.LOOPED:  # one loop of each kind per shot is enough (5 houses ≠ 5 hums)
-                        if (snd, e.scene) in looping:
-                            continue
-                        looping.add((snd, e.scene))
-                    end = min(e.end, world.scenes[e.scene]["end"])
-                    length = max(0.0, end - e.start) if snd in music.LOOPED else 0
-                    if snd in ("pop", "click") and any(abs(e.start - t0) < 0.25 for t0, n, _ in events_spec if n == snd):
-                        continue
-                    events_spec.append((round(e.start, 3), snd, round(length, 3)))
-            if len(tl["scenes"]) > 1:
-                events_spec.append((round(max(0.0, tl["scenes"][-1]["start"] - 2.55), 3), "soft_riser", 0))
-            if tl.get("end", {}).get("kind") == "overview":  # up to the overview, and back down to shot 1
-                events_spec.append((round(tl["end"]["start"], 3), "low_whoosh", 0))
-                events_spec.append((round(tl["total"] - 1.0, 3), "low_whoosh", 0))
+        level = self.opts.sfx
+        events_spec = sound_events(level, tl, plan, lang, reveals)
         mix_path = self.ep.audio_dir(lang) / "mix.wav"
-        fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, self.opts.sfx, reveals, "sound-3d-3",
+        fp = fingerprint(tl, pick.get("name"), events_spec, self.opts.music_volume, level, reveals, "sound-3d-4",
                          [file_sig(self.ep.audio_dir(lang) / f"{s['id']}.wav") for s in sc["scenes"]])
         credits = [pick["credit"]] if pick.get("credit") else []
         if self.ep.state.fresh(f"mix:{lang}", fp, [mix_path]):
@@ -497,7 +515,7 @@ class Pipeline:
         else:
             bed = music.generate_music(mood, tl["total"], seed)
             self.rep.ok(f"Music: generated '{mood}' track (yours to use, no license needed)")
-        env, hits = music.tension_envelope(tl["total"], reveals, hits=not self.opts.sfx)
+        env, hits = music.tension_envelope(tl["total"], reveals, hits=level == "full")
         events = []
         for at, name, max_sec in events_spec:
             audio, credit = music.get_sfx(name, seed)
@@ -506,7 +524,8 @@ class Pipeline:
             events.append((at, audio, music.SFX_GAIN.get(name, 0.3), max_sec))
         for h in hits:
             events.append((h, music.make_sfx("boom", seed), 0.22, 0))
-        mixed = music.mix(voice, tl["total"], bed, self.opts.music_volume, events, music_env=env)
+        mixed = music.mix(voice, tl["total"], bed, self.opts.music_volume, events, music_env=env,
+                          sfx_lowpass=3200 if level == "subtle" else 5000, sfx_duck=0.8 if level == "subtle" else 0.6)
         raw = self.ep.audio_dir(lang) / "mix_raw.wav"
         music.write_stereo(raw, mixed)
         music.loudnorm(raw, mix_path)
