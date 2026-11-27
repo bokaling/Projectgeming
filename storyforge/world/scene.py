@@ -26,6 +26,16 @@ FLOORS = {"pad", "ground_plate", "ground", "rail", "fence", "railing", "pipe_sta
 SHINE = {"metal": 0.85, "paint": 0.55, "glass": 0.9, "plastic": 0.3, "water": 0.7, "rubber": 0.05, "ceramic": 0.45}
 
 SAFE_TOP, SAFE_BOTTOM = 0.15, 0.20  # keep the top 15 % for captions and the bottom 20 % clear for app buttons
+
+
+def label_floor(W: int, H: int) -> float:
+    """Pixels at the bottom a label must stay above: the app buttons plus the line of subtitles over them
+    (captions.two_layer_header: margin 21.5 % / 7.5 % of the height, font 6 % / 4.5 % of the short side)."""
+    if H >= W:
+        return 0.215 * H + 1.4 * 0.06 * W
+    return 0.075 * H + 1.4 * 0.045 * H
+
+
 FILL = 0.78  # how big the subject is (1 = as big as allowed): see W_DIV / H_DIV
 W_DIV = 0.68 / FILL  # a normal shot: the subject's box is 68 % of the frame width (the rule: 60-75 %)
 H_DIV = 0.92 / FILL  # …but never more than 92 % of the safe height (captions on top, app buttons below)
@@ -986,12 +996,62 @@ class World:
                 elif axis == "z":
                     az = self.groups[tgt][0].rot + 18.0
         room = area_of.get("setting") in ("kitchen", "bathroom", "garage", "living_room", "office", "lab", "laundry")
+        if part and "angle" not in cam and cam["move"] not in ("hero", "macro"):  # film the part from its clear side
+            az = self._clear_side(i, tgt, part, lo, hi, az, el, cam.get("fov", self.fov), min(1.0, fill), room)
         prev_look = self._looks[i - 1][0] if i > 0 else self._looks[i][0]
         cut = bool(sc["plan"].get("cut")) or (i > 0 and (prev_look != self._looks[i][0] or self.isolated(i) or
                                                         self.isolated(i - 1)))
         return {"move": cam["move"], "target": tgt, "lo": lo, "hi": hi, "c": (lo + hi) / 2, "cut": cut, "room": room,
                 "r": max(1.2, float(np.linalg.norm(hi - lo)) / 2), "az": az, "el": el, "to_az": cam.get("to_angle"),
                 "fov": cam.get("fov", self.fov), "keys": keys, "micro": micro, "fill": min(1.0, fill)}
+
+    def _clear_side(self, i: int, tgt: str, part: str, lo, hi, az0: float, el: float, fov: float, fill: float,
+                    room: bool) -> float:
+        """The camera angle near az0 from which the fewest of the machine's own solid parts stand in front of the
+        part this shot is about. It moves only when that clearly shows more of the part: a motor under a washer's
+        tub is filmed from the side, not through the drum and the drain pump."""
+        inst = self.groups[tgt][0]
+        sc = self.scenes[i]
+        T = sc["start"] + 0.5 * sc["dur"]
+        st = self.state(inst, T)
+        try:
+            inv = np.linalg.inv(self.inst_matrix(inst, {**st, "vis": 1.0}).astype(np.float64))
+        except np.linalg.LinAlgError:
+            return az0
+        keep = set(self.part_names(inst.model, part))
+        solid = [p for k, p in enumerate(inst.model.parts)
+                 if k not in keep and not p.shell and p.kind != "liquid" and p.opacity >= 0.6]
+        box = self.part_box(tgt, part, T, margin=False) or (lo, hi)
+        c, half = (np.asarray(box[0], np.float64) + box[1]) / 2, (np.asarray(box[1], np.float64) - box[0]) / 2 * 0.7
+        pts = [c] + [c + half * np.array([sx, sy, sz]) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+        pts = [(inv @ np.append(q, 1.0))[:3] for q in pts]
+        if not solid:
+            return az0
+        tris = np.concatenate([p.geo.pos.reshape(-1, 3, 3) for p in solid]).astype(np.float64)  # real triangles:
+        # a bent hose's box covers half the machine, its triangles don't
+
+        def blocked(a: float) -> float:
+            eye, _ = self.fit(lo, hi, a, el, fov, fill)
+            e = (inv @ np.append(eye, 1.0))[:3]
+            return sum(_seg_hits(e, q, tris) for q in pts) / len(pts)
+
+        def norm(a: float) -> float:
+            a = (a + 180.0) % 360.0 - 180.0
+            return min(95.0, max(-5.0, a)) if room else a
+
+        start = norm(az0)
+        here = blocked(start)
+        if here < 0.3:
+            return az0
+        best, best_s = start, here
+        for d in (25, -25, 50, -50, 75, -75, 100, -100, 130, -130, 180):
+            a = (az0 + d + 180.0) % 360.0 - 180.0
+            if room and not -5.0 <= a <= 95.0:
+                continue
+            s = blocked(a)
+            if s < best_s - 0.05:
+                best, best_s = a, s
+        return best if here - best_s >= 0.25 else az0
 
     def _cam_path(self, i: int, t: float) -> tuple[np.ndarray, np.ndarray, float]:
         """Every move is framed from the subject's box (fit), then moves a little: every shot has motion."""
@@ -2092,7 +2152,7 @@ class World:
             k = min(1.0, (t - t0) / 0.22)
             out_fade = min(1.0, (sc["dur"] - t) / 0.2)
             x = min(max(x, img.shape[1] * 0.5 + 12), W - img.shape[1] * 0.5 - 12)
-            y = min(max(y, img.shape[0] + 0.14 * H), H - 0.21 * H)
+            y = min(max(y, img.shape[0] + 0.14 * H), H - label_floor(W, H))
             out.append(Label(key, img, float(x), float(y), scale=pop(k) * 0.98 + 0.02, alpha=min(k * 1.5, out_fade)))
         out.sort(key=lambda lb: lb.y)  # push overlapping labels apart
         for a in range(1, len(out)):
@@ -2110,7 +2170,7 @@ class World:
             lb.scale *= fit
             half = w * lb.scale / 2
             lb.x = min(max(lb.x, half + 0.03 * W), W - half - 0.03 * W)
-            lb.y = min(max(lb.y, h * lb.scale + 0.14 * H), H - 0.21 * H)  # above the app buttons and the subtitles
+            lb.y = min(max(lb.y, h * lb.scale + 0.14 * H), H - label_floor(W, H))  # above the subtitles + buttons
         return out
 
 
@@ -2177,6 +2237,22 @@ def freeze_layout(plan: dict) -> dict:
         if "x" not in a and a["id"] in pos:
             a["x"], a["z"] = pos[a["id"]]
     return plan
+
+
+def _seg_hits(a, b, tris: np.ndarray, t0: float = 0.02, t1: float = 0.94) -> bool:
+    """Does the segment a→b (between 2 % and 94 % of the way) pass through any of the triangles (n, 3, 3)?"""
+    d = np.asarray(b, np.float64) - np.asarray(a, np.float64)
+    v0, e1, e2 = tris[:, 0], tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]
+    pv = np.cross(d, e2)
+    det = np.einsum("ij,ij->i", e1, pv)
+    ok = np.abs(det) > 1e-12
+    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+    tv = np.asarray(a, np.float64) - v0
+    u = np.einsum("ij,ij->i", tv, pv) * inv
+    qv = np.cross(tv, e1)
+    v = (qv @ d) * inv
+    t = np.einsum("ij,ij->i", e2, qv) * inv
+    return bool(np.any(ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > t0) & (t < t1)))
 
 
 def _seg_box(a, b, lo, hi, t0: float = 0.02, t1: float = 0.94) -> bool:

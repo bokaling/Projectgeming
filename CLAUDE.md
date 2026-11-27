@@ -745,6 +745,11 @@ sound and cuts every effect at `MAX_SFX_SECONDS` = 2 s with soft fades; effects 
   says where a thing belongs; in a room setting (kitchen, office, living room, laundry…) the object goes ON the
   counter (0.92 m) or table (0.75 m) or hangs from the ceiling (2.7 m), and the setting builds that worktop, desk or
   ceiling slab under/over it. Only when the plan gives no `"y"`. Planner rule `PLACES` says the same.
+* **Clear side** (`World._clear_side`): a shot aimed at a part (`obj.part`, not hero/macro) tries angles around the
+  planned one (inside the room's open front/right) and counts how many of 9 points on the part are hidden by the
+  machine's own solid parts (real triangles, `_seg_hits`; boxes lie for bent hoses); it moves only when that shows
+  ≥ 25 % more of the part (the washer's motor under the tub: from the side, not through the drum). **Labels** stay
+  above the bottom subtitle line (`label_floor`), not only above the app buttons.
 * **Hero cutaways**: the cut part stays inside a faint ghost of its machine, on the machine's own floor (Part 4),
   deep red cut faces. **Comparisons**: planner rule asks for 2-3 CLEAR everyday objects at real size on a table.
 

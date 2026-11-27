@@ -365,3 +365,26 @@ def test_no_closed_part_is_inside_out_and_boxes_are_bevelled():
     raw = assets.REGISTRY["house"].fn()
     assert assets.build("house").tris > raw.tris  # bevelled edges
     assert any(p.geo.nrm is not None for p in assets.build("tank").parts)  # round parts are smooth
+
+
+def test_a_part_inside_a_machine_is_filmed_from_its_clear_side():
+    scenes = [{"camera": {"move": "orbit", "target": "w1"}} for _ in range(5)]
+    scenes.append({"camera": {"move": "close_up", "target": "w1.motor"}})  # shot 6: the plain angle is the front
+    w = _world(scenes, [{"id": "w1", "asset": "washing_machine", "area": "a"}], [{"id": "a", "setting": "laundry"}])
+    assert w._cam_part(5) == "motor"
+    assert 10 <= w._cams[5]["az"] <= 95  # not through the drum and the pump from the front, and never behind the wall
+
+
+def test_labels_stay_above_the_bottom_subtitles():
+    from storyforge.world.scene import label_floor
+
+    W, H = 720, 1280
+    assert H - label_floor(W, H) <= H - 0.215 * H - 0.06 * W  # above the subtitle line (captions.two_layer_header)
+    w = _world([{"camera": {"move": "close_up", "target": "w1.control_panel"},  # the feet are far below the picture
+                 "labels": [{"target": "w1.feet", "text": "Feet", "kind": "part", "at": 0.0}]}],
+               [{"id": "w1", "asset": "washing_machine", "area": "a"}])
+    tex = lambda text, kind: (np.zeros((14, 60, 4), np.uint8), text)  # noqa: E731
+    W, H = w.size
+    ys = [lb.y for T in (1.0, 2.5, 4.0) for lb in w.frame(T, tex).labels]
+    assert ys and all(y <= H - label_floor(W, H) + 1e-6 for y in ys)
+    assert max(ys) > H - label_floor(W, H) - 1  # it was pushed up to the limit (not lower, over the subtitles)
