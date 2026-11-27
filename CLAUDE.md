@@ -1,5 +1,70 @@
 # StoryForge: plan and rules
 
+## CODE MAP (read this first, then open only the files you need)
+
+**Which files for which task**
+* Rendering / look / shadows / flicker: `world/gl.py` (shaders, shadow map, SSAO, bloom, grade), `world/scene.py`
+  (`World.frame` builds a `gl.Frame`: draws, lights, flash/fade, shadow focus), `world/video.py` (frames → FFmpeg).
+* Objects / machines: `world/mesh.py` (shapes), `world/assets.py` + `world/assets_more.py` (library), `world/machines.py`
+  (engine, car, elevator), `world/kit.py` (mechanism kit), `world/builder.py` (JSON recipes, AI design, self check),
+  `world/cad.py` (build123d / bd_warehouse parts, manifold3d cuts), `world/imported.py` (CC0 glTF/OBJ models),
+  `world/recipes/*.json`, `world/sense.py` (physical sense check), `world/motion.py` (how parts move).
+* Planner (script → plan): `world/planner.py` (AI + offline), `world/plan.py` (validate/auto-fix), `world/examples.py`,
+  `world/presets.py`, `world/settings.py` (rooms), `world/decor.py`, `world/logic.py` (ports, pipes, grounding),
+  `world/checker.py` (quality check), `world/fixer.py` (fix one shot), `world/cheatsheet.py` → `docs/PLAN_CHEATSHEET.md`.
+* Audio: `audio/tts.py` (voices), `audio/align.py` (word times), `audio/music.py` (music beds, SFX, mix, loudness),
+  `pipeline.audio_mix` (which sounds go where, SFX level).
+* Captions: `captions.py` (ASS: keyword, two-layer, karaoke, Farsi RTL), `pipeline.keyword_items`.
+* App UI: `ui/app.py` (4-step Gradio app), `ui/status.py` (progress panel), `ui/theme.py`, `ui/jobs.py`.
+* Colab notebook / setup: `notebooks/StoryForge_Colab.ipynb` (2 cells), `install.py` (packages, EGL, CAD tools),
+  `forms.py` (backup forms mode), `config.py` (paths, GPU, secrets).
+* Whole pipeline / resume: `pipeline.py` (`Pipeline`: scene_plan → timeline → render_clips → audio_mix → final_videos),
+  `project.py` (series, episodes, `state.json`, `EpisodeOptions`), `make.py` (CLI).
+
+**Files (key functions)**
+| File | What it does |
+|---|---|
+| `config.py` | settings, Drive paths, Colab/Kaggle detection, GPU profiles, secrets (`secret`, `key_lines`), `encoder_args` |
+| `project.py` | `Series`, `Episode`, `State` (resume), `EpisodeOptions` (all user options incl. `sfx`), atomic `write_json` |
+| `pipeline.py` | `Pipeline`: `scene_plan`, `save_plan`, `timeline`, `scene_fp`, `render_clips`, `audio_mix`, `final_videos`, `make_video`, `quality_check`, `self_review`, `fix_scene`; `auto_series`, `use_plan` |
+| `make.py` | CLI: `python -m storyforge.make --script s.txt [--plan p.json] --res 720p --out v.mp4 [--sfx subtle]` |
+| `messages.py` / `net.py` / `llm.py` | progress + friendly errors / HTTP retries / Gemini→Flash-Lite→Groq→OpenRouter chain, `generate_json`, `vision_json` |
+| `paste.py` / `script.py` | read a pasted script (tags, batch, timing) / topic → script, templates |
+| `doctor.py`, `beats.py` | script doctor score + improve / hooks, reveals, music mood |
+| `formats.py` | 6 formats (rules, captions, ending, music mood), `detect` |
+| `captions.py` | ASS captions (`keyword_events`, `subtitle_events`, `karaoke_events`, Farsi) |
+| `publish.py`, `videos.py` | thumbnail, metadata, chapters / "StoryForge Videos" folder on Drive |
+| `render.py`, `media.py` | FFmpeg join (`-c copy`) + mux / ffprobe helpers |
+| `audio/music.py` | `generate_music`, `make_sfx` (short one-shots), `mix` (voice + ducked music + SFX), `loudnorm` |
+| `audio/tts.py`, `audio/align.py` | Kokoro → Kokoro ONNX → Edge → Piper → espeak / CTC + proportional word times |
+| `world/gl.py` | `Renderer.render(Frame)`: stable shadow map (`shadow_box`, texel snap), PCF, SSAO, bloom, DOF, ACES grade |
+| `world/scene.py` | `World`: layout, events (`state`), cameras (`camera`, `fit`, `flight`), `frame(T)`, labels, particles, hero/macro |
+| `world/video.py` | `make_renderer`, `render_span` (one clip), `render_still`, `RENDER_VERSION` |
+| `world/mesh.py` | `Geo`, shapes (box, cylinder, lathe, gear…), `Part`, `Model`, `section` (cut face) |
+| `world/assets.py` | `@asset` registry, `build`, `resolve`, `catalog`, `part_list`, `snap_part`, `REAL_SIZE`, core objects |
+| `world/assets_more.py` | the rest of the library (animals, vehicles, buildings, machines, science, tools) |
+| `world/machines.py` | `car_engine`, `car`, `elevator`, `counter`, `balance_scale` (real working parts) |
+| `world/kit.py` | 20 mechanism pieces (`expand`, `compose` templates) |
+| `world/builder.py` | recipes → models (`model_from_recipe`), `design` (AI, description first), `self_check` (3 views), `ensure_objects` |
+| `world/cad.py` | build123d shapes (fillet, loft, sweep, revolve, holes) + bd_warehouse gears/bearings/bolts/flanges → `Geo`; manifold3d cuts |
+| `world/imported.py` | CC0 model packs: download once to Drive, load glTF/GLB/OBJ, rescale, recolour to our palette, register as assets |
+| `world/sense.py` | physical sense check (floating parts, shared axes, facing, proportions, real size) |
+| `world/motion.py` | part motions (spin, slide, rod, valve, open, lift, stretch, level) as pure functions of T |
+| `world/plan.py` | `validate` (auto-fix + list of fixes), `summary` (plan.md), `literal_problems`, `relevant_objects` |
+| `world/planner.py` | `visual_ideas`, `ai_plan` (chunks of 14), `make_plan`, `offline_plan` |
+| `world/presets.py` / `world/settings.py` / `world/decor.py` | 19 world presets + looks / rooms around a machine (kitchen…) / set dressing |
+| `world/logic.py` | ports, routed pipes/cables, assemblies, pushing, `ground_everything`, `place_on_surfaces` |
+| `world/checker.py` / `world/fixer.py` | quality check (local + vision) / fix one shot (AI + rules) |
+| `world/labels.py` | label pills, stat cards, map insets, end card picture |
+| `world/examples.py` | demo scripts + hand-made plans (cow, submarine, sugar, pyramids) |
+| `ui/app.py` | the 4-step app (`build_app`, `launch`); `ui/status.py` progress panel; `ui/theme.py` CSS |
+| `forms.py` | backup Colab forms (no web app) |
+| `install.py` | Colab/Kaggle setup: packages, OpenGL/EGL, optional CAD tools (`setup_cad`) |
+| `docs/PLAN_CHEATSHEET.md` | generated list of assets with exact part names (`python -m storyforge.world.cheatsheet`) |
+| `LICENSES/assets.md` | every downloaded model pack with its license (CC0 only) |
+| `.claude/skills/build123d` | the rawwerks build123d skill (read before writing CAD code) |
+| `tests/` | CPU-only tests (`python -m pytest -q`); `tests/test_part14.py` = shadows, flicker, SFX, CAD, imports |
+
 A **low poly 3D "how it works" explainer video maker** (how things work, what happens if, how things are
 made, inside machines, science, engineering, history of inventions). Example: how a dairy farm turns cow
 manure into electricity. **All software and APIs are 100% free.** It runs on **Google Colab** (main; the
