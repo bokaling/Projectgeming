@@ -36,12 +36,28 @@ FINISH_IN_SHOT = {"open", "close", "lift", "fill", "drain", "appear", "drop", "g
                   "light_on", "light_off", "cutaway"}
 PERSIST = {"snap", "appear", "disappear", "grow", "move", "spin", "fill", "drain", "light_on", "light_off", "float", "drop",
            "show_part", "hide_part", "lift", "open", "close"}
-DEFAULT_DUR = {"snap": 0.6, "clamp": 0.4, "drop": 0.6, "appear": 0.45, "disappear": 0.4, "grow": 1.2, "fill": 1.6, "drain": 1.6, "light_on": 0.35,
-               "light_off": 0.3, "shake": 0.7, "cutaway": 0.8, "xray": 0.5, "show_part": 0.5, "hide_part": 0.4,
+DEFAULT_DUR = {"snap": 0.6, "clamp": 0.4, "drop": 0.6, "appear": 0.45, "disappear": 0.4, "grow": 1.2, "fill": 1.6, "drain": 1.6, "light_on": 0.6,
+               "light_off": 0.5, "shake": 0.7, "cutaway": 1.4, "xray": 0.6, "show_part": 0.5, "hide_part": 0.4,
                "lift": 2.6, "open": 0.8, "close": 0.7}
 STAGGER = {"appear": 0.16, "disappear": 0.12, "light_on": 0.28, "grow": 0.1, "light_off": 0.15, "show_part": 0.1}
 FLOW_COLORS = {"flow": (0.42, 0.29, 0.17), "bubbles": (0.82, 0.94, 1.0), "smoke": (0.72, 0.76, 0.8),
                "sparks": (1.0, 0.85, 0.35)}
+
+
+FADE_OUT = 0.4  # seconds a glow or alarm takes to fade away after its shot
+
+
+def slow_pulse(t: float, hz: float) -> float:
+    """0 → 1 → 0, smooth (a cosine), at most 2 times a second, starting from 0 (no jump when it begins)."""
+    return 0.5 - 0.5 * math.cos(2 * math.pi * min(hz, 2.0) * max(t, 0.0))
+
+
+def soft_ramp(t: float, T: float, end: float, rise: float = 0.4) -> float:
+    """An effect fades in over `rise` seconds and out over FADE_OUT after its end."""
+    k = ease(t / rise)
+    if end != math.inf:
+        k *= 1.0 - ease((T - end) / FADE_OUT)
+    return k
 
 
 def ease(x: float) -> float:
@@ -68,6 +84,9 @@ def pop(x: float) -> float:
 
 def word_norm(w: str) -> str:
     return "".join(ch for ch in str(w).lower() if ch.isalnum())
+
+
+NO_VIS = (False, frozenset(), frozenset())  # nothing left out
 
 
 @dataclass
@@ -540,26 +559,33 @@ class World:
                 st["light"] = ease(p)
             elif e.do == "light_off":
                 st["light"] = 1 - ease(p)
-            elif e.do == "glow" and active:
-                g = (0.12 + 0.12 * math.sin(t * 5.0)) if not e.part else (0.55 + 0.25 * math.sin(t * 4.0)) * min(1.0, p * 2)
+            elif e.do == "glow" and (active or T < e.end + FADE_OUT):
+                k = soft_ramp(t, T, e.end)  # glows fade in and out, and pulse slowly (under 1 per second)
+                g = k * ((0.06 + 0.12 * slow_pulse(t, 0.7)) if not e.part else (0.4 + 0.3 * slow_pulse(t, 0.6)))
                 if e.part:  # one part glows (hot coils, a heating element), not the whole machine
                     st.setdefault("glows", {})[e.part] = g
                 else:
                     st["glow"] = g
-            elif e.do == "alarm" and active:
+            elif e.do == "alarm" and (active or T < e.end + FADE_OUT):
                 part = e.part or self._scene_part(e.scene, inst.oid)
+                a_k = soft_ramp(t, T, e.end) * (0.25 + 0.75 * slow_pulse(t, 0.8))  # a slow red pulse, soft fades
                 if part:  # a huge machine: only the part in the picture turns red (the ropes, not the building)
-                    st.setdefault("alarms", {})[part] = 0.5 + 0.5 * math.sin(t * 7.0)
+                    st.setdefault("alarms", {})[part] = a_k
                 else:
-                    st["alarm"] = 0.5 + 0.5 * math.sin(t * 7.0)
+                    st["alarm"] = a_k
             elif e.do == "shake" and p < 1:
-                k = (1 - p) * (0.08 if not self.calm or self.fmt == "documentary" else 0.02) * max(1.0, inst.radius * 0.3)
-                st["shake"] = np.array([math.sin(t * 61), math.sin(t * 47) * 0.4, math.sin(t * 53)]) * k
+                env = (1 - p) * min(1.0, t / 0.12)
+                if self.fmt == "story":  # stories keep a real jolt
+                    k = env * 0.08 * max(1.0, inst.radius * 0.3)
+                    st["shake"] = np.array([math.sin(t * 61), math.sin(t * 47) * 0.4, math.sin(t * 53)]) * k
+                else:  # explainers and documentaries: a slow rock (a fast shake of a big object reads as flicker)
+                    k = env * 0.03 * max(1.0, inst.radius * 0.15)
+                    st["shake"] = np.array([math.sin(t * 13.0), math.sin(t * 11.0) * 0.4, math.sin(t * 12.0)]) * k
             elif e.do == "cutaway" and active:
                 st["cut"] = ease(p)
                 st["cut_dir"] = e.scene
             elif e.do == "xray" and active:
-                st["xray"] = True
+                st["xray"] = max(float(st["xray"]), ease(p))  # the shell turns see-through gradually
             elif e.do == "snap":  # a rope breaks: it whips back, the car drops until the safety brakes clamp
                 st.setdefault("snaps", {})[e.part or "ropes"] = t
                 st["sag"] = 0.55 * ease(min(1.0, t / 0.5))
@@ -625,16 +651,16 @@ class World:
                 lo, hi = part.geo.bounds()
                 pv = np.asarray(part.pivot if any(part.pivot) else ((lo + hi) / 2 * [1, 0, 1] + [0, hi[1], 0]),
                                 np.float32)
-                k = 1.0 - 0.6 * ease_out(min(1.0, ts / 0.35))
+                k = 1.0 - 0.6 * ease(min(1.0, ts / 0.9))  # the loose end springs back (smooth, readable)
                 sm = np.eye(4, dtype=np.float32)
                 sm[1, 1] = k
                 sm[1, 3] = float(pv[1]) * (1 - k)
-                ang = 32.0 * math.exp(-2.6 * ts) * math.sin(15.0 * ts)
+                ang = 12.0 * math.exp(-1.6 * ts) * math.sin(5.0 * ts) * min(1.0, ts / 0.25)  # a slow sway
                 r = np.eye(4, dtype=np.float32)
                 r[:3, :3] = rot_matrix(0, 0, ang)
                 r[:3, 3] = pv - r[:3, :3] @ pv
                 local = r @ sm @ local
-                extra_glow += 1.4 * math.exp(-7.0 * ts)
+                extra_glow += 0.3 * min(1.0, ts / 0.25) * math.exp(-1.8 * max(0.0, ts - 0.25))  # a soft glow, no flash
         if part.kind in ("blade", "wheel") and st["spin_on"] or (part.kind == "wheel" and st["travel"]):
             ang = st["spin"] if part.kind == "blade" else (st["travel"] / 0.6 + st["spin"])
             axis = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[part.axis]
@@ -1041,6 +1067,11 @@ class World:
         main = [o for o in ids if shots.count(o) >= max(2, len(shots) // 4)]
         if main and all(o in self.mounts for o in main):
             ids = main  # the engine the video is about, not the whole car it sits in
+        elif len(main) > 1 and len({self.groups[o][0].asset for o in main}) == 1:
+            # the same machine twice (in the car and on a stand): the one shot 1 films (the video loops back to it),
+            # else the one filmed most
+            best = shots[0] if shots and shots[0] in main else max(main, key=shots.count)
+            ids = [o for o in ids if self.groups[o][0].area == self.groups[best][0].area]
         boxes = [self.group_box(o, self.total) for o in ids] or [(np.zeros(3), np.ones(3))]
         lo, hi = np.min([b[0] for b in boxes], 0), np.max([b[1] for b in boxes], 0)
         if any("cross_section" in getattr(assets.REGISTRY.get(self.groups[o][0].asset), "tags", []) for o in ids):
@@ -1125,6 +1156,57 @@ class World:
                              rel[0] * math.sin(ang) + rel[2] * math.cos(ang)])
         return oe2 + (fe - oe2) * w, ot + (ft - ot) * w, self.fov + (ff - self.fov) * w, 0.0
 
+    def _shot_light(self, i: int) -> tuple:
+        """The sun and the shadow box of shot i: FIXED for the whole shot (sun from the upper left of the shot's main
+        view, sharp shadow map around its subject). Only the camera moves, so shadows don't swim or crawl."""
+        cache = self.__dict__.setdefault("_light_cache", {})
+        if i not in cache:
+            sp = self._cams[i]
+            du = self.scenes[i]["dur"]
+            tr = self.flight(i)
+            eye, tgt, fov = self._cam_path(i, tr + 0.5 * max(du - tr, 0.0))
+            dist = float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt)))
+            r0 = max(float(sp["r"]) * 1.35, dist * math.tan(math.radians(fov) / 2) * 1.25, 0.12)
+            if self.isolated(i) in ("hero", "macro"):
+                r0 = max(float(np.linalg.norm(sp["hi"] - sp["lo"])) * 0.75, 0.08)
+            cache[i] = (np.asarray(self.sun(eye, tgt), np.float64), np.asarray(sp["c"], np.float64), r0,
+                        max(r0 * 4.0, dist * 1.6, 6.0))
+        return cache[i]
+
+    def _overview_light(self) -> tuple:
+        oe, ot = self._overview()
+        dist = float(np.linalg.norm(oe - ot))
+        r0 = max(dist * 0.5, 1.0)
+        return np.asarray(self.sun(oe, ot), np.float64), np.asarray(ot, np.float64), r0, max(r0 * 4.0, dist * 1.6)
+
+    @staticmethod
+    def _blend_light(a: tuple, b: tuple, w: float) -> tuple:
+        sun = a[0] + (b[0] - a[0]) * w
+        sun /= max(np.linalg.norm(sun), 1e-9)
+        lr = lambda x, y: math.exp(math.log(x) + (math.log(y) - math.log(x)) * w)  # noqa: E731
+        return sun, a[1] + (b[1] - a[1]) * w, lr(a[2], b[2]), lr(a[3], b[3])
+
+    def light_at(self, i: int, t: float) -> tuple:
+        """(sun, shadow centre, sharp radius, wide radius) at local time t of shot i: the shot's own light, blended
+        from the previous shot's only while the camera flies in (and over the ending's overview)."""
+        cur = self._shot_light(i)
+        du = self.scenes[i]["dur"]
+        if i == len(self.scenes) - 1 and t > du and self.ending == "overview":
+            tt = t - du
+            end = self.tl.get("end", {}).get("dur", END_OVERVIEW)
+            a, b = min(1.3, end * 0.36), max(min(1.3, end * 0.36) + 0.1, end - 1.2)
+            ov = self._overview_light()
+            if tt < a:
+                return self._blend_light(cur, ov, ease(tt / a))
+            if tt < b:
+                return ov
+            return self._blend_light(ov, self._shot_light(0), ease(min(1.0, (tt - b) / max(end - b, 1e-3))))
+        tr = self.flight(i)
+        if i > 0 and t < tr and not self._cams[i]["cut"]:
+            w = smoother(t / tr) if self.calm else ease(t / tr)
+            return self._blend_light(self._shot_light(i - 1), cur, w)
+        return cur
+
     def sun(self, eye, tgt) -> tuple:
         d = np.asarray(eye) - np.asarray(tgt)
         az = math.atan2(d[0], d[2]) - math.radians(40)
@@ -1138,19 +1220,26 @@ class World:
                 return i
         return len(self.scenes) - 1
 
-    def frame(self, T: float, label_tex=None) -> Frame:
+    def camera_at(self, T: float) -> tuple:
+        """(eye, target, fov, fade) at video time T."""
         i = self.scene_at(T)
         sc = self.scenes[i]
         t = T - sc["start"] if (self.ending == "overview" and i == len(self.scenes) - 1) else min(T - sc["start"], sc["dur"])
-        eye, tgt, fov, fade = self.camera(i, t)
+        return self.camera(i, t)
+
+    def frame(self, T: float, label_tex=None, cam: tuple | None = None) -> Frame:
+        """Everything to draw at time T. cam = (eye, target, fov, fade) films the world at T from another camera
+        (the flicker check holds the camera still to see what changes in the world itself)."""
+        i = self.scene_at(T)
+        sc = self.scenes[i]
+        t = T - sc["start"] if (self.ending == "overview" and i == len(self.scenes) - 1) else min(T - sc["start"], sc["dur"])
+        eye, tgt, fov, fade = cam if cam is not None else self.camera(i, t)
         draws = []
         dyn = []  # cut faces made for this frame (hero shots)
         door_shot = {a["target"].split(".")[0] for a in sc["plan"]["actions"] if a["do"] in ("open", "close")}
         self._aim_i = i
         cam_dir = np.asarray(eye) - np.asarray(tgt)
         focus_id = self._cams[i]["target"]
-        flying = i > 0 and t < self.flight(i) + 0.3
-        prev_id = self._cams[i - 1]["target"] if i > 0 else None
         ending = self.ending == "overview" and i == len(self.scenes) - 1 and t > sc["dur"]
         iso = "" if ending else self.isolated(i)
         hero = self.hero_parts(i, T) if iso == "hero" else None
@@ -1167,6 +1256,27 @@ class World:
         fwd /= max(np.linalg.norm(fwd), 1e-9)
         half = math.radians(fov) / 2 * max(1.0, self.size[0] / self.size[1]) * 1.25  # a little wider than the view
         far_cut = max(260.0, 2.5 * float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt))))  # huge cross-sections
+        vis_now, vis_prev, vw = self._shot_vis(i), None, 1.0
+        vis_fly, dip = {}, 0.0
+        if ending:  # the overview: everything comes back while the camera flies out, then shot 1's choices
+            end = self.tl.get("end", {}).get("dur", END_OVERVIEW)
+            tt = t - sc["dur"]
+            a_, b_ = min(1.3, end * 0.36), max(min(1.3, end * 0.36) + 0.1, end - 1.2)
+            ov = self._ending_vis()
+            if tt < a_:
+                vis_now, vis_prev, vw = ov, vis_now, ease(tt / a_)
+            elif tt < b_:
+                vis_now = ov
+            else:
+                vis_now, vis_prev, vw = self._shot_vis(0), ov, ease(min(1.0, (tt - b_) / max(end - b_, 1e-3)))
+        elif i > 0 and not self._cams[i]["cut"] and t < self.flight(i):
+            vis_prev = self._shot_vis(i - 1)
+            u_fl = t / self.flight(i)
+            vw = smoother(u_fl) if self.calm else ease(u_fl)
+            vis_fly = self._flight_vis(i)  # whatever blocks the way while flying: out early, back in at the end
+            dip = smoother(u_fl / 0.45) * (1.0 - smoother((u_fl - 0.55) / 0.45))
+        sun, s_c, s_r0, s_r1 = self.light_at(i, t)
+        no_cast = self._no_cast()
         for inst in self.insts:
             if iso == "hero" and inst.oid != hero[0]:
                 continue  # a hero shot: ONE part alone in a clean studio
@@ -1176,40 +1286,42 @@ class World:
                 continue  # a comparison on its own plain table
             rel = inst.pos - eye  # skip what is behind the camera or far outside the picture (much faster)
             dist = float(np.linalg.norm(rel))
+            shadow_only = False
             if dist > far_cut or (dist > inst.radius * 1.5 and float(np.dot(rel, fwd)) / dist <
                                     math.cos(min(math.pi / 2, half + math.asin(min(1.0, inst.radius * 1.5 / dist))))):
                 if inst.oid not in self.groups or not self.events_of.get(inst.oid):
-                    continue
+                    if iso or float(np.linalg.norm(inst.pos - s_c)) > s_r1 + inst.radius:
+                        continue
+                    shadow_only = True  # just outside the picture: its shadow still falls into it (no shadow pop)
             st = self.state(inst, T)
             if st["vis"] <= 0.01:
                 continue
             if np.linalg.norm(st["pos"] - eye) > far_cut:
                 continue
-            if inst.oid in self.env_ids and self._in_front_of_subject(inst, st, eye, tgt, fov, i):
-                continue  # a prop drawn over the subject: leave it out (clean composition)
-            hidden_parts = set()
-            if inst.oid not in self._focus[i] and not (flying and inst.oid == prev_id) and \
-                    inst.asset not in ("pad", "ground", "terrain", "ground_plate") and self._blocks(inst, st, eye, tgt):
-                if inst.oid in self.env_ids:
-                    continue  # a prop in front of the subject: leave it out
-                if any(p.shell for p in inst.model.parts):  # a roof or wall in the way: leave out exactly the
-                    hidden_parts = self._blocking_parts(inst, st, eye, tgt)  # parts that block (no ghost lines)
-            see_through = set()
-            if inst.oid == focus_id and self._cam_part(i):  # its own walls/panels in front of the part we film
-                keep = set(self.part_names(inst.model, self._cam_part(i)))
-                blocking = self._blocking_parts(inst, st, eye, tgt, any_part=True, liquids=True) - keep
-                see_through = {k for k in blocking if inst.model.parts[k].kind == "liquid" or  # water: see through it
-                               not inst.model.parts[k].shell}  # a working part in front: glass, never missing
-                hidden_parts |= blocking - see_through
-            parent_of_focus = any(self.mounts.get(f, (None,))[0] is inst for f in self._focus[i]) and \
-                float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt))) < inst.radius * 1.15
-            # the car around its engine is a ghost only when the camera is close on the engine; wide shots and
-            # shots of the car show the real car with its hood open
-            if parent_of_focus:  # an engine inside its car: the car is a ghost, nothing of it in front of the engine
-                hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i, any_size=True, any_part=True)
-                hidden_parts |= self._blocking_parts(inst, st, eye, tgt, any_part=True)
-            elif inst.oid not in self._focus[i] and any(p.shell for p in inst.model.parts):
-                hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i)
+            # what is left out / see-through is decided once per shot (no part pops away mid-shot); while the
+            # camera flies in from the last shot, parts fade between the two shots' choices
+            skip_a, hid_a, see_a = vis_now.get(inst.oid, NO_VIS)
+            if vis_prev is not None:
+                skip_b, hid_b, see_b = vis_prev.get(inst.oid, NO_VIS)
+            else:
+                skip_b, hid_b, see_b = skip_a, hid_a, see_a
+            skip_f, hid_f, see_f = vis_fly.get(inst.oid, NO_VIS)
+            inst_k = (0.0 if skip_a else 1.0) * vw + (0.0 if skip_b else 1.0) * (1.0 - vw)
+            if skip_f:
+                inst_k = min(inst_k, 1.0 - dip)
+            if inst_k <= 0.01:
+                continue
+            hidden_parts, fade_k = set(), {}
+            for k in hid_a | hid_b | see_a | see_b | hid_f | see_f:
+                fa = 0.0 if k in hid_a else (0.3 if k in see_a else 1.0)
+                fb = 0.0 if k in hid_b else (0.3 if k in see_b else 1.0)
+                fk = fa * vw + fb * (1.0 - vw)
+                if k in hid_f or k in see_f:
+                    fk = min(fk, 1.0 - dip * (1.0 if k in hid_f else 0.7))
+                if fk <= 0.01:
+                    hidden_parts.add(k)
+                else:
+                    fade_k[k] = fk
             m0 = self.inst_matrix(inst, st)
             clip = None
             if st["cut"] > 0:
@@ -1223,7 +1335,7 @@ class World:
                     pb = self.part_box(inst.oid, self._cam_part(i), T, margin=False)
                     if pb is not None:
                         c = (pb[0] + pb[1]) / 2
-                clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.2 - 0.02))
+                clip = (*n, float(np.dot(n, c) + inst.radius * (1 - st["cut"]) * 1.05 - 0.02))  # sweeps in gently
             has_shell = clip is not None and any(p.shell for p in inst.model.parts)
             own_cut = {}  # a shell part the camera films (a compressor's dome): cut through ITS centre, not removed
             if clip is not None and inst.oid == focus_id and self._cam_part(i):
@@ -1231,7 +1343,8 @@ class World:
                     if inst.model.parts[k].shell:
                         plo, phi = inst.model.parts[k].geo.bounds()
                         pc = (m0 @ np.append((plo + phi) / 2, 1.0))[:3]
-                        own_cut[k] = (clip[0], clip[1], clip[2], float(np.dot(clip[:3], pc)))
+                        own_cut[k] = (clip[0], clip[1], clip[2],  # sweeps in with the cutaway (no one-frame hole)
+                                      float(np.dot(clip[:3], pc)) + inst.radius * (1 - st["cut"]) * 1.05)
             hero_clip = None
             if hero is not None:  # cut the hero part through its middle, turned 40° so we see the cut AND the outside
                 n = cam_dir.copy()
@@ -1257,10 +1370,10 @@ class World:
                 if vis <= 0.01 or k in hidden_parts or (hero is not None and k not in hero[1]):
                     continue
                 if part.kind == "beam":  # headlamp beams: only a few, never right at the lens (no white-out)
-                    if beam_ok is None:
+                    if beam_ok is None:  # fades out as the camera comes close (no on/off pop)
                         d_eye = float(np.linalg.norm(st["pos"] - np.asarray(eye)))
-                        beam_ok = d_eye > 4.0 + inst.radius and inst.index < 6
-                    if not beam_ok:
+                        beam_ok = min(1.0, max(0.0, (d_eye - 4.0 - inst.radius) / 2.5)) if inst.index < 6 else 0.0
+                    if beam_ok <= 0.01:
                         continue
                 if near_keep is not None and k not in near_keep:
                     continue  # macro: walls and far parts stay dark
@@ -1300,22 +1413,28 @@ class World:
                     color = tuple(a + (b - a) * (0.55 + 0.35 * al) for a, b in zip(color, (0.95, 0.12, 0.08)))
                     emi += 0.25 + 0.35 * al
                 inner = tuple(max(0.05, x * 0.45) for x in color)
-                xr = st["xray"] and part.shell  # (the car around a filmed engine: its near side is left out, no ghost)
+                xr = float(st["xray"]) if part.shell else 0.0  # (a car around a filmed engine: near side left out)
                 part_clip = clip if (part.shell or not has_shell) else None  # cut the outside, keep the works whole
                 if part_clip is not None and inst.oid in door_shot and _opens(part):
                     part_clip = None  # "the door closes": the door stays in the picture, it isn't cut away
                 part_clip = own_cut.get(k, part_clip)
-                op = min(part.opacity, 0.3) if k in see_through else part.opacity
+                op = part.opacity * inst_k * (beam_ok if part.kind == "beam" else 1.0)
+                if k in fade_k and fade_k[k] < 0.999:  # fading out (left out / see-through here) or back in
+                    op = min(op, fade_k[k])
                 if hero is not None:  # every piece cut in half, the cut faces in the signature colour
-                    part_clip, inner, xr = hero_clip, hex_rgb(HERO_COLOR), False
+                    part_clip, inner, xr = hero_clip, hex_rgb(HERO_COLOR), 0.0
                     op = max(op, 0.35) if part.kind == "liquid" or part.opacity < 0.6 else op
                 closed = hero is not None and op > 0.6 and part.kind not in ("chamber", "flame", "light") and \
                     not part.shell and part.geo.closed()  # a hollow shell (a capsule's skin) shows a rim, not a slab
                 draws.append(Draw(inst.keys[k], m, color, emi, op, part_clip, inner, xr,
-                                  shadow=part.opacity > 0.5 and inst.asset not in NO_SHADOW,
+                                  shadow=part.opacity > 0.5 and inst.asset not in NO_SHADOW and inst.oid not in
+                                  no_cast[0] and (inst.oid, k) not in no_cast[1],
+                                  visible=not shadow_only,
                                   shine=SHINE.get(part.material, 0.0),
                                   cap=2 if hero is not None and op > 0.6 and not closed else 0,
                                   additive=part.kind == "beam"))  # headlamp beams: light added on top
+                if shadow_only:
+                    continue
                 if closed and hero_clip is not None:  # the flat cut face of a solid piece, in the signature colour
                     wp = (np.hstack([part.geo.pos, np.ones((len(part.geo.pos), 1), np.float32)]) @ m.T)[:, :3]
                     face = section(wp, hero_clip[:3], hero_clip[3] - 1e-4)
@@ -1338,17 +1457,183 @@ class World:
         labels = self.labels(i, T, eye, tgt, fov, label_tex) if label_tex and t <= sc["dur"] else []
         look_name, style = self._looks[i] if not ending else (self._looks[0][0], self._looks[-1][1])
         mv = self._cams[i]["move"]
-        dof = 0.0 if ending or flying else {"macro": 0.45, "close_up": 0.25, "hero": 0.0}.get(mv, 0.0) * \
+        dof = 0.0 if ending else {"macro": 0.45, "close_up": 0.25, "hero": 0.0}.get(mv, 0.0) * \
             float(style.get("dof", 1.0) if mv != "macro" else 1.0)
+        if dof and i > 0 and not self._cams[i]["cut"]:  # the blur comes in softly after the flight (no pop)
+            dof *= ease((t - self.flight(i)) / 0.6)
         if hero is not None:
             focus_d = float(np.linalg.norm(np.asarray(eye) - (hero[2] + hero[3]) / 2))
         else:
             focus_d = dist
         return Frame(eye=tuple(eye), target=tuple(tgt), fov=fov, draws=draws, particles=parts, labels=labels,
-                     focus=tuple(c), focus_radius=max(8.0, dist * 0.62) if hero is None else max(2.0, dist * 0.8),
-                     grid_center=(c[0], c[2]), fade=fade, sun=self.sun(eye, tgt),
+                     focus=tuple(float(x) for x in s_c), focus_radius=float(s_r0), far_radius=float(s_r1),
+                     grid_center=(c[0], c[2]), fade=fade, sun=tuple(float(x) for x in sun),
                      bloom=0.9 if look_name == "macro_dark" else 0.6, lights=self._lights(c, T), style=style,
                      dof=dof, focus_dist=focus_d, time=float(T), dyn=dyn)
+
+    def _vis_of(self, i: int, inst: Inst, st: dict, eye, tgt, fov: float) -> tuple:
+        """(leave the whole object out?, parts left out, parts made see-through) for camera (eye, tgt) in shot i."""
+        focus_id = self._cams[i]["target"]
+        if inst.oid in self.env_ids and self._in_front_of_subject(inst, st, eye, tgt, fov, i):
+            return True, set(), set()  # a prop drawn over the subject: leave it out (clean composition)
+        hidden_parts = set()
+        if inst.oid not in self._focus[i] and \
+                inst.asset not in ("pad", "ground", "terrain", "ground_plate") and self._blocks(inst, st, eye, tgt):
+            if inst.oid in self.env_ids:
+                return True, set(), set()  # a prop in front of the subject: leave it out
+            if any(p.shell for p in inst.model.parts):  # a roof or wall in the way: leave out exactly the
+                hidden_parts = self._blocking_parts(inst, st, eye, tgt)  # parts that block (no ghost lines)
+        if inst.oid not in self._focus[i] and inst.asset not in ("pad", "ground", "terrain", "ground_plate"):
+            near = self._near_lens_parts(inst, st, eye, tgt, fov)  # a post sweeping past right in front of the lens
+            if near and inst.oid in self.env_ids:
+                return True, set(), set()
+            hidden_parts |= {k for k in near if not _works(inst.model.parts[k])}
+        see_through = set()
+        if inst.oid == focus_id and self._cam_part(i):  # its own walls/panels in front of the part we film
+            keep = set(self.part_names(inst.model, self._cam_part(i)))
+            blocking = self._blocking_parts(inst, st, eye, tgt, any_part=True, liquids=True) - keep
+            see_through = {k for k in blocking if inst.model.parts[k].kind == "liquid" or  # water: see through it
+                           not inst.model.parts[k].shell}  # a working part in front: glass, never missing
+            hidden_parts |= blocking - see_through
+        parent_of_focus = any(self.mounts.get(f, (None,))[0] is inst for f in self._focus[i]) and \
+            float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt))) < inst.radius * 1.15
+        # the car around its engine is a ghost only when the camera is close on the engine; wide shots and
+        # shots of the car show the real car with its hood open
+        if parent_of_focus:  # an engine inside its car: the car is a ghost, nothing of it in front of the engine
+            hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i, any_size=True, any_part=True)
+            hidden_parts |= self._blocking_parts(inst, st, eye, tgt, any_part=True)
+        elif inst.oid not in self._focus[i] and any(p.shell for p in inst.model.parts):
+            hidden_parts |= self._shell_parts_over_subject(inst, st, eye, tgt, fov, i)
+        return False, hidden_parts, see_through - hidden_parts
+
+    def _shot_vis(self, i: int) -> dict:
+        """What shot i leaves out, decided ONCE for the whole shot from a few camera positions after the flight in
+        (a union): a panel never vanishes in one frame in the middle of a shot (that was a visible pop)."""
+        cache = self.__dict__.setdefault("_vis_cache", {})
+        if i in cache:
+            return cache[i]
+        sc = self.scenes[i]
+        du, tr = sc["dur"], self.flight(i)
+        out: dict = {}
+        old_aim = getattr(self, "_aim_i", None)
+        self._aim_i = i
+        n_s = max(4, min(14, int((du - tr) / 0.4) + 2))  # every ~0.4 s: a post the camera passes is caught too
+        for f in [k / (n_s - 1) for k in range(n_s)]:
+            t = tr + (du - tr) * f
+            T = sc["start"] + min(t, du - 1e-3)
+            eye, tgt, fov, _ = self._camera(i, min(t, du))
+            for inst in self.insts:
+                st = self.state(inst, T)
+                if st["vis"] <= 0.01:
+                    continue
+                skip, hid, see = self._vis_of(i, inst, st, eye, tgt, fov)
+                if not (skip or hid or see):
+                    continue
+                o = out.setdefault(inst.oid, [False, set(), set()])
+                o[0] = o[0] or skip
+                o[1] |= hid
+                o[2] |= see
+        self._aim_i = old_aim
+        res = {oid: (sk, hid, see - hid) for oid, (sk, hid, see) in out.items()}
+        cache[i] = res
+        return res
+
+    def _near_lens_parts(self, inst: Inst, st: dict, eye, tgt, fov: float) -> set:
+        """Parts of another object that come within a third of the subject distance of the lens, inside the picture:
+        they would fill the frame with a big blurry shape (a barn post, a stall wall) while the camera passes."""
+        eye = np.asarray(eye, np.float64)
+        fwd = np.asarray(tgt, np.float64) - eye
+        dist = float(np.linalg.norm(fwd))
+        if dist < 1e-6:
+            return set()
+        fwd /= dist
+        reach = 0.33 * dist
+        if float(np.linalg.norm(st["pos"] - eye)) > inst.radius * max(1.0, inst.scale * st["scale"]) * 1.2 + reach:
+            return set()
+        m = self.inst_matrix(inst, {**st, "vis": 1.0})
+        try:
+            inv = np.linalg.inv(m.astype(np.float64))
+        except np.linalg.LinAlgError:
+            return set()
+        e = (inv @ np.append(eye, 1.0))[:3]
+        cos_half = math.cos(math.radians(fov) / 2 * max(1.0, self.size[0] / self.size[1]) * 1.3)
+        out = set()
+        for k, part in enumerate(inst.model.parts):
+            for a, b in (part.boxes or [part.geo.bounds()]):
+                q = np.clip(e, a, b)  # the closest point of the part's box to the lens
+                w = (m @ np.append(q, 1.0))[:3]
+                d = w - eye
+                dl = float(np.linalg.norm(d))
+                if dl < reach and (dl < 1e-6 or float(np.dot(d, fwd)) / dl > cos_half * 0.6):
+                    out.add(k)
+                    break
+        return out
+
+    def _flight_vis(self, i: int) -> dict:
+        """What blocks the view anywhere along the camera's flight into shot i (sampled), like a short shot of its own."""
+        cache = self.__dict__.setdefault("_vis_cache", {})
+        key = ("fly", i)
+        if key not in cache:
+            sc = self.scenes[i]
+            tr = self.flight(i)
+            out: dict = {}
+            old_aim = getattr(self, "_aim_i", None)
+            self._aim_i = i
+            n_f = max(5, min(12, int(tr / 0.15)))  # every ~0.15 s of the flight
+            for f in [0.08 + 0.84 * k / (n_f - 1) for k in range(n_f)]:
+                eye, tgt, fov, _ = self._camera(i, tr * f)
+                T = sc["start"] + tr * f
+                for inst in self.insts:
+                    st = self.state(inst, T)
+                    if st["vis"] <= 0.01:
+                        continue
+                    skip, hid, see = self._vis_of(i, inst, st, eye, tgt, fov)
+                    if skip or hid or see:
+                        o = out.setdefault(inst.oid, [False, set(), set()])
+                        o[0], o[1], o[2] = o[0] or skip, o[1] | hid, o[2] | see
+            self._aim_i = old_aim
+            cache[key] = {oid: (sk, hid, see - hid) for oid, (sk, hid, see) in out.items()}
+        return cache[key]
+
+    def _no_cast(self) -> tuple:
+        """(objects, (object, part) pairs) that never cast a shadow in this video: whatever any shot leaves out,
+        makes see-through or turns x-ray. Their shadow can't fade with them, so it is never there: no shadow pops."""
+        cache = self.__dict__.setdefault("_vis_cache", {})
+        if "no_cast" not in cache:
+            objs, parts = set(), set()
+            flights = [self._flight_vis(k) for k in range(1, len(self.scenes)) if self.flight(k) > 0]
+            for vis in [self._shot_vis(k) for k in range(len(self.scenes))] + flights + \
+                    ([self._ending_vis()] if self.ending == "overview" else []):
+                for oid, (skip, hid, see) in vis.items():
+                    if skip:
+                        objs.add(oid)
+                    parts |= {(oid, k) for k in hid | see}
+            for e in self.events:
+                if e.do == "xray" and e.oid in self.groups:
+                    for inst in self.groups[e.oid]:
+                        parts |= {(inst.oid, k) for k, p in enumerate(inst.model.parts) if p.shell}
+            cache["no_cast"] = (objs, parts)
+        return cache["no_cast"]
+
+    def _ending_vis(self) -> dict:
+        """What the ending's overview leaves out (a wall between the overview camera and the machine)."""
+        cache = self.__dict__.setdefault("_vis_cache", {})
+        if "end" not in cache:
+            last = len(self.scenes) - 1
+            oe, ot = self._overview()
+            out = {}
+            old_aim = getattr(self, "_aim_i", None)
+            self._aim_i = last
+            for inst in self.insts:
+                st = self.state(inst, self.total)
+                if st["vis"] <= 0.01:
+                    continue
+                skip, hid, see = self._vis_of(last, inst, st, oe, ot, self.fov)
+                if skip or hid:
+                    out[inst.oid] = (skip, hid, set())
+            self._aim_i = old_aim
+            cache["end"] = out
+        return cache["end"]
 
     def _lights(self, c, T: float) -> list:
         """Warm point lights: lamps (always on) and windows that are lit, nearest to what we look at (max 4)."""
@@ -1393,8 +1678,8 @@ class World:
                     age = (ph * 0.6 + t) % 0.6
                     v = rng.normal(0, 1, 3) * np.array([1.4, 0.6, 1.4]) + np.array([0, 1.8, 0])
                     p = np.array([side, lo[1] + 0.1, (lo[2] + hi[2]) / 2]) + v * age - np.array([0, 4.9 * age * age, 0])
-                    fade = max(0.0, 1.0 - t / 2.0)
-                    out.append([*p, 0.03 * fade, 1.0, 0.78 - 0.4 * age, 0.25, 2.2])
+                    fade = min(1.0, t / 0.3) * max(0.0, 1.0 - t / 2.0)  # the shower builds up and dies down
+                    out.append([*p, 0.03 * fade, 1.0, 0.78 - 0.4 * age, 0.25, 1.5 * fade])
         for e in self.events:
             if e.do not in ("flow", "bubbles", "smoke", "sparks", "cutaway") or not (e.start <= T < e.end):
                 continue
@@ -1402,7 +1687,7 @@ class World:
                 continue
             t = T - e.start
             color = hex_rgb(e.params["color"]) if e.params.get("color") else FLOW_COLORS.get(e.do, (0.45, 0.86, 0.36))
-            fade = min(1.0, t / 0.4)
+            fade = min(1.0, t / 0.4) * (min(1.0, max(0.0, (e.end - T) / 0.35)) if e.end != math.inf else 1.0)
             rng = np.random.default_rng(zlib.crc32(f"{e.oid}/{e.do}/{e.scene}".encode()))
             if e.do in ("flow", "sparks"):
                 path = self._flow_path(e, T)
@@ -1422,7 +1707,8 @@ class World:
                     p = _along(path, lengths, s)
                     if e.do == "sparks":
                         p = p + rng.normal(0, 0.05 * k_size, 3)
-                    size = (0.16 if e.do == "flow" else 0.1) * fade * k_size
+                    ends = min(1.0, s / (0.06 * total), (total - s) / (0.06 * total))  # shrink in/out at the path ends
+                    size = (0.16 if e.do == "flow" else 0.1) * fade * k_size * max(0.0, ends)
                     col = color if c2 is None else tuple(a + (b - a) * (s / total) for a, b in zip(color, c2))
                     out.append([*p, size, *col, 0.5 if e.do == "flow" else 1.2])
             elif e.do == "cutaway":  # the cut-open tank shows what lives inside: drifting bacteria
@@ -1439,7 +1725,7 @@ class World:
                     y = float(lo[1]) + 0.3 + h * max(0.5, float(surf[1]) - float(lo[1]) - 0.5)
                     wob = 0.15 * math.sin(t * 1.7 + k)
                     out.append([c[0] + rr * math.cos(a) + wob, y + 0.1 * math.sin(t * 2.1 + k * 0.7),
-                                c[2] + rr * math.sin(a), 0.11 * min(1.0, t / 0.6), 0.45, 0.86, 0.36, 0.4])
+                                c[2] + rr * math.sin(a), 0.11 * min(1.0, t / 0.6) * fade, 0.45, 0.86, 0.36, 0.4])
             elif e.do == "bubbles":
                 inst = self.groups[e.oid][0]
                 lo, hi = self.group_box(e.oid, T)
@@ -1451,7 +1737,9 @@ class World:
                     a, rr, ph = rng.random() * 6.283, math.sqrt(rng.random()) * r, rng.random()
                     h = ((ph + t * 0.45) % 1.0)
                     y = float(lo[1]) + 0.3 * kb + h * (float(surf[1]) - float(lo[1]) + 1.2 * kb)
-                    out.append([c[0] + rr * math.cos(a), y, c[2] + rr * math.sin(a), (0.1 + 0.08 * h) * kb, *color, 0.35])
+                    wrap = min(1.0, h / 0.1, (1.0 - h) / 0.1)  # grow at the bottom, fade at the top (no pop)
+                    out.append([c[0] + rr * math.cos(a), y, c[2] + rr * math.sin(a), (0.1 + 0.08 * h) * kb * fade * wrap,
+                                *color, 0.35])
         return np.asarray(out, np.float32) if out else None
 
     def _flow_scale(self, e: Event) -> float:
@@ -1504,16 +1792,28 @@ class World:
         return out
 
     def _air(self, i: int, T: float) -> list:
-        """Ambient particles of the place: bubbles under water, dust, snow, stars, blood cells."""
+        """Ambient particles of the place: bubbles under water, dust, snow, stars, blood cells. Each shot has its own
+        cloud around its subject; while the camera flies in, the old cloud fades out and the new one fades in."""
         kind = self.look.get("air")
         if not kind:
+            return []
+        eye = np.asarray(self.camera(i, T - self.scenes[i]["start"])[0], np.float64) if i < len(self.scenes) else None
+        t = T - self.scenes[i]["start"]
+        tr = self.flight(i)
+        if i > 0 and t < tr and not self._cams[i]["cut"]:
+            w = smoother(t / tr) if self.calm else ease(t / tr)
+            return self._air_field(i - 1, T, eye, kind, 1.0 - w) + self._air_field(i, T, eye, kind, w)
+        return self._air_field(i, T, eye, kind, 1.0)
+
+    def _air_field(self, i: int, T: float, eye, kind: str, k_all: float) -> list:
+        if k_all <= 0.01:
             return []
         c = np.asarray(self._cams[i]["c"], np.float64)
         r = max(8.0, self._cams[i]["r"] * 3)
         rng = np.random.default_rng(zlib.crc32(f"air/{kind}".encode()))
         n = {"stars": 160, "snow": 110, "bubbles": 80, "dust": 70, "cells": 36}[kind]
         base = rng.random((n, 3))
-        eye = np.asarray(self.camera(i, T - self.scenes[i]["start"])[0], np.float64) if i < len(self.scenes) else c
+        eye = c if eye is None else eye
         near = max(2.0, 0.45 * float(np.linalg.norm(eye - c)))  # nothing big and blurry right in front of the lens
         out = []
         for k in range(n):
@@ -1521,14 +1821,19 @@ class World:
             if kind == "stars":
                 d = np.array([x, abs(y) + r * 0.3, z])
                 p = c + d / max(np.linalg.norm(d), 1e-6) * r * 6
-                out.append([*p, 0.35 * (0.5 + base[k][0]), 1.0, 1.0, 1.0, 1.5])
+                out.append([*p, 0.35 * (0.5 + base[k][0]) * k_all, 1.0, 1.0, 1.0, 1.5])
                 continue
             h = 2 * r
+            edge = 1.0  # particles fade where they wrap around (no pop at the top / bottom / side)
             if kind == "bubbles":
-                y = (base[k][1] * h + T * 0.9) % h - r * 0.2
+                u = (base[k][1] * h + T * 0.9) % h
+                y = u - r * 0.2
+                edge = min(1.0, u / (0.08 * h), (h - u) / (0.08 * h))
                 col, size, emi = (0.75, 0.92, 1.0), 0.07 + 0.05 * base[k][2], 0.5
             elif kind == "snow":
-                y = h - (base[k][1] * h + T * 0.7) % h
+                u = (base[k][1] * h + T * 0.7) % h
+                y = h - u
+                edge = min(1.0, u / (0.08 * h), (h - u) / (0.08 * h))
                 col, size, emi = (1.0, 1.0, 1.0), 0.06, 0.4
             elif kind == "cells":
                 y = abs(y) * 0.5 + 0.5 + 0.3 * np.sin(T * 0.8 + k)
@@ -1536,11 +1841,16 @@ class World:
                 col, size, emi = (0.82, 0.12, 0.16), 0.16 + 0.1 * base[k][2], 0.1
             else:  # dust
                 y = abs(y) * 0.4 + 0.3 + 0.2 * np.sin(T * 0.5 + k)
-                x += T * 0.25 % (2 * r)
+                u = (x + r + T * 0.25) % (2 * r)
+                x = u - r
+                edge = min(1.0, u / (0.1 * r), (2 * r - u) / (0.1 * r))
                 col, size, emi = (0.95, 0.85, 0.65), 0.04, 0.2
-            if np.linalg.norm(np.array([c[0] + x, y, c[2] + z]) - eye) < near:
+            dist = float(np.linalg.norm(np.array([c[0] + x, y, c[2] + z]) - eye))
+            lens = min(1.0, max(0.0, (dist - near) / (0.4 * near)))  # near the lens: shrinks away smoothly
+            kk = k_all * edge * lens
+            if kk <= 0.01:
                 continue
-            out.append([c[0] + x, y, c[2] + z, size, *col, emi])
+            out.append([c[0] + x, y, c[2] + z, size * kk, *col, emi])
         return out
 
     def puffs(self, i: int, T: float) -> list:
@@ -1567,7 +1877,8 @@ class World:
                 m = np.eye(4, dtype=np.float32)
                 m[:3, :3] *= s
                 m[:3, 3] = src + drift
-                out.append(Draw("__puff", m, color, 0.0, 0.55 * (1 - h) ** 0.7, shadow=False))
+                end_k = min(1.0, max(0.0, (e.end - T) / 0.4)) if e.end != math.inf else 1.0
+                out.append(Draw("__puff", m, color, 0.0, 0.55 * (1 - h) ** 0.7 * min(1.0, h / 0.08) * end_k, shadow=False))
         return out
 
     def _blocking_parts(self, inst: Inst, st: dict, eye, tgt, any_part: bool = False, liquids: bool = False) -> set:

@@ -1,0 +1,25 @@
+[TITLE] How a Car Engine Works
+[SCENE] the hood opens on the engine
+NARRATOR: Your engine sets off 100 small explosions every second.
+[SCENE] the engine cut open
+NARRATOR: Here it is, cut in half. Four cylinders, four pistons, one spinning crankshaft.
+[SCENE] the intake valve opens
+NARRATOR: First, the intake valve opens. Air and a mist of fuel rush into the cylinder.
+[SCENE] the piston moves up and squeezes the gas
+NARRATOR: Then the piston moves up. It squeezes that mix into a space ten times smaller.
+[SCENE] the spark plug fires
+NARRATOR: Now the spark plug fires. The mix explodes at over 2,000 degrees.
+[SCENE] the piston pushes down hard
+NARRATOR: The blast pushes the piston down with about three tons of force.
+[SCENE] the exhaust valve opens
+NARRATOR: Next, the exhaust valve opens. The piston pushes the burnt gas out to the exhaust.
+[SCENE] the connecting rod turns the crankshaft
+NARRATOR: Each connecting rod turns the crankshaft, just like your legs turn bike pedals.
+[SCENE] the four cylinders take turns
+NARRATOR: The four cylinders take turns, so there is always one pushing.
+[SCENE] the flywheel spins
+NARRATOR: A heavy flywheel at the end smooths out every single push.
+[SCENE] the whole engine working
+NARRATOR: At highway speed, each cylinder does this 25 times a second.
+[SCENE] close on the timing belt
+NARRATOR: And one thin rubber belt keeps all of it in time. So what happens when it snaps?

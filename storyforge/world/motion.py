@@ -31,11 +31,13 @@ import math
 
 import numpy as np
 
+from .gl import hex_rgb
+
 from .mesh import rot_matrix
 
 AXES = {"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0)}
 STROKE_COLORS = [(1.0, 0.55, 0.16), (0.55, 0.55, 0.58), (0.31, 0.7, 1.0), (0.5, 0.86, 1.0)]  # bang, out, in, squeeze
-STROKE_GLOW = [1.3, 0.05, 0.25, 0.35]
+STROKE_GLOW = [0.9, 0.05, 0.2, 0.28]  # the bang glows, gently
 TYPES = {"spin", "slide", "rod", "valve", "swing", "pulse", "chamber", "open", "lift", "stretch", "level", "flicker",
          "squash", "pump"}
 
@@ -155,8 +157,10 @@ def evaluate(part, st: dict, T: float, m: dict | None = None) -> tuple[np.ndarra
         if not run:
             return None, 0.0, None
         a = (math.degrees(theta) * float(m.get("speed", 0.5)) + float(m.get("phase", 0.0))) % 360.0
-        glow = max(0.0, 1.0 - min(a, 360.0 - a) / 28.0)  # a short flash around the firing point
-        return None, 1.6 * glow, ((1.0, 0.85, 0.45) if glow > 0.05 else None)
+        d = min(a, 360.0 - a) / 48.0  # a soft glow around the firing point (a smooth bell, no hard flash)
+        glow = 0.5 + 0.5 * math.cos(math.pi * d) if d < 1.0 else 0.0
+        warm = tuple(c0 + (c1 - c0) * glow for c0, c1 in zip(hex_rgb(part.color), (1.0, 0.85, 0.45)))
+        return None, 1.1 * glow, (warm if glow > 0.01 else None)
     if kind == "chamber":
         r, ln = float(m.get("r", 0.05)), float(m.get("len", 0.15))
         top = float(m.get("top", 1.0))
@@ -173,7 +177,11 @@ def evaluate(part, st: dict, T: float, m: dict | None = None) -> tuple[np.ndarra
             return sm, 0.0, STROKE_COLORS[2]
         c = (math.degrees(theta) * 0.5 + float(m.get("cycle", 0.0))) % 360.0
         stroke = int(c // 90) % 4
-        return sm, STROKE_GLOW[stroke], STROKE_COLORS[stroke]
+        prev = (stroke - 1) % 4
+        w = (c % 90.0) / 90.0
+        w = 1.0 if w >= 0.3 else (w / 0.3) * (w / 0.3) * (3 - 2 * (w / 0.3))  # colour and glow blend into the next stroke
+        col = tuple(a0 + (b0 - a0) * w for a0, b0 in zip(STROKE_COLORS[prev], STROKE_COLORS[stroke]))
+        return sm, STROKE_GLOW[prev] + (STROKE_GLOW[stroke] - STROKE_GLOW[prev]) * w, col
     if kind == "open":
         u = _open(st, part)
         if u <= 1e-4:

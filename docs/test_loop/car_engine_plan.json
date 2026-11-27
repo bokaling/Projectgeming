@@ -1,0 +1,314 @@
+{
+ "title": "How a Car Engine Works",
+ "preset": "studio",
+ "areas": [
+  {
+   "id": "garage",
+   "setting": "garage"
+  },
+  {
+   "id": "studio",
+   "setting": "studio"
+  }
+ ],
+ "objects": [
+  {
+   "id": "car1",
+   "asset": "car",
+   "area": "garage",
+   "pos": [
+    0,
+    0
+   ],
+   "rot": -30
+  },
+  {
+   "id": "eng1",
+   "asset": "car_engine",
+   "area": "garage",
+   "mount": "car1.engine_bay"
+  },
+  {
+   "id": "eng2",
+   "asset": "car_engine",
+   "area": "studio",
+   "pos": [
+    0,
+    0
+   ]
+  }
+ ],
+ "scenes": [
+  {
+   "camera": {
+    "move": "push_in",
+    "target": "eng1"
+   },
+   "actions": [
+    {
+     "do": "open",
+     "target": "car1.hood",
+     "at": 0.0
+    },
+    {
+     "do": "spin",
+     "target": "eng1",
+     "at": 0.1,
+     "speed": 0.5
+    }
+   ],
+   "keywords": [
+    {
+     "text": "100 explosions",
+     "kind": "wow",
+     "at": "100"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "cutaway",
+    "target": "eng2"
+   },
+   "actions": [
+    {
+     "do": "cutaway",
+     "target": "eng2",
+     "at": 0.0,
+     "keep": true
+    },
+    {
+     "do": "spin",
+     "target": "eng2",
+     "at": 0.0,
+     "speed": 0.5
+    }
+   ],
+   "labels": [
+    {
+     "target": "eng2.piston",
+     "text": "Piston",
+     "kind": "part",
+     "at": "pistons"
+    },
+    {
+     "target": "eng2.crankshaft",
+     "text": "Crankshaft",
+     "kind": "part",
+     "at": "crankshaft"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "eng2.intake_valves"
+   },
+   "actions": [
+    {
+     "do": "flow",
+     "target": "eng2",
+     "path": "intake",
+     "at": "rush",
+     "color": "#4fb3ff",
+     "color2": "#bfe6ff"
+    }
+   ],
+   "labels": [
+    {
+     "target": "eng2.intake_valves",
+     "text": "Intake valve",
+     "kind": "part",
+     "at": "intake"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "eng2.piston"
+   },
+   "labels": [
+    {
+     "target": "eng2.piston",
+     "text": "Piston",
+     "kind": "part",
+     "at": "piston"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "10x smaller",
+     "kind": "number",
+     "at": "ten"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "macro",
+    "target": "eng2.spark"
+   },
+   "actions": [
+    {
+     "do": "glow",
+     "target": "eng2.spark",
+     "at": "fires"
+    }
+   ],
+   "labels": [
+    {
+     "target": "eng2.plug",
+     "text": "Spark plug",
+     "kind": "part",
+     "at": "spark"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "2,000 degrees",
+     "kind": "wow",
+     "at": "2,000"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "push_in",
+    "target": "eng1",
+    "height": 26
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "eng1",
+     "at": 0.0,
+     "speed": 0.5
+    }
+   ],
+   "labels": [
+    {
+     "target": "eng1.piston",
+     "text": "Piston",
+     "kind": "part",
+     "at": "piston"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "3 tons",
+     "kind": "number",
+     "at": "three"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "eng2.exhaust_valves"
+   },
+   "actions": [
+    {
+     "do": "flow",
+     "target": "eng2",
+     "path": "exhaust",
+     "at": "out",
+     "color": "#8a8f96",
+     "color2": "#c9ccd0"
+    }
+   ],
+   "labels": [
+    {
+     "target": "eng2.exhaust_valves",
+     "text": "Exhaust valve",
+     "kind": "part",
+     "at": "exhaust"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "hero",
+    "target": "eng2.rod"
+   },
+   "labels": [
+    {
+     "target": "eng2.rod",
+     "text": "Connecting rod",
+     "kind": "part",
+     "at": "rod"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "orbit",
+    "target": "eng2"
+   },
+   "labels": [
+    {
+     "target": "eng2.crankshaft",
+     "text": "Firing order 1-3-4-2",
+     "kind": "info",
+     "at": "turns"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "eng2.flywheel"
+   },
+   "labels": [
+    {
+     "target": "eng2.flywheel",
+     "text": "Flywheel",
+     "kind": "part",
+     "at": "flywheel"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "pull_out",
+    "target": "eng1"
+   },
+   "actions": [
+    {
+     "do": "spin",
+     "target": "eng1",
+     "at": 0.0,
+     "speed": 0.5
+    }
+   ],
+   "keywords": [
+    {
+     "text": "25 times a second",
+     "kind": "number",
+     "at": "25"
+    }
+   ]
+  },
+  {
+   "camera": {
+    "move": "close_up",
+    "target": "eng1.timing_belt"
+   },
+   "labels": [
+    {
+     "target": "eng1.timing_belt",
+     "text": "Timing belt",
+     "kind": "part",
+     "at": "belt"
+    }
+   ],
+   "keywords": [
+    {
+     "text": "it snaps?",
+     "kind": "problem",
+     "at": "snaps"
+    }
+   ]
+  }
+ ]
+}

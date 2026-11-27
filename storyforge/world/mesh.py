@@ -450,3 +450,121 @@ def section(tris: np.ndarray, n, d: float) -> np.ndarray | None:
         a, b = P[hull[k]], P[hull[(k + 1) % len(hull)]]
         out += [c, a, b] if np.dot(np.cross(a - c, b - c), n) > 0 else [c, b, a]
     return np.asarray(out, np.float32)
+
+
+def _plane_basis(n: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    ax = np.array([1.0, 0.0, 0.0]) if abs(n[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    e1 = np.cross(n, ax)
+    e1 /= np.linalg.norm(e1)
+    return e1, np.cross(n, e1)
+
+
+def _inside_any(pts: np.ndarray, tris2d: np.ndarray, shrink: float) -> bool:
+    """Is any point strictly inside one of the 2D triangles (by more than `shrink`)?"""
+    a, b, c = tris2d[:, 0][None], tris2d[:, 1][None], tris2d[:, 2][None]
+    p = pts[:, None, :]
+
+    def side(u, v, w):
+        return (v[..., 0] - u[..., 0]) * (w[..., 1] - u[..., 1]) - (v[..., 1] - u[..., 1]) * (w[..., 0] - u[..., 0])
+
+    area = side(a, b, c)
+    sgn = np.where(area < 0, -1.0, 1.0)
+    s1, s2, s3 = side(a, b, p) * sgn, side(b, c, p) * sgn, side(c, a, p) * sgn
+    lens = [np.linalg.norm(v - u, axis=-1) for u, v in ((a, b), (b, c), (c, a))]
+    ok = (s1 > shrink * lens[0]) & (s2 > shrink * lens[1]) & (s3 > shrink * lens[2]) & (np.abs(area) > 1e-12)
+    return bool(np.any(ok))
+
+
+def resolve_coplanar(model: "Model", passes: int = 3) -> list[str]:
+    """Stop z-fighting (see _coplanar_pass); a moved part can land on a third one (a rim behind the moved tyre),
+    so it runs again until nothing is left (at most `passes` times)."""
+    notes, total = [], {}
+    for _ in range(passes):
+        new = _coplanar_pass(model, total)
+        notes += new
+        if not new:
+            break
+    return notes
+
+
+def _coplanar_pass(model: "Model", total: dict | None = None) -> list[str]:
+    """Stop z-fighting: two parts with flat faces in the SAME plane facing the SAME way (a tyre cap flush with the
+    body side, a door flush with its wall) fight for the same pixels and flicker as the camera moves. The smaller
+    of the two is moved out along that face's normal by a few millimetres (the whole part, so it stays closed).
+    Returns notes ('tire: 7 mm out of front_side')."""
+    parts = [p for p in model.parts if p.geo.tris and p.opacity > 0.05]
+    if len(parts) < 2:
+        return []
+    lo, hi = model.bounds()
+    size = float(np.linalg.norm(hi - lo)) or 1.0
+    eps = min(0.012, max(0.0008, size * 0.0015))
+    tol = max(size * 2e-4, 2e-5)
+    info = []
+    buckets: dict = {}
+    for pi, p in enumerate(parts):
+        t = p.geo.pos.astype(np.float64).reshape(-1, 3, 3)
+        n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+        area = np.linalg.norm(n, axis=1) / 2
+        good = area > 1e-10
+        n = n / np.where(area[:, None] > 1e-10, 2 * area[:, None], 1.0)
+        d = np.einsum("ij,ij->i", n, t[:, 0])
+        info.append((t, n, d, area))
+        qn = np.round(n * 200).astype(np.int64)
+        qd = np.floor(d / tol).astype(np.int64)
+        for k in np.nonzero(good)[0]:
+            key = (qn[k, 0], qn[k, 1], qn[k, 2], qd[k])
+            buckets.setdefault(key, {}).setdefault(pi, []).append(k)
+    shifts: dict = {}
+    notes = []
+    seen = set()
+    for key, by_part in buckets.items():
+        merged = {pi: list(ks) for pi, ks in by_part.items()}
+        for dq in (-1, 1):  # a plane right on a bucket border lands in the next bucket
+            for pi, ks in buckets.get((*key[:3], key[3] + dq), {}).items():
+                merged.setdefault(pi, []).extend(ks)
+        if len(merged) < 2:
+            continue
+        pis = sorted(merged)
+        for x in range(len(pis)):
+            for y in range(x + 1, len(pis)):
+                a, b = pis[x], pis[y]
+                if (a, b, key[:3]) in seen:
+                    continue
+                ta, tb = info[a][0][merged[a]], info[b][0][merged[b]]
+                na = info[a][1][merged[a][0]]
+                if abs(float(np.mean(info[a][2][merged[a]]) - np.mean(info[b][2][merged[b]]))) > tol * 1.5:
+                    continue
+                e1, e2 = _plane_basis(na)
+                A = np.stack([ta @ e1, ta @ e2], -1)
+                B = np.stack([tb @ e1, tb @ e2], -1)
+                if np.any(A.reshape(-1, 2).max(0) <= B.reshape(-1, 2).min(0) + tol) or \
+                        np.any(B.reshape(-1, 2).max(0) <= A.reshape(-1, 2).min(0) + tol):
+                    continue
+                w = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+                sa = np.einsum("sk,tkd->tsd", w, A).reshape(-1, 2)
+                sb = np.einsum("sk,tkd->tsd", w, B).reshape(-1, 2)
+                if not (_inside_any(sa, B, tol) or _inside_any(sb, A, tol)):
+                    continue
+                seen.add((a, b, key[:3]))
+                small = a if info[a][3][merged[a]].sum() <= info[b][3][merged[b]].sum() else b
+                big = b if small == a else a
+                total = {} if total is None else total
+                if float(np.dot(total.get(id(parts[small]), np.zeros(3)), na)) < -1e-9:  # would undo an earlier move:
+                    small, big = big, small  # move the other one (a curb flush with the road below AND the pavement)
+                    if float(np.dot(total.get(id(parts[small]), np.zeros(3)), na)) < -1e-9:
+                        continue
+                v = shifts.setdefault(small, np.zeros(3))
+                if abs(float(np.dot(v, na))) < eps * 0.99:  # already moved along this axis (either way): separated
+                    shifts[small] = v + na * eps
+                    notes.append(f"{parts[small].name}: {eps * 1000:.0f} mm out of {parts[big].name}")
+    for pi, v in shifts.items():
+        if float(np.linalg.norm(v)) < 1e-9:
+            continue
+        p = parts[pi]
+        if total is not None:
+            total[id(p)] = total.get(id(p), np.zeros(3)) + v
+        p.geo = Geo((p.geo.pos.astype(np.float64) + v).astype(np.float32))
+        p.pivot = tuple(float(a + b) for a, b in zip(p.pivot, v))
+        if p.boxes:
+            p.boxes = [(np.asarray(b0) + v, np.asarray(b1) + v) for b0, b1 in p.boxes]
+    return notes

@@ -54,6 +54,7 @@ def build(name: str, **params) -> Model:
     for p in model.parts:  # the old library's steel, gold and copper parts look like metal
         if not p.material and str(p.color).lower() in METALS:
             p.material = "metal"
+    M.resolve_coplanar(model)  # faces of two parts in the same plane would flicker (z-fighting): nudge them apart
     model = _merge_static(model, by_name=bool({"machine", "cutaway", "kit"} & set(info.tags)))
     lo, hi = model.bounds()
     model.anchors.setdefault("top", (0.0, float(hi[1]), 0.0))

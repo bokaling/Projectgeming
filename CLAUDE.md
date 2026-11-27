@@ -620,3 +620,43 @@ the Colab port link (`serve_kernel_port_as_window`). Every one of these has a te
 * Additive light beams right at the lens white out the picture: draw only a few, never near the camera.
 * A stand-in object for a machine's own part ("doors" on "lift1.doors") must be folded into that part, never grounded.
 * GLSL: a local variable may not shadow another (`n` for the tap count clashed with the normal `n`).
+
+### Part 14: clean pictures, quiet sound, real objects (this round)
+**Part 1, shadows and shimmer (`world/gl.py`, `world/mesh.py`, `world/scene.py`).** The "dotted dark triangles" on the
+red car body were **z-fighting**: the tyre's end cap lay exactly in the plane of the body side (both at z = 0.89 m).
+* `mesh.resolve_coplanar(model)` (run by `assets.build` for every object): faces of two parts in the same plane facing
+  the same way → the smaller part moves out 0.8-12 mm along that normal (whole part, so it stays closed; up to 3
+  passes, never undoing an earlier move). The whole library (203 objects) has no coplanar pairs left (test).
+* Shadows: the sun and the shadow box are FIXED per shot (`World._shot_light`, blended only during flights and the
+  ending, `light_at`); two maps (`Frame.focus_radius` sharp map around the subject, `far_radius` wide map), texel
+  snapped and sized in 2^(1/8) steps (`gl.shadow_box`, `quantize_radius`): no swimming. GPU 4096 + 2048 texels,
+  CPU 2048 + 1024. Slope-scaled polygon offset on casters (`ctx.polygon_offset = (2, 4)`), normal offset on the
+  receiver (≈ one kernel width, more at grazing angles), faces turned away from the sun count as shadowed
+  (`facing`): no acne. PCF = a FIXED grid of hardware-filtered taps (`u_taps` 4×4 GPU, 3×3 CPU), no random rotation.
+* SSAO: fixed 4×4 interleaved start angles + a depth-aware 4×4 average (`AO_BLUR_FRAG`) + a soft blur. Film grain
+  is off in every grade (it changed every frame). MSAA 4 on the CPU too (measured: not slower on llvmpipe).
+* The shadow pass applies the same cut plane as the colour pass (a cutaway no longer drops the shadows of the whole
+  object in one frame). `Draw.visible=False` = shadow only: objects just outside the picture still cast into it.
+* Proof (`docs/part14/`): the same "piston pushes" frame before/after + 200 % crop; 3 s of that shot: worst frame
+  85.7 % → 3.8 % of the area changing, mean frame-to-frame noise 2.5 → 0.48; fine noise on flat surfaces 3-5x lower
+  in close-ups of the elevator, farm and submarine.
+
+**Part 2, no flashes or pops (`world/scene.py`, `world/motion.py`, `world/checker.py`).**
+* What a shot leaves out (walls in the way, panels of a car around its engine, props in front, posts near the lens:
+  `_near_lens_parts`) is decided ONCE per shot from camera samples every ~0.4 s (`_shot_vis`), for every flight from
+  samples every ~0.15 s (`_flight_vis`) and for the ending overview (`_ending_vis`). Parts fade between the two shots'
+  choices while the camera flies; they never pop in the middle of a shot. Parts any shot leaves out never cast
+  shadows (`_no_cast`), so no shadow pops either.
+* No white flash anywhere (`Frame.flash` removed). Glows/alarms: `slow_pulse` (≤ 2 per second, cosine, starts at 0)
+  × `soft_ramp` (0.4 s fade in, fades out after the shot). Spark plugs: a smooth bell; the gas colour blends into the
+  next stroke; rope snap: a slow sway; brake sparks build up; x-ray, DOF, beams, air particles, bubbles, smoke and
+  flow particles fade instead of switching; shakes in explainers/documentaries are a slow rock (stories keep a jolt);
+  cutaways sweep in over 1.4 s.
+* Brightness check: `checker.scan_video` draws every frame twice (moving camera, and the same moment from the previous
+  frame's camera) → `brightness_jumps`: jump (whole picture > 15 %), pop (content change > 15 % in a ninth of the
+  picture with the camera held still), strobe (4+ blinks a second). Hard cuts (±1 frame) are allowed. Results with the
+  test scripts in `docs/test_loop/` (old code → new): car engine 9 → 0 problems (the old flashes at 0:20-0:25 are the
+  spark/bang colour snaps), elevator 5 → 0, farm 5 → 0, submarine 2 → 0. The ending overview of the car video showed
+  blank frames (camera behind the garage wall) → the overview now frames shot 1's machine and leaves walls out.
+* `test_part14.py::test_brightness_has_no_jumps_except_hard_cuts` runs a small world (engine sparks, glow, alarm,
+  cutaway, rope snap, flights) through the detector at 54×96.

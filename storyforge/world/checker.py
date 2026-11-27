@@ -343,3 +343,91 @@ def logic_problems(world, i: int) -> list[str]:
                 out.append(f"subject_blocked:{inst.oid}")
                 break
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Brightness jumps (Part 14): no flash, pop or flicker between two frames, except at a hard cut
+# ---------------------------------------------------------------------------------------------------------------
+JUMP_LIMIT = 0.15  # a change of more than 15 % between two frames (whole picture or one ninth of it) is a jump
+
+
+def luma_grid(img: np.ndarray, grid: int = 3) -> np.ndarray:
+    """Mean brightness (0..1) of the whole frame and of a grid x grid split: (1 + grid*grid,)."""
+    a = np.asarray(img, np.float32)
+    lum = (a[..., 0] * 0.2126 + a[..., 1] * 0.7152 + a[..., 2] * 0.0722) / 255.0
+    H, W = lum.shape
+    cells = [lum[H * y // grid:H * (y + 1) // grid, W * x // grid:W * (x + 1) // grid].mean()
+             for y in range(grid) for x in range(grid)]
+    return np.array([lum.mean(), *cells], np.float32)
+
+
+def cut_times(world) -> list[float]:
+    """Where the picture is ALLOWED to change at once: hard cuts and jumps into/out of the micro world."""
+    out = []
+    for i in range(1, len(world.scenes)):
+        prev, cur = world._cams[i - 1], world._cams[i]
+        if cur["cut"] or prev["move"] == "zoom_into" or prev["micro"] != cur["micro"]:
+            out.append(float(world.scenes[i]["start"]))
+    return out
+
+
+def brightness_jumps(lumas: np.ndarray, fps: float, cuts: list[float], limit: float = JUMP_LIMIT,
+                     held: np.ndarray | None = None) -> list[dict]:
+    """Problems between frames (a hard cut, ±1 frame, may change everything):
+    * jump: the whole picture gets brighter/darker by more than `limit` from one frame to the next;
+    * pop: with the camera held still (`held[k]` = frame k filmed from frame k-1's camera), one ninth of the picture
+      changes by more than `limit`: a flash, a part popping in/out, a colour snapping. Camera moves don't count;
+    * strobe: one ninth of the picture flickers up and down 4+ times within a second (steps over 6 %), measured
+      with the camera held still when `held` is given (a fence sliding past is motion, not flicker).
+    Returns [{t, kind, change}]."""
+    L = np.asarray(lumas, np.float32)
+    n = len(L)
+    if n < 3:
+        return []
+    near_cut = np.zeros(n, bool)
+    for c in cuts:
+        k = int(round(c * fps))
+        near_cut[max(0, k - 1):min(n, k + 2)] = True
+    d = L[1:] - L[:-1]  # change into frame k+1
+    rel = np.abs(d) / np.maximum(np.maximum(L[1:], L[:-1]), 0.08)
+    out = []
+    for k in range(1, n):
+        if near_cut[k] or near_cut[k - 1]:
+            continue
+        t = round(k / fps, 3)
+        if rel[k - 1, 0] > limit:
+            out.append({"t": t, "kind": "jump", "change": round(float(rel[k - 1, 0]), 3)})
+            continue
+        if held is not None:
+            h = np.abs(held[k] - L[k - 1]) / np.maximum(np.maximum(held[k], L[k - 1]), 0.08)
+            if float(h.max()) > limit:
+                out.append({"t": t, "kind": "pop", "change": round(float(h.max()), 3)})
+    win = int(round(fps))
+    if held is not None:  # strobing is the world blinking (lights, glows), not the camera passing a fence
+        d = np.asarray(held, np.float32)[1:] - L[:-1]
+        rel = np.abs(d) / np.maximum(np.maximum(np.asarray(held, np.float32)[1:], L[:-1]), 0.08)
+    for c in range(L.shape[1]):  # strobing: many quick up/down steps in one second
+        steps = np.where(rel[:, c] > 0.06, np.sign(d[:, c]), 0.0)
+        for k0 in range(0, n - 1 - win, win // 2):
+            seg = steps[k0:k0 + win]
+            seg = seg[seg != 0]
+            if len(seg) >= 5 and int(np.sum(seg[1:] != seg[:-1])) >= 4 and not near_cut[k0:k0 + win + 1].any():
+                out.append({"t": round(k0 / fps, 3), "kind": "strobe", "change": round(float(rel[k0:k0 + win, c].max()), 3)})
+                break
+    out.sort(key=lambda x: x["t"])
+    return out
+
+
+def scan_video(world, renderer, fps: float = 30.0, t0: float = 0.0, t1: float | None = None) -> tuple:
+    """Every frame of [t0, t1) drawn (small is fine), plus the same moment filmed from the previous frame's camera.
+    Returns (luma grids, held luma grids) for brightness_jumps. Labels are left out (they are overlays)."""
+    t1 = world.total if t1 is None else t1
+    n = int(round((t1 - t0) * fps))
+    L, held, prev = [], [], None
+    for k in range(n):
+        T = t0 + k / fps
+        cam = world.camera_at(T)
+        L.append(luma_grid(renderer.render(world.frame(T, cam=cam))))
+        held.append(luma_grid(renderer.render(world.frame(T, cam=prev))) if prev is not None else L[-1])
+        prev = cam
+    return np.stack(L), np.stack(held)

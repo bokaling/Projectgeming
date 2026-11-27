@@ -1,0 +1,25 @@
+[TITLE] How an Elevator Works
+[SCENE] close on the elevator car with a passenger
+NARRATOR: You trust your life to a few steel ropes every day.
+[SCENE] the building cut open to show the shaft
+NARRATOR: Let's cut the building open and look inside the shaft.
+[SCENE] close on the ropes above the car
+NARRATOR: The car hangs from steel ropes. Each rope alone could hold the whole car.
+[SCENE] the sheave at the top of the shaft
+NARRATOR: At the top, the ropes wrap over a grooved wheel called the sheave.
+[SCENE] the counterweight on the other side
+NARRATOR: On the other side hangs a heavy counterweight. It weighs as much as the car plus half a full load.
+[SCENE] close on the motor
+NARRATOR: So the motor barely lifts anything. It only tips the balance up or down.
+[SCENE] the car rises to the top floor
+NARRATOR: Press a button, the sheave turns, and the car glides up.
+[SCENE] close on the speed governor
+NARRATOR: Next to the motor, a speed governor watches how fast the car is moving.
+[SCENE] the rope snaps
+NARRATOR: Now imagine all the ropes snap at once. [PAUSE]
+[SCENE] the safety brakes clamp onto the rails
+NARRATOR: The governor trips the safety brakes. They bite into the rails and stop the car in about a meter.
+[SCENE] the doors open level with the floor
+NARRATOR: The doors only open when the car stands level with the floor.
+[SCENE] the whole elevator working
+NARRATOR: So why are you safer in an elevator than on the stairs?

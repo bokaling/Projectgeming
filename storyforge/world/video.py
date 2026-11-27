@@ -17,13 +17,13 @@ from .labels import LabelMaker, card_image
 from .scene import World
 
 FPS = 30
-RENDER_VERSION = "3d-10-round2"  # change when the look changes, so finished clips are made again
+RENDER_VERSION = "3d-11-part14"  # change when the look changes, so finished clips are made again
 
 
 def make_renderer(size: tuple[int, int]) -> tuple[gl.Renderer, tuple[int, int], str]:
     """GPU (NVIDIA through EGL) if possible, else CPU (Mesa llvmpipe).
 
-    On the CPU the frames are drawn at 2/3 size with 2x smoothing and scaled up by FFmpeg: about 2x faster,
+    On the CPU the frames are drawn at 2/3 size (4x MSAA) and scaled up by FFmpeg: about 2x faster,
     still sharp for low poly. Returns (renderer, render size, label for the log).
     """
     ctx = gl.create_context()
@@ -34,8 +34,8 @@ def make_renderer(size: tuple[int, int]) -> tuple[gl.Renderer, tuple[int, int], 
         rw, rh = int(round(W * 2 / 3 / 2) * 2), int(round(H * 2 / 3 / 2) * 2)
     else:
         rw, rh = W, H
-    r = gl.Renderer((rw, rh), msaa=2 if cpu else 4, shadow_size=1536 if cpu else 2048, ctx=ctx,
-                    shadow_taps=6 if cpu else 12)
+    r = gl.Renderer((rw, rh), msaa=4, shadow_size=2048 if cpu else 4096, ctx=ctx,
+                    shadow_taps=3 if cpu else 4)
     how = f"{'CPU' if cpu else 'GPU'} · {name.split('(')[0].strip()} · {rw}×{rh}" + (f" → {W}×{H}" if (rw, rh) != (W, H) else "")
     return r, (rw, rh), how
 
