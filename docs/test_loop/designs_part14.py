@@ -365,7 +365,8 @@ def dishwasher():
           pivot=[0, 0.08, 0.315]),
         P("detergent_dispenser", "box", size=[0.12, 0.08, 0.03], pos=[0.12, 0.48, 0.275], fillet=0.006, color="#e8ecef",
           material="plastic", motion={"type": "open", "axis": "x", "deg": 85}, pivot=[0, 0.08, 0.315]),
-        P("toe_kick", "box", size=[0.6, 0.08, 0.03], pos=[0, 0.04, 0.29], color="#2b3036", material="plastic"),
+        P("toe_kick", "box", size=[0.6, 0.08, 0.03], pos=[0, 0.04, 0.29], color="#2b3036", material="plastic",
+          shell=True),  # the front panel under the door: part of the casing (cut away with it)
         P("sump", "cylinder", size=[0.08, 0.08], pos=[0, 0.06, 0.0], bore=0.07, color="#6c757d", material="plastic"),
         P("filter", "cylinder", size=[0.05, 0.1], pos=[0, 0.07, 0.0], color="#d8dee3", opacity=0.6, material="plastic"),
         P("water", "cylinder", size=[0.07, 0.05], pos=[0, 0.045, 0.0], color="#3aa6d9", opacity=0.6, material="water",
@@ -685,8 +686,16 @@ DESIGNS = {"washing_machine": washing_machine, "microwave": microwave, "jet_engi
            "cordless_drill": cordless_drill, "desk_lamp": desk_lamp}
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(RECIPES.parents[2]))
+    from storyforge.world import builder, sense
+
     names = sys.argv[1:] or list(DESIGNS)
     for n in names:
         r = DESIGNS[n]()
+        problems = sense.check(builder.model_from_recipe(r), r.get("blueprint"))  # step 2: does it hold together?
+        r["sense"] = problems
+        r["checked"] = "failed" if problems else "checked"
+        r["check_note"] = ("sense check: " + "; ".join(problems)) if problems else \
+            "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
         (RECIPES / f"{n}.json").write_text(json.dumps(r, indent=1), encoding="utf-8")
-        print("wrote", n, len(r["parts"]), "parts")
+        print("wrote", n, len(r["parts"]), "parts", "OK" if not problems else problems)

@@ -1511,9 +1511,14 @@ class World:
         parts = self.particles(i, T)
         near = 0.3 * float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt)))  # right in front of the lens: big blobs
         if parts is not None and len(parts):
-            parts = parts[np.linalg.norm(parts[:, :3] - np.asarray(eye, np.float32), axis=1) > near]
+            d = np.linalg.norm(parts[:, :3] - np.asarray(eye, np.float32), axis=1)
+            parts, d = parts[d > near], d[d > near]
             cam_d = float(np.linalg.norm(np.asarray(eye) - np.asarray(tgt)))
-            parts[:, 3] = np.minimum(parts[:, 3], 0.012 * cam_d)  # close-ups: small dots, never big balls
+            # close-ups: small dots, never big balls; a dot nearer the lens is kept as small ON SCREEN as one at the
+            # subject, and shrinks away smoothly before it would reach the lens (no big glowing diamonds, no pop)
+            parts[:, 3] = np.minimum(parts[:, 3], 0.012 * np.minimum(cam_d, d))
+            u = np.clip((d - near) / max(near, 1e-6), 0.0, 1.0)
+            parts[:, 3] *= u * u * (3 - 2 * u)
             if hero is not None:  # only what happens inside the hero part
                 g = np.maximum((hero[3] - hero[2]) * 0.25, 0.05)
                 inside = np.all((parts[:, :3] >= hero[2] - g) & (parts[:, :3] <= hero[3] + g), axis=1)
@@ -1533,6 +1538,10 @@ class World:
             focus_d = float(np.linalg.norm(np.asarray(eye) - (hero[2] + hero[3]) / 2))
         else:
             focus_d = dist
+        if look_name == "macro_dark" and parts is not None and len(parts):
+            parts = parts.copy()
+            parts[:, 7] *= 0.55  # strong bloom on black: dots glow softly instead of flaring
+            parts[:, 3] *= 0.7  # an extreme close-up: finer dots (they are seen from very near)
         return Frame(eye=tuple(eye), target=tuple(tgt), fov=fov, draws=draws, particles=parts, labels=labels,
                      focus=tuple(float(x) for x in s_c), focus_radius=float(s_r0), far_radius=float(s_r1),
                      grid_center=(c[0], c[2]), fade=fade, sun=tuple(float(x) for x in sun),
@@ -1800,7 +1809,8 @@ class World:
                 continue
             t = T - e.start
             color = hex_rgb(e.params["color"]) if e.params.get("color") else FLOW_COLORS.get(e.do, (0.45, 0.86, 0.36))
-            fade = min(1.0, t / 0.4) * (min(1.0, max(0.0, (e.end - T) / 0.35)) if e.end != math.inf else 1.0)
+            rise = smoother(t / 1.0) if e.do == "flow" else min(1.0, t / 0.4)  # a stream glows up over 1 s (no pop)
+            fade = rise * (min(1.0, max(0.0, (e.end - T) / 0.35)) if e.end != math.inf else 1.0)
             rng = np.random.default_rng(zlib.crc32(f"{e.oid}/{e.do}/{e.scene}".encode()))
             if e.do in ("flow", "sparks"):
                 path = self._flow_path(e, T)

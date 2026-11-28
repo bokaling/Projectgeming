@@ -750,6 +750,10 @@ sound and cuts every effect at `MAX_SFX_SECONDS` = 2 s with soft fades; effects 
   machine's own solid parts (real triangles, `_seg_hits`; boxes lie for bent hoses); it moves only when that shows
   ≥ 25 % more of the part (the washer's motor under the tub: from the side, not through the drum). **Labels** stay
   above the bottom subtitle line (`label_floor`), not only above the app buttons.
+* **Flow dots near the lens** (`World.frame`): each dot's size limit uses its OWN distance to the camera (a dot near
+  the lens is no bigger on screen than one at the subject) and it shrinks smoothly to nothing before the cut-off
+  distance; streams glow up over 1 s; in `macro_dark` dots are finer and glow less. The jet's combustor macro had
+  big glowing diamonds (pops of 19-22 %) → one soft 11 % flicker flag.
 * **Hero cutaways**: the cut part stays inside a faint ghost of its machine, on the machine's own floor (Part 4),
   deep red cut faces. **Comparisons**: planner rule asks for 2-3 CLEAR everyday objects at real size on a table.
 

@@ -1592,5 +1592,8 @@
   0,
   0.95,
   0
- ]
+ ],
+ "sense": [],
+ "checked": "checked",
+ "check_note": "Part 14: sense check passed; 3-view check judged by eye (no Gemini key in that session)"
 }
